@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}All PGs • PG-MS{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">All PGs</h1>
+  <a href="{% url 'sa_pg_new' %}" class="btn btn-primary">New PG</a>
+</div>
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead>
+        <tr><th>Name</th><th>Address</th><th>Admins</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for pg in items %}
+        <tr>
+          <td>{{ pg.name }}</td>
+          <td class="text-truncate" style="max-width: 360px;">{{ pg.address }}</td>
+          <td>{{ pg.admins.count }}</td>
+          <td class="text-end"><a href="{% url 'sa_pg_admins' pg.id %}" class="btn btn-sm btn-outline-secondary">Manage Admins</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="text-secondary">No PGs.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

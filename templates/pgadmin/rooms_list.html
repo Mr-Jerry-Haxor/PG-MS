@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Rooms • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .rooms-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.25rem}
+  .rooms-toolbar h1{margin:0;font-size:1.15rem;font-weight:600}
+  .rooms-grid{display:grid;gap:1rem}
+  @media(min-width:680px){.rooms-grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}}
+  .room-card{position:relative;padding:1rem .95rem .95rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;display:flex;flex-direction:column;gap:.55rem;box-shadow:0 2px 4px -2px rgba(0,0,0,.07),0 4px 10px -3px rgba(0,0,0,.05)}
+  .room-head{display:flex;justify-content:space-between;align-items:flex-start}
+  .stats-line{display:flex;flex-wrap:wrap;gap:.4rem}
+  .mini-badge{background:#f1f5f9;color:#475569;padding:.3rem .55rem;border-radius:1rem;font-size:.6rem;font-weight:600;border:1px solid #e2e8f0;letter-spacing:.5px}
+  .mini-badge.ok{background:#ecfdf5;color:#047857;border-color:#bbf7d0}
+  .mini-badge.warn{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+  .mini-badge.alt{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
+  .room-actions{margin-top:.25rem;display:flex;flex-wrap:wrap;gap:.5rem}
+  .empty-rooms{padding:2.25rem 1.25rem;text-align:center;border:2px dashed #cbd5e1;border-radius:1rem;background:#f8fafc}
+</style>
+
+<div class="rooms-toolbar">
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <h1 class="mb-0">Rooms</h1>
+    {% if pgs and pgs|length > 1 %}
+    <form method="get" class="m-0">
+      <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+  <a href="{% url 'pg_room_create' %}" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1"><i class="bi bi-plus-lg"></i><span>New Room</span></a>
+</div>
+
+<div class="rooms-grid">
+  {% for room in rooms %}
+    <div class="room-card fade-in shadow-hover">
+      <div class="room-head">
+        <div>
+          <div class="fw-semibold">Room {{ room.room_no }}</div>
+          <div class="text-secondary small">Shares: {{ room.total_shares }}</div>
+        </div>
+        <a href="{% url 'pg_room_edit' room.id %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+      </div>
+      <div class="stats-line small">
+        <span class="mini-badge alt">Occupied {{ room.occupied_count|default:0 }}</span>
+        <span class="mini-badge warn">Reserved {{ room.reserved_count|default:0 }}</span>
+        <span class="mini-badge ok">Vacant {{ room.vacant_count|default:0 }}</span>
+      </div>
+      <div class="room-actions">
+        <a class="btn btn-sm btn-outline-primary flex-grow-1" href="{% url 'pg_room_shares' room.id %}">Manage Shares</a>
+      </div>
+    </div>
+  {% empty %}
+    <div class="empty-rooms">No rooms yet. Create one.</div>
+  {% endfor %}
+</div>
+{% endblock %}

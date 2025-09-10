@@ -1,0 +1,32 @@
+:root{
+	--brand:#6c8cf6;
+	--bg:#f7f8fc;
+	--card:#ffffff;
+	--text:#1f2937;
+	--muted:#6b7280;
+	--accent:#f9c4d2; /* pastel rose */
+	--accent-2:#c3e8d2; /* pastel green */
+	--accent-3:#fde2a8; /* pastel yellow */
+}
+html,body{min-height:100%;}
+body{
+	min-height:100dvh;
+	background:var(--bg);
+	color:var(--text);
+}
+.navbar{backdrop-filter:saturate(180%) blur(8px)}
+.navbar .btn{border-radius:.75rem}
+.card{border-radius:1rem; background:var(--card); box-shadow:0 6px 20px rgba(0,0,0,.05)}
+.btn{border-radius:.75rem}
+.btn-primary{background-color:var(--brand); border-color:var(--brand)}
+.btn-outline-primary{color:var(--brand); border-color:var(--brand)}
+.btn-outline-primary:hover{background:var(--brand); color:#fff}
+table.table thead{position:sticky; top:0; background:var(--card); z-index:1}
+.badge-success{background-color:#86efac}
+.badge-danger{background-color:#fca5a5}
+.badge-secondary{background-color:#cbd5e1}
+.text-muted,.text-secondary{color:var(--muted)!important}
+@media (max-width: 576px){
+	.container{padding-left:1rem; padding-right:1rem}
+	.table{font-size:.9rem}
+}

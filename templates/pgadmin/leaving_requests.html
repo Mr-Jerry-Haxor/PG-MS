@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% block title %}Leaving Requests • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .lr-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:1rem;justify-content:space-between;margin-bottom:1.25rem}
+  .lr-toolbar h1{margin:0;font-size:1.15rem;font-weight:600}
+  .lr-grid{display:grid;gap:1rem;margin-bottom:1.25rem}
+  @media(min-width:680px){.lr-grid{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}}
+  .lr-card{padding:.9rem 1rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;display:flex;flex-direction:column;gap:.5rem;box-shadow:0 2px 6px -2px rgba(0,0,0,.08),0 4px 12px -4px rgba(0,0,0,.05)}
+  .lr-meta{font-size:.65rem;letter-spacing:.5px;text-transform:uppercase;display:flex;flex-wrap:wrap;gap:.4rem}
+  .pill{background:#f1f5f9;color:#475569;padding:.25rem .55rem;border-radius:1rem;font-size:.6rem;font-weight:600;border:1px solid #e2e8f0}
+  .pill-warn{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+  .pill-ok{background:#ecfdf5;color:#047857;border-color:#bbf7d0}
+  .empty-lite{padding:2rem 1rem;border:2px dashed #cbd5e1;text-align:center;border-radius:1rem;background:#f8fafc}
+  .table-responsive{border:1px solid #e2e8f0;border-radius:1rem;overflow:hidden;background:#fff;box-shadow:0 2px 4px -2px rgba(0,0,0,.06)}
+  table thead th{background:#f1f5f9;font-size:.65rem;letter-spacing:.7px;text-transform:uppercase;color:#475569;border-bottom:1px solid #e2e8f0}
+  table tbody td{font-size:.7rem}
+  .status-badge{padding:.25rem .5rem;border-radius:1rem;font-size:.55rem;letter-spacing:.5px;font-weight:600}
+  .status-vacant{background:#ecfdf5;color:#047857}
+  .status-scheduled{background:#e2e8f0;color:#334155}
+</style>
+
+<div class="lr-toolbar">
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <h1 class="mb-0">Leaving Requests</h1>
+    {% if pgs and pgs|length > 1 %}
+    <form method="get" class="m-0">
+      <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% if bookings %}
+  <div class="mb-4">
+    <h2 class="h6 text-uppercase text-secondary mb-2">Pending Confirmation</h2>
+    <div class="lr-grid">
+      {% for b in bookings %}
+        {% if not b.leaving_confirmed_date %}
+        <div class="lr-card fade-in">
+          <div class="d-flex flex-column gap-1">
+            <div class="fw-semibold small">{{ b.user.email }}</div>
+            <div class="lr-meta">
+              <span class="pill">Room {{ b.room.room_no }}</span>
+              <span class="pill">Share {{ b.share_no }}</span>
+              <span class="pill pill-warn">Leaving {{ b.leaving_date }}</span>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-1">
+            <a href="{% url 'pg_leaving_confirm' b.id %}" class="btn btn-sm btn-outline-primary flex-fill">Confirm</a>
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+      {% if not bookings|dictsort:'id'|length or not bookings|length %}
+        <div class="empty-lite">No pending confirmations.</div>
+      {% endif %}
+    </div>
+  </div>
+  <div>
+    <h2 class="h6 text-uppercase text-secondary mb-2">All Leaving (Pending & Confirmed)</h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Room/Share</th>
+            <th>Joining</th>
+            <th>Leaving</th>
+            <th>Confirmed</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+          <tr class="{% if b.leaving_confirmed_date %}table-success{% endif %}">
+            <td class="small">{{ b.user.email }}</td>
+            <td class="small">{{ b.room.room_no }} / {{ b.share_no }}</td>
+            <td class="small">{{ b.start_date|default:b.joining_date }}</td>
+            <td class="small">{{ b.leaving_date }}</td>
+            <td class="small">{% if b.leaving_confirmed_date %}{{ b.leaving_confirmed_date }}{% else %}<span class="badge text-bg-warning">No</span>{% endif %}</td>
+            <td class="small">
+              {% if not b.leaving_confirmed_date %}
+                <a class="btn btn-sm btn-outline-primary" href="{% url 'pg_leaving_confirm' b.id %}">Confirm</a>
+              {% else %}
+                {% if b.leaving_date and b.leaving_date <= today %}<span class="status-badge status-vacant">Vacant</span>{% else %}<span class="status-badge status-scheduled">Scheduled</span>{% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <div class="empty-lite">No leaving requests.</div>
+{% endif %}
+{% endblock %}

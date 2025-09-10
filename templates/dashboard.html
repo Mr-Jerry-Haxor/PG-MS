@@ -1,0 +1,314 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .dash-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.25rem}
+  .dash-toolbar h1{margin:0;font-size:1.3rem;font-weight:600}
+  .metric-grid{display:grid;gap:1rem;margin-bottom:1.5rem}
+  @media(min-width:700px){.metric-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}}
+  .metric-card{position:relative;padding:1rem 1rem .9rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;display:flex;flex-direction:column;gap:.4rem;box-shadow:0 2px 6px -2px rgba(0,0,0,.08),0 4px 12px -4px rgba(0,0,0,.05)}
+  .metric-title{font-size:.65rem;letter-spacing:.6px;font-weight:600;text-transform:uppercase;color:#64748b}
+  .metric-value{font-size:1.85rem;font-weight:600;line-height:1}
+  .quick-links-title{margin-top:1rem;font-size:.7rem;letter-spacing:.7px;text-transform:uppercase;color:#64748b;font-weight:600}
+  .ql-grid{display:grid;gap:1rem;margin-top:.75rem}
+  @media(min-width:680px){.ql-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}
+  .ql-card{padding:.9rem .85rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;display:flex;gap:.65rem;align-items:flex-start;text-decoration:none;color:inherit;box-shadow:0 2px 4px -2px rgba(0,0,0,.06)}
+  .ql-card:hover{box-shadow:0 4px 12px -4px rgba(0,0,0,.15);text-decoration:none}
+  .badge-soft{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:.35rem .7rem;border-radius:2rem;font-size:.6rem;letter-spacing:.5px;font-weight:600;text-transform:uppercase}
+  .list-panel{border:1px solid #e2e8f0;border-radius:1rem;overflow:hidden;background:#fff}
+  .list-panel .list-group-item{border:0;border-bottom:1px solid #f1f5f9;font-size:.8rem}
+  .list-panel .list-group-item:last-child{border-bottom:0}
+  .status-badges .badge{font-size:.6rem;letter-spacing:.5px}
+  .modal-content{border-radius:1rem}
+  .leave-form label{font-size:.7rem;letter-spacing:.6px;text-transform:uppercase;font-weight:600;color:#64748b}
+  .past-title, .section-title{font-size:.7rem;letter-spacing:.7px;text-transform:uppercase;font-weight:600;color:#64748b;margin-top:2rem;margin-bottom:.5rem}
+  .apply-badge{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
+  .approved-badge{background:#ecfdf5;color:#047857;border:1px solid #bbf7d0}
+  .completed-badge{background:#e2e8f0;color:#334155;border:1px solid #cbd5e1}
+  .pending-badge{background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe}
+</style>
+
+<div class="dash-toolbar">
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <h1 class="mb-0">Dashboard</h1>
+    {% if user.is_authenticated and user.profile.is_pg_admin and pgs and pgs|length > 1 %}
+    <form method="get" class="m-0">
+      <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+  {% if user.is_authenticated and user.profile.is_pg_admin and pg %}
+    <span class="badge-soft">{{ pg.name }}</span>
+  {% endif %}
+</div>
+<div class="row g-3">
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card shadow-sm border-0" style="background:var(--accent-2)">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-3">
+          <i class="bi bi-house-door fs-2 text-primary"></i>
+          <div>
+            <div class="text-secondary small">PGs</div>
+            <a class="fw-bold text-decoration-none" href="{% url 'availability' %}">Check Availability</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% if user.is_authenticated and user.profile.is_pg_admin %}
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card shadow-sm border-0" style="background:var(--accent)">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-3">
+          <i class="bi bi-grid-3x3-gap fs-2 text-primary"></i>
+          <div>
+            <div class="text-secondary small">PG Admin</div>
+            <a class="fw-bold text-decoration-none" href="{% url 'pg_rooms' %}">Manage Rooms</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card shadow-sm border-0" style="background:var(--accent-3)">
+      <div class="card-body">
+        <div class="text-secondary small">Vacant Shares</div>
+        <div class="display-6">{{ vacant_shares|default:"—" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card shadow-sm border-0" style="background:#dbeafe">
+      <div class="card-body">
+        <div class="text-secondary small">Occupied Shares</div>
+        <div class="display-6">{{ occupied_shares|default:"—" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <div class="text-secondary small">Pending Bookings</div>
+        <div class="display-6">{{ pending_bookings|default:"—" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <div class="text-secondary small">This Month</div>
+        <div>
+          <span class="me-3">Income: ₹ {{ month_income|default:0 }}</span>
+          <span>Expense: ₹ {{ month_expense|default:0 }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- PG Admin quick links -->
+  <div class="col-12 mt-2">
+    <h2 class="h6 text-secondary">PG Admin quick links</h2>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_my' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-building-gear fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">My PG</div>
+          <div class="small text-secondary">Details & settings</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_rooms' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-door-open fs-3 text-primary"></i>
+        <div>
+          <div class="metric-grid">
+            <a class="metric-card text-decoration-none" href="{% url 'availability' %}">
+              <div class="metric-title">Check Availability</div>
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-house-door text-primary fs-4"></i>
+                <span class="fw-semibold">Explore PGs</span>
+              </div>
+            </a>
+            {% if user.is_authenticated and user.profile.is_pg_admin %}
+              <a class="metric-card text-decoration-none" href="{% url 'pg_rooms' %}">
+                <div class="metric-title">PG Admin</div>
+                <div class="d-flex align-items-center gap-2">
+                  <i class="bi bi-grid-3x3-gap text-primary fs-4"></i>
+                  <span class="fw-semibold">Manage Rooms</span>
+                </div>
+              </a>
+              <div class="metric-card">
+                <div class="metric-title">Vacant Shares</div>
+                <div class="metric-value">{{ vacant_shares|default:"—" }}</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-title">Occupied Shares</div>
+                <div class="metric-value">{{ occupied_shares|default:"—" }}</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-title">Pending Bookings</div>
+                <div class="metric-value" style="font-size:1.6rem">{{ pending_bookings|default:"—" }}</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-title">This Month</div>
+                <div class="d-flex flex-column gap-1">
+                  <span>Income: ₹ {{ month_income|default:0 }}</span>
+                  <span>Expense: ₹ {{ month_expense|default:0 }}</span>
+                </div>
+              </div>
+            {% endif %}
+      <div class="card-body d-flex align-items-center gap-3">
+          {% if user.is_authenticated and user.profile.is_pg_admin %}
+        <div>
+          <div class="fw-semibold">New Fee</div>
+          <div class="small text-secondary">Add fee item</div>
+        <div class="quick-links-title">PG Admin Quick Links</div>
+        <div class="ql-grid">
+          <a class="ql-card" href="{% url 'pg_my' %}">
+            <i class="bi bi-building-gear fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">My PG</div>
+              <div class="text-secondary small">Details & settings</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'pg_rooms' %}">
+            <i class="bi bi-door-open fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Rooms</div>
+              <div class="text-secondary small">Manage rooms</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'pg_room_create' %}">
+            <i class="bi bi-plus-square fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">New Room</div>
+              <div class="text-secondary small">Add a room</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'pg_bookings_pending' %}">
+            <i class="bi bi-hourglass-split fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Pending</div>
+              <div class="text-secondary small">Approve bookings</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'pg_resident_applications' %}">
+            <i class="bi bi-people fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Applications</div>
+              <div class="text-secondary small">Residents</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'pg_leaving_requests' %}">
+            <i class="bi bi-box-arrow-left fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Leaving</div>
+              <div class="text-secondary small">Manage requests</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'fees_list' %}">
+            <i class="bi bi-cash-coin fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Fees</div>
+              <div class="text-secondary small">Configure fees</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'fees_new' %}">
+            <i class="bi bi-plus-circle fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">New Fee</div>
+              <div class="text-secondary small">Add fee item</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'payments_list' %}">
+            <i class="bi bi-wallet2 fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Payments</div>
+              <div class="text-secondary small">Track income</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'payments_new' %}">
+            <i class="bi bi-plus-circle fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">New Payment</div>
+              <div class="text-secondary small">Record payment</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'expenditure_list' %}">
+            <i class="bi bi-receipt fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Expenditure</div>
+              <div class="text-secondary small">Track expenses</div>
+            </div>
+          </a>
+          <a class="ql-card" href="{% url 'expenditure_new' %}">
+            <i class="bi bi-plus-circle fs-4 text-primary"></i>
+            <div>
+              <div class="fw-semibold">New Expense</div>
+              <div class="text-secondary small">Record expense</div>
+            </div>
+          </a>
+        </div>
+      {% endif %}
+      </div>
+{% if user.is_authenticated and not my_approved_bookings and my_completed_bookings %}
+<div class="mt-4">
+  <div class="alert alert-success small mb-2">You have left your previous booking. You can request a new booking from Availability.</div>
+</div>
+{% endif %}
+
+{% if user.is_authenticated and my_completed_bookings %}
+<div class="mt-4">
+  <h2 class="h6 text-secondary mb-2">Past Bookings</h2>
+  <div class="card border-0 shadow-sm">
+    <div class="list-group list-group-flush">
+      {% for b in my_completed_bookings %}
+      <div class="list-group-item d-flex justify-content-between align-items-center">
+        <div>
+          <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
+          <div class="text-secondary small">Stayed till {{ b.leaving_date|default:b.updated_at|date:"Y-m-d" }}</div>
+          <span class="badge bg-secondary-subtle text-dark border">Completed</span>
+        </div>
+        <a href="{% url 'booking_detail' b.id %}" class="btn btn-outline-secondary btn-sm">Details</a>
+      </div>
+      {% empty %}
+      <div class="list-group-item text-secondary">No past bookings.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if user.is_authenticated and my_pending_bookings %}
+<div class="mt-4">
+  <h2 class="h6 text-secondary mb-2">Applied Bookings</h2>
+  <div class="card border-0 shadow-sm">
+    <div class="list-group list-group-flush">
+      {% for b in my_pending_bookings %}
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
+            <div class="text-secondary small">Applied on {{ b.created_at|date:"Y-m-d" }} • Joining {{ b.joining_date|default:"—" }}</div>
+            <div class="badge bg-warning-subtle text-dark border">Pending</div>
+          </div>
+          <div class="d-flex gap-2">
+            <a href="{% url 'booking_detail' b.id %}" class="btn btn-outline-secondary btn-sm">Details</a>
+          </div>
+        </div>
+      {% empty %}
+        <div class="list-group-item text-secondary">No applied bookings.</div>
+      {% endfor %}
+    </div>
+  </div>
+ </div>
+{% endif %}
+
+{% endblock %}

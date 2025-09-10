@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+{% block title %}Profile • PG-MS{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-3">Your Profile</h1>
+        {% if profile.selfie_url %}
+        <div class="mb-3">
+          <label class="form-label">Selfie</label>
+          <div class="ratio ratio-16x9 border rounded overflow-hidden">
+            <iframe src="{{ profile.selfie_url }}" allow="autoplay" allowfullscreen></iframe>
+          </div>
+        </div>
+        {% endif %}
+        <form method="post" enctype="multipart/form-data" novalidate>
+          {% csrf_token %}
+          <div class="mb-3">{{ form.phone|as_crispy_field }}</div>
+            {# Selfie display/upload removed per updated requirements #}
+          <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-primary" type="submit">Save</button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

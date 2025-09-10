@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}Assign PG Admins • PG-MS{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Assign PG Admins — {{ pg.name }}</h1>
+  <a href="{% url 'sa_pgs' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+  </div>
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+      <div class="row g-2 align-items-end">
+        <div class="col-md-6">
+          <label class="form-label">Select User</label>
+          <div class="input-group mb-2">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input id="userSearch" type="search" class="form-control" placeholder="Search users by email" />
+          </div>
+          <select id="userSelect" name="user_id" class="form-select">
+            {% for u in users %}
+              <option value="{{ u.id }}" data-name="{{ u.first_name }} {{ u.last_name }}" data-email="{{ u.email }}" data-phone="{{ u.profile.phone|default:'' }}">{{ u.email }}{% if u.first_name or u.last_name %} — {{ u.first_name }} {{ u.last_name }}{% endif %}{% if u.profile.phone %} ({{ u.profile.phone }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-auto">
+          <button class="btn btn-primary" type="submit">Assign</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead><tr><th>Admin</th><th>Since</th><th></th></tr></thead>
+      <tbody>
+      {% for a in admins %}
+        <tr>
+          <td>{{ a.user.email }}</td>
+          <td>{{ a.created_at }}</td>
+          <td class="text-end">
+            <form method="post" class="d-inline">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="remove" />
+              <input type="hidden" name="remove_user_id" value="{{ a.user.id }}" />
+              <button class="btn btn-sm btn-outline-danger" type="submit" onclick="return confirm('Remove this PG Admin?');">Remove</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3" class="text-secondary">No admins yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block body_extra %}
+{{ block.super }}
+<script>
+  (function(){
+    const search = document.getElementById('userSearch');
+    const select = document.getElementById('userSelect');
+    if (!search || !select) return;
+    // Build a cache of options to re-render for reliable filtering
+    const cache = Array.from(select.options).map(o => ({
+      value: o.value,
+      text: o.text,
+      name: (o.dataset.name || ''),
+      email: (o.dataset.email || ''),
+      phone: (o.dataset.phone || ''),
+    }));
+    function render(list) {
+      const current = select.value;
+      select.innerHTML = '';
+      list.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.value;
+        opt.textContent = item.text;
+        select.appendChild(opt);
+      });
+      // preserve selection if still present
+      if (list.some(i => i.value === current)) select.value = current;
+    }
+    search.addEventListener('input', function(){
+      const q = (this.value || '').toLowerCase().trim();
+      if (!q) { render(cache); return; }
+      const tokens = q.split(/\s+/).filter(Boolean);
+      const filtered = cache.filter(item => {
+        const hay = (item.text + ' ' + item.name + ' ' + item.email + ' ' + item.phone).toLowerCase();
+        return tokens.every(t => hay.includes(t));
+      });
+      render(filtered);
+    });
+  })();
+</script>
+{% endblock %}

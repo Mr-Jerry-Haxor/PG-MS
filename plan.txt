@@ -1,0 +1,159 @@
+Feature & Implementation Plan
+🔑 Tech Stack (confirmed)
+
+Framework: Django (both backend + templating/frontend).
+
+DB: SQLite (sufficient for MVP, later upgradeable to PostgreSQL).
+
+Auth: Google Sign-In (via django-allauth or social-auth-app-django).
+
+File/Photo Storage: Google Drive API (store uploaded Aadhaar + selfie, save file ID/URL in DB).
+
+🧑‍💻 User Roles & Features
+1. Website Admin
+
+Add PGs (with address, assign PG Admin).
+
+Manage PG Admin accounts.
+
+View all PGs, PG Admins, Users, Bookings, Payments, Expenditures (read-only).
+
+2. PG Admin
+🔹 Rooms Management
+
+Add rooms with number of shares (1,2,3,4,5).
+
+CRUD operations on availability per share → Vacant | Reserved | Occupied.
+
+🔹 Fees
+
+Set PG fee (per room share type) with advance/joining amount.
+
+🔹 User Payments
+
+Manual CRUD on fee payments (cash, UPI, etc.).
+
+Track all payments history.
+
+🔹 Expenditure
+
+CRUD on hostel expenses (electricity, groceries, maintenance, etc.).
+
+🔹 PG User Lifecycle
+
+Approve/Reject booking requests.
+
+New: Track users leaving the PG.
+
+PG User enters “Leaving Date”.
+
+System sends email + dashboard notification to PG Admin.
+
+After confirmation → mark user as “Inactive” and free up share slot.
+
+3. PG User
+🔹 Profile
+
+On first login → fill personal details + upload live selfie.
+
+Google Sign-In used for authentication.
+
+🔹 Room Availability & Booking
+
+Browse rooms with availability per share.
+
+Book room → status “Pending PG Admin Approval.”
+
+🔹 Booking Approval Flow
+
+Once PG Admin approves:
+
+Prompt user for extra details:
+
+Aadhaar number
+
+Aadhaar card upload (file upload → Google Drive)
+
+Aadhaar preview before final submit (generate preview URL from Google Drive file ID).
+
+🔹 Leaving Intimation
+
+User submits “Leaving Date”.
+
+Trigger notification + email to PG Admin.
+
+Booking/room share auto-released after confirmation.
+
+🗂 Database Schema (SQLite → can migrate later)
+WebsiteAdmin (id, name, email, password)
+
+PG (id, name, address, pg_admin_id, created_by_admin)
+
+PGAdmin (id, name, email, google_id, pg_id)
+
+Room (id, pg_id, room_no, total_shares)
+
+RoomShareStatus (id, room_id, share_no, status [vacant/reserved/occupied])
+
+Fees (id, pg_id, share_type, monthly_fee, advance_amount)
+
+User (id, google_id, pg_id, name, email, phone, selfie_url, aadhaar_number, aadhaar_file_url, status [active/inactive])
+
+Booking (id, user_id, room_id, share_no, status [pending/approved/rejected], advance_paid, start_date, leaving_date)
+
+Payments (id, user_id, pg_id, amount, date, status, mode, type [fee/advance])
+
+Expenditure (id, pg_id, category, amount, date, notes)
+
+📩 Notification & Mail Triggers
+
+Use Django signals (post_save) for events like:
+
+PG User submits leaving date → send mail to PG Admin.
+
+Booking approved → send mail + notification to User.
+
+Use django.core.mail for email integration (SMTP / Gmail).
+
+Notifications in-app: store in Notification model with read/unread flag.
+
+📸 File & Photo Upload (Google Drive Integration)
+
+Use Google Drive API + pydrive2 or google-api-python-client.
+
+Flow:
+
+User uploads selfie/Aadhaar file → Django handles temporary file.
+
+File pushed to Google Drive under a designated folder.
+
+Drive returns file ID → store in DB.
+
+Generate preview link (for Aadhaar before submit):
+
+https://drive.google.com/file/d/<FILE_ID>/preview
+
+
+This way, Aadhaar is previewable but not downloadable unless permitted.
+
+🔄 Booking Lifecycle Example
+
+User logs in via Google → fills profile (name, phone, selfie).
+
+User checks room availability → selects share → sends booking request.
+
+PG Admin reviews → approves booking.
+
+System prompts User for Aadhaar number + file upload.
+
+Preview Aadhaar (Google Drive preview link).
+
+User confirms submit.
+
+Payment (advance/fee) tracked under Payments.
+
+If User decides to leave → submits Leaving Date.
+
+Trigger notification + email to PG Admin.
+
+Admin confirms → booking closed, share freed.

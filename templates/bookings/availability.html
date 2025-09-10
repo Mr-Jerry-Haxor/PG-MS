@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}Availability • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .availability-toolbar{display:flex;flex-direction:column;gap:.75rem;margin-bottom:1rem}
+  .availability-toolbar h1{margin:0;font-size:1.15rem;font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:.45rem}
+  .legend-badge{background:#f1f5f9;color:#475569;padding:.35rem .65rem;font-size:.6rem;font-weight:600;border-radius:1rem;border:1px solid #e2e8f0;letter-spacing:.5px;text-transform:uppercase}
+  .shares-wrap{display:flex;flex-wrap:wrap;gap:.55rem}
+  .share-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .75rem;font-size:.65rem;font-weight:600;letter-spacing:.4px;border-radius:1rem;border:1px solid #e2e8f0;text-decoration:none;line-height:1;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);transition:.18s}
+  .share-chip span.badge{font-size:.55rem;letter-spacing:.4px}
+  .share-chip:hover{box-shadow:0 2px 6px -2px rgba(0,0,0,.15);transform:translateY(-2px)}
+  .chip-vacant{background:#ecfdf5;border-color:#bbf7d0;color:#047857}
+  .chip-vacant:hover{background:#d1fae5}
+  .chip-reserved{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+  .chip-occupied{background:#f1f5f9;color:#475569;border-color:#cbd5e1}
+  .chip-upcoming{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
+  .chip-disabled{cursor:not-allowed;opacity:.65;box-shadow:none;transform:none!important}
+  .room-card{padding:1rem .95rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;box-shadow:0 2px 8px -3px rgba(0,0,0,.08),0 4px 18px -5px rgba(0,0,0,.05);display:flex;flex-direction:column;gap:.75rem}
+  .room-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.75rem}
+  .room-meta{font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;font-weight:600;color:#64748b}
+  .empty-card{padding:2.25rem 1rem;text-align:center;border:2px dashed #cbd5e1;border-radius:1rem;background:#f8fafc;color:#64748b;font-size:.9rem}
+  @media (max-width:600px){.share-chip{padding:.45rem .6rem;font-size:.6rem}}
+</style>
+
+<div class="availability-toolbar">
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <h1 class="mb-0">Room Availability</h1>
+    <form method="get" class="m-0">
+      <label for="pgSelect" class="visually-hidden">PG</label>
+      <select id="pgSelect" name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="" {% if not pg %}selected{% endif %}>Select PG</option>
+        {% for p in pgs %}
+          <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% if pg %}<span class="legend-badge"><i class="bi bi-building me-1"></i>{{ pg.name }}</span>{% endif %}
+  </div>
+  <div class="legend">
+    <span class="legend-badge">Vacant</span>
+    <span class="legend-badge">Upcoming</span>
+    <span class="legend-badge">Reserved</span>
+    <span class="legend-badge">Occupied</span>
+    <span class="legend-badge">Scheduled</span>
+  </div>
+</div>
+
+{% if not pg %}
+  <div class="alert alert-info">Select a PG to explore current and upcoming availability.</div>
+{% endif %}
+
+<div class="d-flex flex-column gap-3">
+  {% for room in rooms %}
+    <div class="room-card fade-in">
+      <div class="room-head">
+        <div>
+          <div class="fw-semibold">Room {{ room.room_no }}</div>
+          <div class="room-meta">Total Shares: {{ room.total_shares }}</div>
+        </div>
+        <div class="shares-wrap">
+          {% for s in room.shares.all|dictsort:'share_no' %}
+            {% with data=s.leaving_data %}
+              {% if s.status == 'vacant' %}
+                <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant text-decoration-none">S{{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
+              {% elif s.status == 'reserved' %}
+                <span class="share-chip chip-reserved chip-disabled">S{{ s.share_no }} <span class="badge bg-warning-subtle text-warning-emphasis">Reserved</span></span>
+              {% elif s.status == 'vacant_from' %}
+                {% if data %}
+                  {% if data.available_from and data.available_from <= today %}
+                    <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant" title="Vacated; join any date after {{ data.leaving_date }}">S{{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
+                  {% else %}
+                    <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-upcoming" title="Pre-book; joining date must be after {{ data.leaving_date }}">S{{ s.share_no }} <span class="badge bg-primary-subtle text-primary">From {{ data.available_from|date:"Y-m-d" }}</span></a>
+                  {% endif %}
+                {% else %}
+                  <span class="share-chip chip-occupied chip-disabled" title="Scheduled to be vacant soon">S{{ s.share_no }} <span class="badge bg-secondary">Scheduled</span></span>
+                {% endif %}
+              {% else %}
+                {% if data %}
+                  {% if not data.confirmed %}
+                    <span class="share-chip chip-occupied chip-disabled" title="Leaving not yet confirmed by PG Admin">S{{ s.share_no }} <span class="badge bg-secondary">Leaving {{ data.leaving_date }}</span></span>
+                  {% else %}
+                    {% if data.available_from and data.available_from <= today %}
+                      <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant" title="Vacated; join any date after {{ data.leaving_date }}">S{{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
+                    {% else %}
+                      <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-upcoming" title="Available from {{ data.available_from|date:'Y-m-d' }}; joining date must be after {{ data.leaving_date }}">S{{ s.share_no }} <span class="badge bg-primary-subtle text-primary">From {{ data.available_from|date:"Y-m-d" }}</span></a>
+                    {% endif %}
+                  {% endif %}
+                {% else %}
+                  <span class="share-chip chip-occupied chip-disabled">S{{ s.share_no }} <span class="badge bg-secondary">Occupied</span></span>
+                {% endif %}
+              {% endif %}
+            {% endwith %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% empty %}
+  <div class="empty-card">No rooms available.</div>
+  {% endfor %}
+</div>
+
+{% endblock %}

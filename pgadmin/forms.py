@@ -1,0 +1,32 @@
+from django import forms
+from .models import PG
+from bookings.models import Room, RoomShareStatus
+
+
+class PGForm(forms.ModelForm):
+    class Meta:
+        model = PG
+        fields = ["name", "address"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+            "address": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+        }
+
+
+class RoomForm(forms.ModelForm):
+    class Meta:
+        model = Room
+        fields = ["room_no", "total_shares"]
+        widgets = {
+            "room_no": forms.TextInput(attrs={"class": "form-control"}),
+            "total_shares": forms.NumberInput(attrs={"class": "form-control", "min": 1, "max": 5}),
+        }
+
+
+class ShareStatusForm(forms.ModelForm):
+    class Meta:
+        model = RoomShareStatus
+        fields = ["status"]
+        widgets = {
+            "status": forms.Select(attrs={"class": "form-select"}),
+        }

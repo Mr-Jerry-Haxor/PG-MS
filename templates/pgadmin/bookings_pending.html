@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block title %}Pending Bookings • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.25rem}
+  .toolbar h1{font-size:1.2rem;font-weight:600;margin:0}
+  .filter-select select{min-width:160px}
+  .bookings-grid{display:grid;gap:1rem}
+  @media(min-width:680px){.bookings-grid{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}}
+  .booking-card{position:relative;padding:1rem 1rem .95rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;display:flex;flex-direction:column;gap:.65rem;box-shadow:0 2px 4px -2px rgba(0,0,0,.08),0 4px 12px -4px rgba(0,0,0,.05)}
+  .booking-head{display:flex;flex-direction:column;gap:.25rem}
+  .meta{display:flex;flex-wrap:wrap;gap:.4rem .6rem;font-size:.65rem;text-transform:uppercase;letter-spacing:.6px}
+  .badge-pill{background:#f1f5f9;color:#475569;padding:.25rem .55rem;font-weight:600;border-radius:1rem;font-size:.6rem;border:1px solid #e2e8f0}
+  .badge-pill.success{background:#ecfdf5;color:#047857;border-color:#bbf7d0}
+  .badge-pill.warn{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+  .booking-actions{display:flex;flex-wrap:wrap;gap:.45rem}
+  .booking-actions .btn{flex:1 1 auto;min-width:100px}
+  @media(max-width:600px){.booking-actions .btn{min-width:calc(50% - .45rem)}}
+  .user-line{font-size:.85rem}
+  .text-faded{color:#64748b}
+  .empty-state{padding:2.5rem 1.25rem;border:2px dashed #cbd5e1;border-radius:1rem;background:#f8fafc;text-align:center}
+</style>
+
+<div class="toolbar">
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <h1 class="mb-0">Pending Bookings</h1>
+    {% if pgs and pgs|length > 1 %}
+    <form method="get" class="filter-select m-0">
+      <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="bookings-grid">
+  {% for b in bookings %}
+    <div class="booking-card fade-in shadow-hover">
+      <div class="booking-head">
+        <div class="user-line fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }} <span class="text-faded">({{ b.user.email }})</span></div>
+        <div class="meta">
+          <span class="badge-pill">Room {{ b.room.room_no }}</span>
+          <span class="badge-pill">Share {{ b.share_no }}</span>
+          <span class="badge-pill {% if b.has_application %}success{% else %}warn{% endif %}">{% if b.has_application %}Application Submitted{% else %}Application Pending{% endif %}</span>
+          <span class="badge-pill">Joining {{ b.joining_date|default:"—" }}</span>
+        </div>
+        <div class="small text-faded">Phone: {{ b.user.profile.phone|default:"—" }}</div>
+      </div>
+      <div class="booking-actions mt-1">
+        <a href="{% url 'pg_booking_approve' b.id %}" class="btn btn-sm btn-success">Approve</a>
+        <a href="{% url 'pg_booking_reject' b.id %}" class="btn btn-sm btn-outline-danger">Reject</a>
+        <a href="{% url 'pg_application_email_send' b.id %}" class="btn btn-sm btn-outline-primary">Send Link</a>
+      </div>
+    </div>
+  {% empty %}
+    <div class="empty-state">No pending bookings.</div>
+  {% endfor %}
+</div>
+{% endblock %}

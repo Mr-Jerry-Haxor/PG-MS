@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Aadhaar Submit • PG-MS{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Submit Aadhaar</h1>
+{% if request.user.profile.aadhaar_file_url %}
+<div class="mb-3">
+  <div class="ratio ratio-16x9 border rounded overflow-hidden">
+    <iframe src="{{ request.user.profile.aadhaar_file_url }}" allow="autoplay" allowfullscreen></iframe>
+  </div>
+  <div class="text-secondary small mt-1">Existing Aadhaar on file.</div>
+  <hr />
+  <div class="mb-2">Re-upload to replace:</div>
+{% endif %}
+<form method="post" enctype="multipart/form-data" class="card border-0 shadow-sm">
+  {% csrf_token %}
+  <div class="card-body p-4">
+    <div class="mb-3">
+      <label class="form-label">Aadhaar Number</label>
+      {{ form.aadhaar_number }}
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Aadhaar File</label>
+      {{ form.aadhaar_file }}
+    </div>
+    <button class="btn btn-primary" type="submit">Submit</button>
+  </div>
+</form>
+{% endblock %}

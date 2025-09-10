@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Notifications • PG-MS{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Notifications</h1>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'notifications_mark_all' %}">Mark all read</a>
+ </div>
+<ul class="list-group list-group-flush">
+  {% for n in items %}
+  <li class="list-group-item d-flex justify-content-between align-items-start">
+    <div>
+      <div class="fw-semibold">{{ n.title }}</div>
+      <div class="text-secondary small">{{ n.message }}</div>
+    </div>
+    <div>
+      {% if not n.is_read %}
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'notification_read' n.id %}">Mark read</a>
+      {% endif %}
+    </div>
+  </li>
+  {% empty %}
+  <li class="list-group-item text-secondary">No notifications.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

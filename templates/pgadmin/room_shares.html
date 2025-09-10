@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}Room Shares • PG-MS{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Room {{ room.room_no }} • Shares</h1>
+<form method="post" class="" id="shares-form">
+  {% csrf_token %}
+  <div class="row g-3">
+  {% for rs, f, occ, has_app in rs_forms %}
+      <div class="col-12 col-md-6 col-lg-4">
+  <div class="card border-0 shadow-sm h-100" data-initial-status="{{ rs.status }}">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="fw-semibold">Share {{ rs.share_no }}</div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleEdit(this)">Edit</button>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Status</label>
+              <div class="view-only">{{ f.instance.get_status_display }}</div>
+              <div class="edit-only d-none">{{ f.status }}</div>
+            </div>
+            <div class="edit-only d-none" data-vacant-block>
+              <div class="alert alert-info py-2 px-3 small mb-2">
+                If changing from Vacant to Reserved/Occupied, please enter the new occupant details.
+              </div>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label small mb-0">First name</label>
+                  <input type="text" class="form-control form-control-sm" name="s{{ rs.id }}-new-first_name" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-0">Last name</label>
+                  <input type="text" class="form-control form-control-sm" name="s{{ rs.id }}-new-last_name" />
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-0">Email</label>
+                  <input type="email" class="form-control form-control-sm" name="s{{ rs.id }}-new-email" placeholder="name@example.com" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-0">Phone</label>
+                  <input type="text" class="form-control form-control-sm" name="s{{ rs.id }}-new-phone" placeholder="10 digits" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-0">Joining date</label>
+                  <input type="date" class="form-control form-control-sm" name="s{{ rs.id }}-new-joining" />
+                </div>
+              </div>
+            </div>
+            {% if rs.status == 'occupied' and occ %}
+            <div class="border-top pt-2 mt-2 small">
+              <div class="text-secondary">Occupant</div>
+              <div class="fw-semibold">{{ occ.user.get_full_name|default:occ.user.username }}</div>
+              <div>
+                <span class="view-only">Phone: {{ occ.user.profile.phone|default:"—" }}</span>
+                <span class="edit-only d-none">Phone: <input type="text" name="s{{ rs.id }}-phone" value="{{ occ.user.profile.phone }}" class="form-control form-control-sm w-auto d-inline-block" /></span>
+              </div>
+              <div class="mt-1">
+                {% if has_app %}
+                  <span class="badge text-bg-success">Application submitted</span>
+                {% else %}
+                  <span class="badge text-bg-warning text-dark">Application pending</span>
+                  <a href="{% url 'pg_application_email_send' occ.id %}" class="btn btn-sm btn-outline-primary ms-2">Send Link</a>
+                {% endif %}
+              </div>
+              {% if occ.leaving_date %}
+                <div class="text-warning view-only">Leaving on: {{ occ.leaving_date }}</div>
+              {% endif %}
+              <div class="edit-only d-none mt-1">Leaving on: <input type="date" name="s{{ rs.id }}-leaving" value="{{ occ.leaving_date|date:'Y-m-d' }}" class="form-control form-control-sm w-auto d-inline-block" /></div>
+              {% if occ.start_date %}<div class="text-secondary">Since: {{ occ.start_date }}</div>{% endif %}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  <div class="mt-3">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-outline-secondary" href="{% url 'pg_rooms' %}">Back</a>
+  </div>
+</form>
+<script>
+  function toggleEdit(btn){
+    const card = btn.closest('.card');
+    card.querySelectorAll('.view-only').forEach(el=>el.classList.toggle('d-none'));
+    card.querySelectorAll('.edit-only').forEach(el=>el.classList.toggle('d-none'));
+    // When entering edit mode, if status is changing from vacant to reserved/occupied, show vacant-block
+    const statusSelect = card.querySelector('select[name$="-status"]');
+    const initial = card.dataset.initialStatus;
+    const block = card.querySelector('[data-vacant-block]');
+    if(statusSelect && block){
+      const updateBlock = ()=>{
+        if(initial === 'vacant' && (statusSelect.value === 'reserved' || statusSelect.value === 'occupied')){
+          block.classList.remove('d-none');
+        } else {
+          block.classList.add('d-none');
+        }
+      };
+      statusSelect.addEventListener('change', updateBlock, { once: false });
+      updateBlock();
+    }
+  }
+</script>
+{% endblock %}

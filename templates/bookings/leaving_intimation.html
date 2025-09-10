@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Leaving Intimation • PG-MS{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Leaving Intimation</h1>
+<form method="post" class="card border-0 shadow-sm">
+  {% csrf_token %}
+  <div class="card-body p-4">
+    <div class="mb-3">
+      <label class="form-label">Leaving Date</label>
+      <input type="date" class="form-control" name="leaving_date" required />
+    </div>
+    <button class="btn btn-primary" type="submit">Submit</button>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Website Admin • PG-MS{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Website Admin</h1>
+<div class="row g-3">
+  <div class="col-12 col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-secondary small">PGs</div>
+        <div class="display-6">{{ stats.pgs }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-secondary small">PG Admins</div>
+        <div class="display-6">{{ stats.pg_admins }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-secondary small">Users</div>
+        <div class="display-6">{{ stats.users }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="mt-3 d-flex flex-wrap gap-2">
+  <a href="{% url 'sa_pgs' %}" class="btn btn-primary">Manage PGs</a>
+  <a href="{% url 'siteadmin_users' %}" class="btn btn-outline-primary">Users</a>
+  <a href="{% url 'siteadmin_bookings' %}" class="btn btn-outline-primary">Bookings</a>
+  <a href="{% url 'siteadmin_payments' %}" class="btn btn-outline-primary">Payments</a>
+  <a href="{% url 'siteadmin_expenditures' %}" class="btn btn-outline-primary">Expenditures</a>
+  </div>
+{% endblock %}

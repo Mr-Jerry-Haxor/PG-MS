@@ -1,0 +1,5 @@
+:root{--brand:#0d6efd}
+body{min-height:100dvh}
+.navbar .btn{border-radius:.75rem}
+.card{border-radius:1rem}
+.btn{border-radius:.75rem}

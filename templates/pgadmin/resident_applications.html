@@ -1,0 +1,214 @@
+{% extends 'base.html' %}
+{% block title %}Resident Applications • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .apps-toolbar{display:flex;flex-wrap:wrap;gap:1rem;justify-content:space-between;align-items:center;margin-bottom:1rem}
+  .apps-toolbar form select{min-width:160px}
+  .apps-summary{display:flex;flex-wrap:wrap;gap:.5rem;font-size:.75rem}
+  .apps-summary .badge{font-weight:500}
+  .apps-grid{display:grid;gap:.85rem}
+  @media(min-width:700px){.apps-grid{grid-template-columns:repeat(auto-fill,minmax(360px,1fr))}}
+  .app-card{position:relative;border:1px solid #e5e7eb;border-radius:1rem;padding:.9rem .95rem;background:var(--card);box-shadow:0 4px 12px -3px rgba(0,0,0,.05);display:flex;flex-direction:column;gap:.5rem}
+  .app-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem}
+  .pill{display:inline-flex;align-items:center;padding:.25rem .55rem;font-size:.65rem;border-radius:1rem;background:#f1f5f9;color:#475569;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+  .pill-submitted{background:#ecfdf5;color:#065f46}
+  .pill-pending{background:#fff7ed;color:#9a3412}
+  .app-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.25rem}
+  .search-box{max-width:380px}
+  @media (max-width:576px){.search-box{width:100%}.apps-toolbar{flex-direction:column;align-items:stretch}}
+</style>
+
+<div class="apps-toolbar">
+  <div class="d-flex flex-column gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <h1 class="h4 mb-0">Resident Applications</h1>
+      {% if pgs and pgs|length > 1 %}
+      <form method="get" class="m-0">
+        <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for p in pgs %}
+          <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+    </div>
+    <div class="apps-summary">
+      <span class="badge bg-success-subtle text-success border">Submitted: {{ submitted_count }}</span>
+      <span class="badge bg-warning-subtle text-dark border">Pending: {{ pending_count }}</span>
+      <span class="badge bg-light text-dark border">Total: {{ bookings|length }}</span>
+    </div>
+  </div>
+  <div class="input-group search-box">
+    <span class="input-group-text"><i class="bi bi-search"></i></span>
+    <input id="appSearch" type="search" class="form-control" placeholder="Search room, share, name, email, phone" />
+  </div>
+</div>
+
+<div id="appsContainer" class="apps-grid">
+  {% for b in bookings %}
+    <div class="app-card" data-search="{{ b.room.room_no }} {{ b.share_no }} {{ b.user.first_name }} {{ b.user.last_name }} {{ b.user.email }} {{ b.user.profile.phone }}">
+      <div class="app-card-header">
+        <div>
+          <div class="fw-semibold">Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
+          <div class="text-secondary small">Joining: {% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</div>
+        </div>
+        {% if b.application %}
+          <span class="pill pill-submitted">Submitted</span>
+        {% else %}
+          <span class="pill pill-pending">Pending</span>
+        {% endif %}
+      </div>
+      <div class="small">
+        <div class="fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }}</div>
+        <div class="text-secondary">{{ b.user.email }}</div>
+        <div class="text-secondary">{{ b.user.profile.phone|default:"—" }}</div>
+      </div>
+      <div class="app-actions">
+        {% if b.application %}
+          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View Application</button>
+        {% else %}
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'pg_application_email_send' b.id %}?from=applications">Send Reminder</a>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'booking_detail' b.id %}">Booking</a>
+      </div>
+    </div>
+  {% empty %}
+    <div class="text-secondary">No approved bookings.</div>
+  {% endfor %}
+</div>
+
+{% for b in bookings %}
+  {% if b.application %}
+  <div class="modal fade" id="appModal{{ b.id }}" tabindex="-1" aria-labelledby="appModalLabel{{ b.id }}" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="appModalLabel{{ b.id }}">Application — {{ b.user.first_name }} {{ b.user.last_name }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <style>
+            .section-title{font-size:.7rem;letter-spacing:.08em;font-weight:600;text-transform:uppercase;color:#64748b;margin:1rem 0 .35rem}
+            .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+            .field small{display:block;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:.15rem}
+            .doc-preview{display:flex;flex-wrap:wrap;gap:.5rem}
+            .doc-thumb{width:80px;height:80px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
+            .declarations-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;margin-top:.5rem}
+            .decl-item{display:flex;align-items:center;gap:.35rem;font-size:.75rem;padding:.4rem .55rem;border:1px solid #e2e8f0;border-radius:.5rem;background:#f8fafc}
+            .field-box{background:#f8fafc;padding:.55rem .6rem;border:1px solid #e2e8f0;border-radius:.6rem;min-height:72px}
+            .doc-embed{border:1px solid #e2e8f0;border-radius:.6rem;background:#f8fafc}
+            .selfie-embed{border:1px solid #e2e8f0;border-radius:.75rem;background:#f1f5f9;position:relative;overflow:hidden}
+            .selfie-embed iframe{width:100%;height:280px;border:0}
+            @media (min-width:768px){.selfie-embed iframe{height:320px}}
+          </style>
+          <div class="section-title mt-0">Personal</div>
+          {% if b.application.selfie_url %}
+          <div class="mb-3">
+            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#selfieWrap{{ b.id }}" aria-expanded="false" aria-controls="selfieWrap{{ b.id }}">
+              <i class="bi bi-person-bounding-box me-1"></i>Show Selfie
+            </button>
+            <div class="collapse mt-2" id="selfieWrap{{ b.id }}">
+              <div class="selfie-embed p-2">
+                <iframe src="{{ b.application.selfie_url }}" title="Selfie" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups" onload="this.dataset.loaded=1" ></iframe>
+                <div class="small text-secondary mt-2">If the selfie doesn't render (some CDNs block iframe embedding), <a href="{{ b.application.selfie_url }}" target="_blank">open in new tab</a>.</div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          <div class="field-grid">
+            <div class="field field-box"><small>Name</small><span class="fw-semibold d-block">{{ b.application.name|default:b.user.first_name }} {{ b.user.last_name }}</span></div>
+            <div class="field field-box"><small>DOB</small><span>{{ b.application.dob|default:"—" }}</span></div>
+            <div class="field field-box"><small>Age</small><span>{{ b.application.age|default:"—" }}</span></div>
+            <div class="field field-box"><small>Phone</small><span>{{ b.application.phone|default:b.user.profile.phone|default:"—" }}</span></div>
+            <div class="field field-box"><small>Email</small><span class="text-break">{{ b.application.email|default:b.user.email }}</span></div>
+            <div class="field field-box"><small>Food Pref</small><span>{{ b.application.food_pref|default:"—" }}</span></div>
+            <div class="field field-box"><small>Marital</small><span>{{ b.application.marital_status|default:"—" }}</span></div>
+            <div class="field field-box"><small>Date of Admission</small><span>{{ b.application.date_of_admission|default:"—" }}</span></div>
+          </div>
+          <div class="field mt-2 field-box"><small>Address</small><div>{{ b.application.address|default:"—" }}</div></div>
+          <div class="section-title">Family</div>
+          <div class="field-grid">
+            <div class="field field-box"><small>Father Name</small><span>{{ b.application.father_name|default:"—" }}</span></div>
+            <div class="field field-box"><small>Father Phone</small><span>{{ b.application.father_phone|default:"—" }}</span></div>
+            <div class="field field-box"><small>Mother Name</small><span>{{ b.application.mother_name|default:"—" }}</span></div>
+            <div class="field field-box"><small>Mother Phone</small><span>{{ b.application.mother_phone|default:"—" }}</span></div>
+          </div>
+          <div class="section-title">Education / Work</div>
+          <div class="field-grid">
+            <div class="field field-box"><small>Occupation</small><span>{{ b.application.occupation|default:"—" }}</span></div>
+            <div class="field field-box"><small>Education</small><span>{{ b.application.education|default:"—" }}</span></div>
+            <div class="field field-box"><small>Organisation</small><span>{{ b.application.org_name|default:"—" }}</span></div>
+          </div>
+            <div class="field mt-2 field-box"><small>Organisation Address</small><div>{{ b.application.org_address|default:"—" }}</div></div>
+          <div class="section-title">Documents</div>
+          <div class="field-grid">
+            <div class="field field-box"><small>Aadhaar Number</small><span>{{ b.application.aadhaar_number|default:"—" }}</span></div>
+          </div>
+          <div class="doc-preview mt-2">
+            {% if b.application.selfie_url %}
+              <a href="{{ b.application.selfie_url }}" target="_blank" class="text-decoration-none" title="Open Selfie">
+                <img src="{{ b.application.selfie_url }}" alt="Selfie" class="doc-thumb" onerror="this.style.display='none'" />
+              </a>
+            {% endif %}
+            {% if b.application.aadhaar_file_url %}
+              <a class="btn btn-outline-secondary btn-sm" href="{{ b.application.aadhaar_file_url }}" target="_blank">Open Aadhaar PDF</a>
+            {% endif %}
+          </div>
+          {% if b.application.aadhaar_file_url %}
+          <div class="mt-2">
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#aadhaarPreview{{ b.id }}" aria-expanded="false" aria-controls="aadhaarPreview{{ b.id }}">
+              <i class="bi bi-file-earmark-pdf me-1"></i>Preview Aadhaar
+            </button>
+            <div class="collapse mt-2" id="aadhaarPreview{{ b.id }}">
+              <div class="doc-embed p-2">
+                <iframe src="{{ b.application.aadhaar_file_url }}" title="Aadhaar PDF" style="width:100%;height:480px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load PDF (blocked).'}))"></iframe>
+                <div class="small text-secondary mt-2">If the PDF doesn't display, it may be blocked by the server. <a href="{{ b.application.aadhaar_file_url }}" target="_blank">Open in new tab</a>.</div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          <div class="section-title">Vehicle</div>
+          <div class="field-grid">
+            <div class="field field-box"><small>Has Vehicle</small><span>{% if b.application.has_vehicle %}Yes{% else %}No{% endif %}</span></div>
+            {% if b.application.has_vehicle %}
+              <div class="field field-box"><small>Number</small><span>{{ b.application.vehicle_number|default:"—" }}</span></div>
+              <div class="field field-box"><small>Model</small><span>{{ b.application.vehicle_model|default:"—" }}</span></div>
+            {% endif %}
+          </div>
+          <div class="section-title">Declarations</div>
+          <div class="declarations-grid">
+            <div class="decl-item">Valuables {% if b.application.decl_valuables %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
+            <div class="decl-item">Notice {% if b.application.decl_notice %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
+            <div class="decl-item">Deposit {% if b.application.decl_deposit %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
+            <div class="decl-item">Truth {% if b.application.decl_truth %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+{% endfor %}
+
+{% endblock %}
+
+{% block body_extra %}
+{{ block.super }}
+<script>
+  (function(){
+    const input = document.getElementById('appSearch');
+    const tbody = document.getElementById('bookingsTableBody');
+    if (!input || !tbody) return;
+    input.addEventListener('input', function(){
+      const q = (this.value || '').trim().toLowerCase();
+      const rows = tbody.querySelectorAll('tr');
+      rows.forEach(function(row){
+        const text = row.textContent.toLowerCase();
+        row.style.display = !q || text.includes(q) ? '' : 'none';
+      });
+    });
+  })();
+</script>
+{% endblock %}
