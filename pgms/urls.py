@@ -35,3 +35,25 @@ urlpatterns = [
     path('notifications/<int:pk>/read/', notification_read, name='notification_read'),
     path('notifications/mark-all/', notifications_mark_all, name='notifications_mark_all'),
 ]
+
+def handler404(request, exception):  # type: ignore
+    from django.shortcuts import redirect
+    from django.contrib import messages
+    if request.user.is_authenticated:
+        messages.info(request, "Page not found. Redirected to your dashboard.")
+        return redirect('dashboard')
+    messages.info(request, "Page not found. Redirected to home.")
+    return redirect('home')
+
+def handler500(request):  # type: ignore
+    from django.shortcuts import redirect
+    from django.contrib import messages
+    # Try to show a friendly message; may silently fail if sessions/messages unusable.
+    try:
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            messages.error(request, "Unexpected server error. Redirected to your dashboard.")
+            return redirect('dashboard')
+        messages.error(request, "Unexpected server error. Redirected to home.")
+    except Exception:
+        pass
+    return redirect('home')
