@@ -55,6 +55,10 @@ def dashboard(request):
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg=pg).count()
 			occupied = RoomShareStatus.objects.filter(status=RoomShareStatus.OCCUPIED, room__pg=pg).count()
 			pending = Booking.objects.filter(status=Booking.PENDING, room__pg=pg).count()
+			# Leaving stats (approved bookings with a leaving_date)
+			leaving_qs = Booking.objects.filter(room__pg=pg, status=Booking.APPROVED, leaving_date__isnull=False)
+			leaving_pending = leaving_qs.filter(leaving_confirmed_date__isnull=True).count()
+			leaving_confirmed = leaving_qs.filter(leaving_confirmed_date__isnull=False).count()
 			income = (
 				Payment.objects.filter(pg=pg, date__gte=month_start).aggregate(total=Sum('amount')).get('total') or 0
 			)
@@ -65,6 +69,9 @@ def dashboard(request):
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg__admins__user=request.user).count()
 			occupied = RoomShareStatus.objects.filter(status=RoomShareStatus.OCCUPIED, room__pg__admins__user=request.user).count()
 			pending = Booking.objects.filter(status=Booking.PENDING, room__pg__admins__user=request.user).count()
+			leaving_qs = Booking.objects.filter(room__pg__admins__user=request.user, status=Booking.APPROVED, leaving_date__isnull=False)
+			leaving_pending = leaving_qs.filter(leaving_confirmed_date__isnull=True).count()
+			leaving_confirmed = leaving_qs.filter(leaving_confirmed_date__isnull=False).count()
 			income = (
 				Payment.objects.filter(pg__admins__user=request.user, date__gte=month_start).aggregate(total=Sum('amount')).get('total') or 0
 			)
@@ -75,6 +82,8 @@ def dashboard(request):
 			"vacant_shares": vacant,
 			"occupied_shares": occupied,
 			"pending_bookings": pending,
+			"leaving_pending": leaving_pending,
+			"leaving_confirmed": leaving_confirmed,
 			"month_income": income,
 			"month_expense": expense,
 			"pg": pg,

@@ -1,18 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Request Booking • PG-MS{% endblock %}
 {% block content %}
-<style>
-  .rb-header{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem;margin-bottom:1rem}
-  .rb-header h1{margin:0;font-size:1.05rem;font-weight:600}
-  .rb-card{padding:1.1rem 1rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;box-shadow:0 2px 6px -2px rgba(0,0,0,.08),0 4px 14px -6px rgba(0,0,0,.05);max-width:520px}
-  .rb-card label{font-size:.7rem;letter-spacing:.6px;text-transform:uppercase;font-weight:600;color:#64748b;margin-bottom:.35rem}
-  .rb-actions{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.25rem}
-  @media (max-width:600px){.rb-card{padding:1rem .85rem}}
-</style>
-<div class="rb-header">
-  <h1>Request Booking — Room {{ room.room_no }}, Share {{ share.share_no }}</h1>
-  <span class="badge bg-light text-dark">Share {{ share.share_no }}</span>
-</div>
+<h1 class="h4 mb-3">Request Booking — Room {{ room.room_no }}, Share {{ share.share_no }}</h1>
 {% if available_from %}
   <div class="alert alert-info">This share will be available from <strong>{{ available_from }}</strong>. Please pick a joining date after this date.</div>
 {% endif %}
@@ -22,15 +11,15 @@
 {% if awaiting_confirmation %}
   <div class="alert alert-warning">Leaving date is not yet confirmed by PG Admin. You cannot place a booking until it's confirmed.</div>
 {% endif %}
-<form method="post" class="rb-card vstack gap-3">
+<form method="post" class="vstack gap-3">
   {% csrf_token %}
   <div>
     <label class="form-label">Date of joining</label>
     {{ form.joining_date }}
     {% if form.joining_date.errors %}<div class="text-danger small">{{ form.joining_date.errors.0 }}</div>{% endif %}
   </div>
-  <div class="rb-actions">
-    <button class="btn btn-primary flex-grow-1" type="submit">Submit Request</button>
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary" type="submit">Submit Request</button>
     <a class="btn btn-outline-secondary" href="{% url 'availability' %}">Cancel</a>
   </div>
 </form>

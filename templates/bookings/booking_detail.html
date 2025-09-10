@@ -1,44 +1,25 @@
 {% extends 'base.html' %}
 {% block title %}Booking Detail • PG-MS{% endblock %}
 {% block content %}
-<style>
-  .bd-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:1rem}
-  .bd-header h1{margin:0;font-size:1.1rem;font-weight:600}
-  .bd-card{padding:1rem .95rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;box-shadow:0 2px 6px -2px rgba(0,0,0,.08),0 4px 14px -6px rgba(0,0,0,.05);margin-bottom:1.5rem}
-  .bd-fields{display:grid;gap:.6rem;font-size:.8rem}
-  .bd-fields div span.label{display:block;font-size:.6rem;letter-spacing:.6px;font-weight:600;text-transform:uppercase;color:#64748b;margin-bottom:.15rem}
-  .timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.75rem}
-  .tl-item{position:relative;padding-left:1.25rem}
-  .tl-item:before{content:"";position:absolute;left:.35rem;top:.3rem;width:.55rem;height:.55rem;background:#3b82f6;border-radius:50%;box-shadow:0 0 0 3px #dbeafe}
-  .tl-item .time{font-size:.6rem;text-transform:uppercase;letter-spacing:.5px;color:#64748b;font-weight:600}
-  .empty-tl{font-size:.8rem;color:#64748b}
-</style>
-<div class="bd-header">
-  <h1>Booking Detail</h1>
-  <span class="badge bg-light text-dark">{{ booking.status|title }}</span>
-</div>
-<div class="bd-card">
-  <div class="bd-fields">
-    <div><span class="label">User</span>{{ booking.user.email }}</div>
-    <div><span class="label">Room</span>{{ booking.room.room_no }} • Share {{ booking.share_no }}</div>
-    <div><span class="label">Start</span>{{ booking.start_date|default:"—" }}</div>
-    <div><span class="label">Leaving</span>{{ booking.leaving_date|default:"—" }}</div>
+<h1 class="h4 mb-3">Booking Detail</h1>
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <div><strong>User:</strong> {{ booking.user.email }}</div>
+    <div><strong>Room:</strong> {{ booking.room.room_no }} • Share {{ booking.share_no }}</div>
+    <div><strong>Status:</strong> {{ booking.status|title }}</div>
+    <div><strong>Start:</strong> {{ booking.start_date|default:"—" }}</div>
+    <div><strong>Leaving:</strong> {{ booking.leaving_date|default:"—" }}</div>
   </div>
 </div>
-<div class="section-title" style="font-size:.7rem;letter-spacing:.6px;text-transform:uppercase;font-weight:600;color:#64748b;margin-bottom:.6rem">Timeline</div>
-<div class="bd-card" style="padding:1rem .95rem .85rem">
-  {% if events %}
-    <ul class="timeline">
-      {% for e in events %}
-        <li class="tl-item">
-          <div class="time">{{ e.created_at }}</div>
-          <div class="fw-semibold" style="font-size:.75rem">{{ e.action }}</div>
-          <div class="text-secondary" style="font-size:.7rem">{{ e.message }}</div>
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <div class="empty-tl">No events yet.</div>
-  {% endif %}
-</div>
+<h2 class="h6 text-secondary">Timeline</h2>
+<ul class="list-group list-group-flush">
+  {% for e in events %}
+  <li class="list-group-item">
+    <div class="small text-secondary">{{ e.created_at }}</div>
+    <div><strong>{{ e.action }}</strong> — {{ e.message }}</div>
+  </li>
+  {% empty %}
+  <li class="list-group-item text-secondary">No events yet.</li>
+  {% endfor %}
+</ul>
 {% endblock %}

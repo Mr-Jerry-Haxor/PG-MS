@@ -2,47 +2,49 @@
 {% block title %}Availability • PG-MS{% endblock %}
 {% block content %}
 <style>
-  .availability-toolbar{display:flex;flex-direction:column;gap:.75rem;margin-bottom:1rem}
-  .availability-toolbar h1{margin:0;font-size:1.15rem;font-weight:600}
-  .legend{display:flex;flex-wrap:wrap;gap:.45rem}
-  .legend-badge{background:#f1f5f9;color:#475569;padding:.35rem .65rem;font-size:.6rem;font-weight:600;border-radius:1rem;border:1px solid #e2e8f0;letter-spacing:.5px;text-transform:uppercase}
-  .shares-wrap{display:flex;flex-wrap:wrap;gap:.55rem}
-  .share-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .75rem;font-size:.65rem;font-weight:600;letter-spacing:.4px;border-radius:1rem;border:1px solid #e2e8f0;text-decoration:none;line-height:1;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);transition:.18s}
-  .share-chip span.badge{font-size:.55rem;letter-spacing:.4px}
-  .share-chip:hover{box-shadow:0 2px 6px -2px rgba(0,0,0,.15);transform:translateY(-2px)}
-  .chip-vacant{background:#ecfdf5;border-color:#bbf7d0;color:#047857}
-  .chip-vacant:hover{background:#d1fae5}
+  .availability-toolbar{position:sticky;top:0;z-index:10;background:var(--bg);padding:.75rem 0 .5rem}
+  .share-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .75rem;font-size:.75rem;font-weight:500;border-radius:2rem;border:1px solid transparent;text-decoration:none;transition:.2s background,.2s color,.2s border-color}
+  .share-chip span.badge{font-size:.55rem;letter-spacing:.5px}
+  .chip-vacant{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+  .chip-vacant:hover{background:#d1fae5;color:#034332}
   .chip-reserved{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
   .chip-occupied{background:#f1f5f9;color:#475569;border-color:#cbd5e1}
-  .chip-upcoming{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
-  .chip-disabled{cursor:not-allowed;opacity:.65;box-shadow:none;transform:none!important}
-  .room-card{padding:1rem .95rem;border:1px solid #e2e8f0;background:#fff;border-radius:1rem;box-shadow:0 2px 8px -3px rgba(0,0,0,.08),0 4px 18px -5px rgba(0,0,0,.05);display:flex;flex-direction:column;gap:.75rem}
-  .room-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.75rem}
-  .room-meta{font-size:.6rem;letter-spacing:.5px;text-transform:uppercase;font-weight:600;color:#64748b}
-  .empty-card{padding:2.25rem 1rem;text-align:center;border:2px dashed #cbd5e1;border-radius:1rem;background:#f8fafc;color:#64748b;font-size:.9rem}
-  @media (max-width:600px){.share-chip{padding:.45rem .6rem;font-size:.6rem}}
+  .chip-upcoming{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+  .chip-disabled{cursor:not-allowed;opacity:.7}
+  .room-card{border:1px solid #e5e7eb;border-radius:1rem;padding:1rem 1.1rem;background:var(--card);box-shadow:0 4px 14px -4px rgba(0,0,0,.06)}
+  .room-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;flex-wrap:wrap;gap:.75rem}
+  .legend-item{display:flex;align-items:center;gap:.4rem;font-size:.7rem;font-weight:500;padding:.35rem .6rem;border-radius:1rem;background:var(--card);border:1px solid #e5e7eb}
+  .legend{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem}
+  @media (max-width: 576px){
+    h1.h4{font-size:1.05rem}
+    .room-card{padding:.85rem .9rem}
+    .share-chip{padding:.45rem .65rem;font-size:.7rem}
+  }
 </style>
 
-<div class="availability-toolbar">
-  <div class="d-flex flex-wrap align-items-center gap-2">
-    <h1 class="mb-0">Room Availability</h1>
-    <form method="get" class="m-0">
-      <label for="pgSelect" class="visually-hidden">PG</label>
-      <select id="pgSelect" name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
-        <option value="" {% if not pg %}selected{% endif %}>Select PG</option>
-        {% for p in pgs %}
-          <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
-        {% endfor %}
-      </select>
-    </form>
-    {% if pg %}<span class="legend-badge"><i class="bi bi-building me-1"></i>{{ pg.name }}</span>{% endif %}
-  </div>
-  <div class="legend">
-    <span class="legend-badge">Vacant</span>
-    <span class="legend-badge">Upcoming</span>
-    <span class="legend-badge">Reserved</span>
-    <span class="legend-badge">Occupied</span>
-    <span class="legend-badge">Scheduled</span>
+<div class="availability-toolbar mb-2">
+  <div class="d-flex flex-column flex-sm-row gap-3 align-items-sm-center justify-content-between">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <h1 class="h4 mb-0">Room Availability</h1>
+      <form method="get" class="d-inline-block">
+        <label for="pgSelect" class="visually-hidden">Select PG</label>
+        <select id="pgSelect" name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="" {% if not pg %}selected{% endif %}>Select PG</option>
+          {% for p in pgs %}
+            <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% if pg %}
+        <span class="badge text-bg-light border"><i class="bi bi-building me-1"></i>{{ pg.name }}</span>
+      {% endif %}
+    </div>
+    <div class="legend small">
+      <div class="legend-item"><span class="share-chip chip-vacant" style="padding:.25rem .5rem">Vacant</span></div>
+      <div class="legend-item"><span class="share-chip chip-upcoming" style="padding:.25rem .5rem">Upcoming</span></div>
+      <div class="legend-item"><span class="share-chip chip-reserved" style="padding:.25rem .5rem">Reserved</span></div>
+      <div class="legend-item"><span class="share-chip chip-occupied" style="padding:.25rem .5rem">Occupied</span></div>
+    </div>
   </div>
 </div>
 
@@ -52,13 +54,13 @@
 
 <div class="d-flex flex-column gap-3">
   {% for room in rooms %}
-    <div class="room-card fade-in">
+    <div class="room-card">
       <div class="room-head">
         <div>
           <div class="fw-semibold">Room {{ room.room_no }}</div>
-          <div class="room-meta">Total Shares: {{ room.total_shares }}</div>
+          <div class="text-secondary small">Total Shares: {{ room.total_shares }}</div>
         </div>
-        <div class="shares-wrap">
+        <div class="d-flex flex-wrap gap-2">
           {% for s in room.shares.all|dictsort:'share_no' %}
             {% with data=s.leaving_data %}
               {% if s.status == 'vacant' %}
@@ -96,7 +98,7 @@
       </div>
     </div>
   {% empty %}
-  <div class="empty-card">No rooms available.</div>
+    <div class="card p-4 text-center text-secondary">No rooms available.</div>
   {% endfor %}
 </div>
 
