@@ -6,6 +6,8 @@ from core.models import TimeStampedModel
 class PG(TimeStampedModel):
 	name = models.CharField(max_length=200)
 	address = models.TextField()
+	# Optional contact phone number for the PG (10-15 digits to allow country codes)
+	phone = models.CharField(max_length=20, blank=True, help_text="Contact phone number")
 	created_by_admin = models.ForeignKey(get_user_model(), on_delete=models.SET_NULL, null=True, blank=True, related_name='created_pgs')
 
 	def __str__(self):

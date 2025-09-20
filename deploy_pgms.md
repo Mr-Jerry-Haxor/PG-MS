@@ -5,6 +5,7 @@ This file contains the full step-by-step deployment guide for your **PGMS** Djan
 ---
 
 ## 1. Update and Install System Packages
+
 ```bash
 sudo apt-get update && sudo apt-get upgrade -y
 sudo apt install python3-pip python3-venv python3-dev nginx -y
@@ -13,6 +14,7 @@ sudo apt install python3-pip python3-venv python3-dev nginx -y
 ---
 
 ## 2. Setup Project Directory and Virtual Environment
+
 ```bash
 mkdir ~/PGMS
 cd ~/PGMS
@@ -28,6 +30,7 @@ pip install --upgrade pip
 ---
 
 ## 3. Clone Your Project Repository
+
 ```bash
 git clone https://github.com/Mr-Jerry-Haxor/PG-MS.git
 cd PG-MS
@@ -36,6 +39,7 @@ cd PG-MS
 ---
 
 ## 4. Install Project Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -45,6 +49,7 @@ Copy any required secret files into the project (e.g. `.env`, `credentials.json`
 ---
 
 ## 5. Run Django Setup Commands
+
 ```bash
 # Apply database migrations
 python manage.py migrate
@@ -56,6 +61,7 @@ python manage.py collectstatic --noinput
 ---
 
 ## 6. Install Django and Gunicorn (if not already in requirements.txt)
+
 ```bash
 pip install django gunicorn
 ```
@@ -63,6 +69,7 @@ pip install django gunicorn
 ---
 
 ## 7. Test Locally Before Configuring Services
+
 ```bash
 # Allow test port
 sudo ufw allow 8000
@@ -80,10 +87,13 @@ gunicorn --bind 0.0.0.0:8000 pgms.wsgi:application
 ## 8. Configure Gunicorn with systemd
 
 ### Create **gunicorn.socket**
+
 ```bash
 sudo nano /etc/systemd/system/gunicorn.socket
 ```
+
 Paste:
+
 ```ini
 [Unit]
 Description=gunicorn socket
@@ -96,10 +106,13 @@ WantedBy=sockets.target
 ```
 
 ### Create **gunicorn.service**
+
 ```bash
 sudo nano /etc/systemd/system/gunicorn.service
 ```
+
 Paste:
+
 ```ini
 [Unit]
 Description=gunicorn daemon
@@ -121,6 +134,7 @@ WantedBy=multi-user.target
 ```
 
 ### Start and Enable Gunicorn
+
 ```bash
 sudo systemctl start gunicorn.socket
 sudo systemctl status gunicorn.socket
@@ -130,14 +144,21 @@ sudo systemctl enable gunicorn.socket
 ---
 
 ## 9. Configure Nginx as Reverse Proxy
+
 ```bash
 sudo nano /etc/nginx/sites-available/pgms
 ```
+
 Paste:
+
 ```nginx
 server {
     listen 80;
     server_name pgms.devhost.my;
+
+    client_max_body_size 200M;   # allow up to 200 MB uploads
+    client_body_timeout 300s;         # allow 5 minutes to send file
+    proxy_read_timeout 300s;          # allow backend to process 5 min
 
     location = /favicon.ico { access_log off; log_not_found off; }
 
@@ -163,6 +184,7 @@ server {
 ```
 
 Enable the site and restart Nginx:
+
 ```bash
 sudo ln -s /etc/nginx/sites-available/pgms /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -172,7 +194,9 @@ sudo systemctl restart nginx
 ---
 
 ## 10. Fix Permissions for Static/Media Files
+
 Ensure Nginx can traverse and read the directories:
+
 ```bash
 sudo chown -R ubuntu:www-data /home/ubuntu/PGMS/PG-MS/staticfiles /home/ubuntu/PGMS/PG-MS/media
 
@@ -189,6 +213,7 @@ sudo chmod 755 /home /home/ubuntu /home/ubuntu/PGMS /home/ubuntu/PGMS/PG-MS
 ```
 
 Reload Nginx after changes:
+
 ```bash
 sudo systemctl reload nginx
 ```
@@ -196,12 +221,14 @@ sudo systemctl reload nginx
 ---
 
 ## 11. Enable HTTPS with Let’s Encrypt
+
 ```bash
 sudo apt install certbot python3-certbot-nginx -y
 sudo certbot --nginx -d pgms.devhost.my
 ```
 
 Test and restart:
+
 ```bash
 sudo nginx -t
 sudo systemctl restart nginx
@@ -210,7 +237,9 @@ sudo systemctl restart nginx
 ---
 
 ## 12. Deployment Automation Script (Optional)
+
 Create a `deploy.sh` script inside `~/PGMS`:
+
 ```bash
 #!/bin/bash
 set -e
@@ -237,11 +266,13 @@ echo "Deployment complete."
 ```
 
 Make it executable:
+
 ```bash
 chmod +x ~/PGMS/deploy.sh
 ```
 
 Now you can update your server with:
+
 ```bash
 ~/PGMS/deploy.sh
 ```
@@ -249,9 +280,12 @@ Now you can update your server with:
 ---
 
 ## ✅ Verification
+
 - Visit `http://pgms.devhost.my` → should load PGMS via Nginx + Gunicorn.
 - Visit `https://pgms.devhost.my` → should be secured with Let’s Encrypt SSL.
 - Static files load from `/static/`.
 - User uploads load from `/media/`.
+
 ```
 
+```

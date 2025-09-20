@@ -63,7 +63,7 @@
           </ul>
           <ul class="navbar-nav ms-auto">
             {% if user.is_authenticated %}
-              {% if user.profile.is_pg_admin and pgs %}
+              {% if pgs and user.is_superuser or pgs and user.profile.is_website_admin or pgs and user.profile.is_pg_admin %}
               <li class="nav-item d-flex align-items-center me-2">
                 <form class="d-flex align-items-center gap-2" method="get" action="{% url 'dashboard' %}">
                   <label class="small text-secondary">PG:</label>
@@ -95,7 +95,7 @@
                 </ul>
               </li>
               {% endif %}
-              {% if user.profile.is_pg_admin %}
+              {% if user.is_superuser or user.profile.is_website_admin or user.profile.is_pg_admin %}
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                   PG Admin

@@ -6,10 +6,16 @@ from bookings.models import Room, RoomShareStatus
 class PGForm(forms.ModelForm):
     class Meta:
         model = PG
-        fields = ["name", "address"]
+        fields = ["name", "address", "phone"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "address": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "phone": forms.TextInput(attrs={
+                "class": "form-control",
+                "placeholder": "Contact phone (e.g. +91 98765 43210)",
+                "inputmode": "tel",
+                "maxlength": "20",
+            }),
         }
 
 

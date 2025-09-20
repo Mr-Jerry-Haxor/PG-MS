@@ -9,15 +9,21 @@
   <div class="table-responsive">
     <table class="table align-middle mb-0">
       <thead>
-        <tr><th>Name</th><th>Address</th><th>Admins</th><th></th></tr>
+        <tr><th>Name</th><th>Address</th><th>Phone</th><th>Admins</th><th class="text-end">Actions</th></tr>
       </thead>
       <tbody>
       {% for pg in items %}
         <tr>
           <td>{{ pg.name }}</td>
           <td class="text-truncate" style="max-width: 360px;">{{ pg.address }}</td>
+          <td>{{ pg.phone|default:'—' }}</td>
           <td>{{ pg.admins.count }}</td>
-          <td class="text-end"><a href="{% url 'sa_pg_admins' pg.id %}" class="btn btn-sm btn-outline-secondary">Manage Admins</a></td>
+          <td class="text-end">
+            <div class="d-inline-flex gap-1">
+              <a href="{% url 'sa_pg_edit' pg.id %}" class="btn btn-sm btn-outline-primary">Manage Details</a>
+              <a href="{% url 'sa_pg_admins' pg.id %}" class="btn btn-sm btn-outline-secondary">Manage Admins</a>
+            </div>
+          </td>
         </tr>
       {% empty %}
         <tr><td colspan="4" class="text-secondary">No PGs.</td></tr>

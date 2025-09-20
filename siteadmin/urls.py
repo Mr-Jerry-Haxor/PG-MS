@@ -6,6 +6,7 @@ urlpatterns = [
     path('', views.dashboard, name='sa_dashboard'),
     path('pgs/', views.pgs, name='sa_pgs'),
     path('pgs/new/', views.pg_new, name='sa_pg_new'),
+    path('pgs/<int:pg_id>/edit/', views.pg_edit, name='sa_pg_edit'),
     path('pgs/<int:pg_id>/admins/', views.pg_manage_admins, name='sa_pg_admins'),
     path('users/', views.users, name='siteadmin_users'),
     path('bookings/', views.bookings, name='siteadmin_bookings'),

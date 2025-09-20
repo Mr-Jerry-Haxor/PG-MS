@@ -38,22 +38,47 @@
       <span class="badge bg-light text-dark border">Total: {{ bookings|length }}</span>
     </div>
   </div>
-  <div class="input-group search-box">
-    <span class="input-group-text"><i class="bi bi-search"></i></span>
-    <input id="appSearch" type="search" class="form-control" placeholder="Search room, share, name, email, phone" />
+  <div class="d-flex align-items-center gap-2">
+    <div class="input-group search-box">
+      <span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input id="appSearch" type="search" class="form-control" placeholder="Search room, share, name, email, phone" />
+    </div>
+    <select id="statusFilter" class="form-select form-select-sm" style="min-width: 180px;">
+      <option value="all" selected>All statuses</option>
+      <option value="pending">Pending</option>
+      <option value="submitted">Submitted</option>
+      <option value="resubmitted">Re-Submitted</option>
+      <option value="refill_requested">Re-Fill Requested</option>
+      <option value="rejected">Rejected</option>
+      <option value="confirmed">Confirmed</option>
+    </select>
   </div>
 </div>
 
 <div id="appsContainer" class="apps-grid">
   {% for b in bookings %}
-    <div class="app-card" data-search="{{ b.room.room_no }} {{ b.share_no }} {{ b.user.first_name }} {{ b.user.last_name }} {{ b.user.email }} {{ b.user.profile.phone }}">
+    <div class="app-card" data-status="{% if b.application %}{{ b.application.status }}{% else %}pending{% endif %}" data-search="{{ b.room.room_no }} {{ b.share_no }} {{ b.user.first_name }} {{ b.user.last_name }} {{ b.user.email }} {{ b.user.profile.phone }}">
       <div class="app-card-header">
         <div>
           <div class="fw-semibold">Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
-          <div class="text-secondary small">Joining: {% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</div>
+          <div class="text-secondary small">Joining: {% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}
+            <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Edit joining date" data-bs-toggle="modal" data-bs-target="#joinDateModal{{ b.id }}">
+              <i class="bi bi-pencil-square"></i>
+            </button>
+          </div>
         </div>
         {% if b.application %}
-          <span class="pill pill-submitted">Submitted</span>
+          {% if b.application.status == 'confirmed' %}
+            <span class="pill pill-submitted">Confirmed</span>
+          {% elif b.application.status == 'refill_requested' %}
+            <span class="pill" style="background:#eff6ff;color:#1d4ed8">Re-Fill Requested</span>
+          {% elif b.application.status == 'resubmitted' or b.application.status == 'submitted' %}
+            <span class="pill pill-submitted">Submitted</span>
+          {% elif b.application.status == 'rejected' %}
+            <span class="pill" style="background:#fee2e2;color:#991b1b">Rejected</span>
+          {% else %}
+            <span class="pill">Submitted</span>
+          {% endif %}
         {% else %}
           <span class="pill pill-pending">Pending</span>
         {% endif %}
@@ -62,10 +87,35 @@
         <div class="fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }}</div>
         <div class="text-secondary">{{ b.user.email }}</div>
         <div class="text-secondary">{{ b.user.profile.phone|default:"—" }}</div>
+        {% if b.application %}
+          {% with last=b.application.status_history.last %}
+            <div class="text-secondary">Last update: 
+              {% if last %}
+                {{ last.created_at|date:"Y-m-d H:i" }}
+                {% if last.by_user %} • by {{ last.by_user.get_full_name|default:last.by_user.username }}{% endif %}
+              {% else %}
+                {{ b.application.updated_at|date:"Y-m-d H:i" }}
+              {% endif %}
+            </div>
+          {% endwith %}
+        {% else %}
+          <div class="text-secondary">Last update: {{ b.updated_at|date:"Y-m-d H:i" }}</div>
+        {% endif %}
       </div>
       <div class="app-actions">
         {% if b.application %}
           <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View Application</button>
+          {% if b.application.status == 'submitted' or b.application.status == 'resubmitted' or b.application.status == 'refill_requested' or b.application.status == 'rejected' %}
+            <form method="post" action="{% url 'pg_application_confirm' b.application.id %}" class="d-inline">{% csrf_token %}
+              <button class="btn btn-sm btn-success" type="submit">Confirm</button>
+            </form>
+          {% endif %}
+          {% if b.application.status == 'submitted' or b.application.status == 'resubmitted' %}
+            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ b.id }}">Reject</button>
+          {% endif %}
+          {% if b.application.status == 'confirmed' %}
+            <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#refillModal{{ b.id }}">Re-Fill</button>
+          {% endif %}
         {% else %}
           <a class="btn btn-sm btn-outline-secondary" href="{% url 'pg_application_email_send' b.id %}?from=applications">Send Reminder</a>
         {% endif %}
@@ -79,6 +129,28 @@
 
 {% for b in bookings %}
   {% if b.application %}
+  <!-- Edit Joining Date Modal -->
+  <div class="modal fade" id="joinDateModal{{ b.id }}" tabindex="-1" aria-labelledby="joinDateLabel{{ b.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form method="post" action="{% url 'pg_booking_joining_update' b.id %}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="joinDateLabel{{ b.id }}">Edit Joining Date</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label">Joining Date</label>
+            <input type="date" name="joining_date" class="form-control" value="{% if b.joining_date %}{{ b.joining_date|date:'Y-m-d' }}{% endif %}" required />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
   <div class="modal fade" id="appModal{{ b.id }}" tabindex="-1" aria-labelledby="appModalLabel{{ b.id }}" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">
@@ -86,7 +158,7 @@
           <h5 class="modal-title" id="appModalLabel{{ b.id }}">Application — {{ b.user.first_name }} {{ b.user.last_name }}</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <div class="modal-body">
+  <div class="modal-body">
           <style>
             .section-title{font-size:.7rem;letter-spacing:.08em;font-weight:600;text-transform:uppercase;color:#64748b;margin:1rem 0 .35rem}
             .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
@@ -182,10 +254,70 @@
             <div class="decl-item">Deposit {% if b.application.decl_deposit %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
             <div class="decl-item">Truth {% if b.application.decl_truth %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
           </div>
+          {% if b.application.status_history.all %}
+          <div class="section-title">Status History</div>
+          <div class="field-grid">
+            {% for h in b.application.status_history.all %}
+              <div class="field field-box"><small>{{ h.created_at|date:"Y-m-d H:i" }}</small><div><strong>{{ h.get_status_display }}</strong>{% if h.comment %}<div class="small text-secondary mt-1">{{ h.comment }}</div>{% endif %}</div></div>
+            {% empty %}
+              <div class="text-secondary small">No history yet.</div>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
         <div class="modal-footer">
+          <a class="btn btn-outline-primary" href="{% url 'pg_application_pdf' b.application.id %}" target="_blank" rel="noopener">Print</a>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
         </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+{% endfor %}
+
+{% for b in bookings %}
+  {% if b.application %}
+  <!-- Reject Modal -->
+  <div class="modal fade" id="rejectModal{{ b.id }}" tabindex="-1" aria-labelledby="rejectLabel{{ b.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form method="post" action="{% url 'pg_application_reject' b.application.id %}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="rejectLabel{{ b.id }}">Reject Application</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label">Reason (required)</label>
+            <textarea class="form-control" name="reason" rows="4" required></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-danger">Reject</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <!-- Re-Fill Modal -->
+  <div class="modal fade" id="refillModal{{ b.id }}" tabindex="-1" aria-labelledby="refillLabel{{ b.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form method="post" action="{% url 'pg_application_refill' b.application.id %}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="refillLabel{{ b.id }}">Request Re-Fill</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label">Comments (optional)</label>
+            <textarea class="form-control" name="comment" rows="3"></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-warning">Send Re-Fill</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -196,19 +328,74 @@
 
 {% block body_extra %}
 {{ block.super }}
+<!-- Toasts -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="toast align-items-center text-bg-{% if message.tags %}{{ message.tags }}{% else %}primary{% endif %} border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
+        <div class="d-flex">
+          <div class="toast-body">
+            {{ message }}
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+  <div id="inlineToastTemplate" class="toast align-items-center text-bg-danger border-0 d-none" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
+    <div class="d-flex">
+      <div class="toast-body"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+  <div id="toastAnchor"></div>
+  </div>
 <script>
   (function(){
     const input = document.getElementById('appSearch');
-    const tbody = document.getElementById('bookingsTableBody');
-    if (!input || !tbody) return;
-    input.addEventListener('input', function(){
-      const q = (this.value || '').trim().toLowerCase();
-      const rows = tbody.querySelectorAll('tr');
-      rows.forEach(function(row){
-        const text = row.textContent.toLowerCase();
-        row.style.display = !q || text.includes(q) ? '' : 'none';
+    const container = document.getElementById('appsContainer');
+    const statusSel = document.getElementById('statusFilter');
+    if (!container) return;
+    const cards = container.querySelectorAll('.app-card');
+
+    function applyFilters() {
+      const q = (input && input.value || '').trim().toLowerCase();
+      const status = (statusSel && statusSel.value) || 'all';
+      cards.forEach(function(card){
+        const hay = ((card.dataset && card.dataset.search) || card.textContent || '').toLowerCase();
+        const cardStatus = (card.dataset && card.dataset.status) || 'pending';
+        const matchesText = !q || hay.includes(q);
+        const matchesStatus = status === 'all' || status === cardStatus;
+        card.style.display = (matchesText && matchesStatus) ? '' : 'none';
       });
-    });
+    }
+
+    if (input) input.addEventListener('input', applyFilters);
+    if (statusSel) statusSel.addEventListener('change', applyFilters);
+    applyFilters();
+
+    // Bootstrap toasts for Django messages
+    const toastEls = document.querySelectorAll('.toast-container .toast');
+    if (toastEls && window.bootstrap) {
+      toastEls.forEach(function(el){
+        const t = new bootstrap.Toast(el);
+        t.show();
+      });
+    }
+
+    // Expose a small helper to show inline toasts (e.g., email failures via AJAX in future)
+    window.showToast = function(message, variant){
+      const tpl = document.getElementById('inlineToastTemplate');
+      const anchor = document.getElementById('toastAnchor');
+      if (!tpl || !anchor) return;
+      const node = tpl.cloneNode(true);
+      node.id = '';
+      node.classList.remove('d-none');
+      if (variant) node.className = `toast align-items-center text-bg-${variant} border-0`;
+      node.querySelector('.toast-body').textContent = message;
+      anchor.after(node);
+      if (window.bootstrap) new bootstrap.Toast(node).show();
+    }
   })();
 </script>
 {% endblock %}

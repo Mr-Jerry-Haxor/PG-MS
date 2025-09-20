@@ -8,15 +8,22 @@ def unread_counts(request):
 
 
 def pg_context(request):
-    """Provide PG list and active PG for PG Admin users globally for templates."""
+    """Provide PG list and active PG for PG Admin users globally for templates.
+    Includes superusers and website admins, who see all PGs.
+    """
     try:
         user = request.user
         if not getattr(user, 'is_authenticated', False):
             return {}
         profile = getattr(user, 'profile', None)
-        if not profile or not getattr(profile, 'is_pg_admin', False):
+        is_site_admin = bool(profile and getattr(profile, 'is_website_admin', False))
+        is_pg_admin = bool(profile and getattr(profile, 'is_pg_admin', False))
+        if not (getattr(user, 'is_superuser', False) or is_site_admin or is_pg_admin):
             return {}
-        pgs_qs = PG.objects.filter(admins__user=user).order_by('name')
+        if getattr(user, 'is_superuser', False) or is_site_admin:
+            pgs_qs = PG.objects.all().order_by('name')
+        else:
+            pgs_qs = PG.objects.filter(admins__user=user).order_by('name')
         pgs = list(pgs_qs)
         active_pg = None
         active_pg_id = request.session.get('active_pg_id')

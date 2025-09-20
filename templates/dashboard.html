@@ -313,13 +313,16 @@
           </div>
           <div class="d-flex flex-wrap gap-2">
             <a href="{% url 'booking_detail' b.id %}" class="btn btn-outline-secondary btn-sm">Details</a>
+            {% if b.application and b.application.status == 'confirmed' %}
+              <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#myAppModal{{ b.id }}">View Application</button>
+            {% endif %}
             {% if not b.leaving_date %}
               <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#leaveModal{{ b.id }}">Leave PG</button>
-              {# Application button logic: show only if not leaving requested #}
-              {% if b.application %}
-                <a href="{% url 'application_fill' b.id %}" class="btn btn-primary btn-sm">Modify Application</a>
-              {% else %}
+              {# Application edit is allowed only if not confirmed #}
+              {% if not b.application %}
                 <a href="{% url 'application_fill' b.id %}" class="btn btn-success btn-sm">Fill Application</a>
+              {% elif b.application.status != 'confirmed' %}
+                <a href="{% url 'application_fill' b.id %}" class="btn btn-primary btn-sm">Modify Application</a>
               {% endif %}
             {% endif %}
           </div>
@@ -344,8 +347,9 @@
           {% csrf_token %}
           <div class="modal-body">
             <p class="mb-3">Select your leaving date. PG Admins will be notified.</p>
-            <label class="form-label">Leaving Date</label>
-            <input type="date" class="form-control" name="leaving_date" required />
+       <label class="form-label">Leaving Date</label>
+       <input type="date" class="form-control" name="leaving_date" required
+         min="{{ b.joining_date|default:b.start_date|date:'Y-m-d' }}" />
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -357,6 +361,122 @@
   </div>
   {% endif %}
 {% endfor %}
+{% endif %}
+
+{# Per-booking Application View Modals (for confirmed applications) #}
+{% if user.is_authenticated and my_approved_bookings %}
+  {% for b in my_approved_bookings %}
+    {% if b.application and b.application.status == 'confirmed' %}
+    <div class="modal fade" id="myAppModal{{ b.id }}" tabindex="-1" aria-labelledby="myAppModalLabel{{ b.id }}" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="myAppModalLabel{{ b.id }}">My Application — {{ user.first_name }} {{ user.last_name }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <style>
+              .section-title{font-size:.7rem;letter-spacing:.08em;font-weight:600;text-transform:uppercase;color:#64748b;margin:1rem 0 .35rem}
+              .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+              .field small{display:block;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:.15rem}
+              .doc-preview{display:flex;flex-wrap:wrap;gap:.5rem}
+              .doc-thumb{width:80px;height:80px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
+              .field-box{background:#f8fafc;padding:.55rem .6rem;border:1px solid #e2e8f0;border-radius:.6rem;min-height:72px}
+              .doc-embed{border:1px solid #e2e8f0;border-radius:.6rem;background:#f8fafc}
+              .selfie-embed{border:1px solid #e2e8f0;border-radius:.75rem;background:#f1f5f9;position:relative;overflow:hidden}
+              .selfie-embed iframe{width:100%;height:280px;border:0}
+              @media (min-width:768px){.selfie-embed iframe{height:320px}}
+            </style>
+            <div class="section-title mt-0">Personal</div>
+            {% if b.application.selfie_url %}
+            <div class="mb-3">
+              <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#selfieWrapUser{{ b.id }}" aria-expanded="false" aria-controls="selfieWrapUser{{ b.id }}">
+                <i class="bi bi-person-bounding-box me-1"></i>Show Selfie
+              </button>
+              <div class="collapse mt-2" id="selfieWrapUser{{ b.id }}">
+                <div class="selfie-embed p-2">
+                  <iframe src="{{ b.application.selfie_url }}" title="Selfie" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups" onload="this.dataset.loaded=1"></iframe>
+                  <div class="small text-secondary mt-2">If the selfie doesn't render, <a href="{{ b.application.selfie_url }}" target="_blank">open in new tab</a>.</div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+            <div class="field-grid">
+              <div class="field field-box"><small>Name</small><span class="fw-semibold d-block">{{ b.application.name|default:user.first_name }} {{ user.last_name }}</span></div>
+              <div class="field field-box"><small>DOB</small><span>{{ b.application.dob|default:"—" }}</span></div>
+              <div class="field field-box"><small>Age</small><span>{{ b.application.age|default:"—" }}</span></div>
+              <div class="field field-box"><small>Phone</small><span>{{ b.application.phone|default:user.profile.phone|default:"—" }}</span></div>
+              <div class="field field-box"><small>Email</small><span class="text-break">{{ b.application.email|default:user.email }}</span></div>
+              <div class="field field-box"><small>Food Pref</small><span>{{ b.application.food_pref|default:"—" }}</span></div>
+              <div class="field field-box"><small>Marital</small><span>{{ b.application.marital_status|default:"—" }}</span></div>
+              <div class="field field-box"><small>Date of Admission</small><span>{{ b.application.date_of_admission|default:"—" }}</span></div>
+            </div>
+            <div class="field mt-2 field-box"><small>Address</small><div>{{ b.application.address|default:"—" }}</div></div>
+            <div class="section-title">Family</div>
+            <div class="field-grid">
+              <div class="field field-box"><small>Father Name</small><span>{{ b.application.father_name|default:"—" }}</span></div>
+              <div class="field field-box"><small>Father Phone</small><span>{{ b.application.father_phone|default:"—" }}</span></div>
+              <div class="field field-box"><small>Mother Name</small><span>{{ b.application.mother_name|default:"—" }}</span></div>
+              <div class="field field-box"><small>Mother Phone</small><span>{{ b.application.mother_phone|default:"—" }}</span></div>
+            </div>
+            <div class="section-title">Education / Work</div>
+            <div class="field-grid">
+              <div class="field field-box"><small>Occupation</small><span>{{ b.application.occupation|default:"—" }}</span></div>
+              <div class="field field-box"><small>Education</small><span>{{ b.application.education|default:"—" }}</span></div>
+              <div class="field field-box"><small>Organisation</small><span>{{ b.application.org_name|default:"—" }}</span></div>
+            </div>
+            <div class="field mt-2 field-box"><small>Organisation Address</small><div>{{ b.application.org_address|default:"—" }}</div></div>
+            <div class="section-title">Documents</div>
+            <div class="field-grid">
+              <div class="field field-box"><small>Aadhaar Number</small><span>{{ b.application.aadhaar_number|default:"—" }}</span></div>
+            </div>
+            <div class="doc-preview mt-2">
+              {% if b.application.selfie_url %}
+                <a href="{{ b.application.selfie_url }}" target="_blank" class="text-decoration-none" title="Open Selfie">
+                  <img src="{{ b.application.selfie_url }}" alt="Selfie" class="doc-thumb" onerror="this.style.display='none'" />
+                </a>
+              {% endif %}
+              {% if b.application.aadhaar_file_url %}
+                <a class="btn btn-outline-secondary btn-sm" href="{{ b.application.aadhaar_file_url }}" target="_blank">Open Aadhaar PDF</a>
+              {% endif %}
+            </div>
+            {% if b.application.aadhaar_file_url %}
+            <div class="mt-2">
+              <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#aadhaarPreviewUser{{ b.id }}" aria-expanded="false" aria-controls="aadhaarPreviewUser{{ b.id }}">
+                <i class="bi bi-file-earmark-pdf me-1"></i>Preview Aadhaar
+              </button>
+              <div class="collapse mt-2" id="aadhaarPreviewUser{{ b.id }}">
+                <div class="doc-embed p-2">
+                  <iframe src="{{ b.application.aadhaar_file_url }}" title="Aadhaar PDF" style="width:100%;height:480px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load PDF (blocked).'}))"></iframe>
+                  <div class="small text-secondary mt-2">If the PDF doesn't display, it may be blocked by the server. <a href="{{ b.application.aadhaar_file_url }}" target="_blank">Open in new tab</a>.</div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+            <div class="section-title">Vehicle</div>
+            <div class="field-grid">
+              <div class="field field-box"><small>Has Vehicle</small><span>{% if b.application.has_vehicle %}Yes{% else %}No{% endif %}</span></div>
+              {% if b.application.has_vehicle %}
+                <div class="field field-box"><small>Number</small><span>{{ b.application.vehicle_number|default:"—" }}</span></div>
+                <div class="field field-box"><small>Model</small><span>{{ b.application.vehicle_model|default:"—" }}</span></div>
+              {% endif %}
+            </div>
+            <div class="section-title">Declarations</div>
+            <div class="field-grid">
+              <div class="field field-box"><small>Valuables</small><span>{% if b.application.decl_valuables %}Agreed{% else %}Not agreed{% endif %}</span></div>
+              <div class="field field-box"><small>Notice</small><span>{% if b.application.decl_notice %}Agreed{% else %}Not agreed{% endif %}</span></div>
+              <div class="field field-box"><small>Deposit</small><span>{% if b.application.decl_deposit %}Agreed{% else %}Not agreed{% endif %}</span></div>
+              <div class="field field-box"><small>Truth</small><span>{% if b.application.decl_truth %}Agreed{% else %}Not agreed{% endif %}</span></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
 {% endif %}
 
 {% if user.is_authenticated and not my_approved_bookings and my_completed_bookings %}

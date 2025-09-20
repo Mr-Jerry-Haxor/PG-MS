@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
-{% block title %}New PG • PG-MS{% endblock %}
+{% block title %}{% if pg %}Edit PG • PG-MS{% else %}New PG • PG-MS{% endif %}{% endblock %}
 {% block content %}
-<h1 class="h4 mb-3">Create PG</h1>
+<h1 class="h4 mb-3">{% if pg %}Edit PG{% else %}Create PG{% endif %}</h1>
 <form method="post" class="card border-0 shadow-sm">
   {% csrf_token %}
   <div class="card-body p-4">
@@ -13,7 +13,12 @@
       <label class="form-label">Address</label>
       {{ form.address }}
     </div>
-    <button class="btn btn-primary" type="submit">Create</button>
+    <div class="mb-3">
+      <label class="form-label">Phone</label>
+      {{ form.phone }}
+      <div class="form-text">Optional. Include country code, e.g., +91 98765 43210.</div>
+    </div>
+  <button class="btn btn-primary" type="submit">{% if pg %}Save{% else %}Create{% endif %}</button>
     <a href="{% url 'sa_pgs' %}" class="btn btn-outline-secondary">Cancel</a>
   </div>
 </form>

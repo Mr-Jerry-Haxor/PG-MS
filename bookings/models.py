@@ -94,10 +94,23 @@ class Booking(TimeStampedModel):
 
 
 class ResidentApplication(TimeStampedModel):
+	SUBMITTED = 'submitted'
+	CONFIRMED = 'confirmed'
+	REFILL_REQUESTED = 'refill_requested'
+	RESUBMITTED = 'resubmitted'
+	REJECTED = 'rejected'
+	STATUS_CHOICES = [
+		(SUBMITTED, 'Submitted'),
+		(CONFIRMED, 'Confirmed'),
+		(REFILL_REQUESTED, 'Re-Fill Requested'),
+		(RESUBMITTED, 'Re-Submitted'),
+		(REJECTED, 'Rejected'),
+	]
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='resident_applications')
 	booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='application')
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='resident_applications')
 	room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='resident_applications')
+	status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=SUBMITTED)
 	# Personal details
 	name = models.CharField(max_length=255)
 	dob = models.DateField(null=True, blank=True)
@@ -131,5 +144,15 @@ class ResidentApplication(TimeStampedModel):
 
 	def __str__(self):
 		return f"Application for {self.user.email} ({self.booking_id})"
+
+
+class ApplicationStatusHistory(TimeStampedModel):
+	application = models.ForeignKey(ResidentApplication, on_delete=models.CASCADE, related_name='status_history')
+	status = models.CharField(max_length=20, choices=ResidentApplication.STATUS_CHOICES)
+	comment = models.TextField(blank=True)
+	by_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='application_status_actions')
+
+	def __str__(self):
+		return f"{self.application_id} -> {self.status}"
 
 # Create your models here.

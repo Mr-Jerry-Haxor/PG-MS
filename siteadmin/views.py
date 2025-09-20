@@ -10,6 +10,9 @@ from pgadmin.forms import PGForm
 
 
 def _require_site_admin(user):
+    # Allow Django superusers as site admins
+    if getattr(user, 'is_superuser', False):
+        return True
     return hasattr(user, 'profile') and user.profile.is_website_admin and user.profile.status == 'active'
 
 
@@ -51,6 +54,23 @@ def pg_new(request):
     else:
         form = PGForm()
     return render(request, 'siteadmin/pg_form.html', {"form": form})
+
+
+@login_required
+def pg_edit(request, pg_id):
+    if not _require_site_admin(request.user):
+        messages.error(request, "Website Admin access required.")
+        return redirect('dashboard')
+    pg = get_object_or_404(PG, pk=pg_id)
+    if request.method == 'POST':
+        form = PGForm(request.POST, instance=pg)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "PG details updated.")
+            return redirect('sa_pgs')
+    else:
+        form = PGForm(instance=pg)
+    return render(request, 'siteadmin/pg_form.html', {"form": form, "pg": pg})
 
 
 @login_required

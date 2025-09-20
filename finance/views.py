@@ -8,13 +8,39 @@ from core.audit import log
 from .forms import FeesForm, PaymentForm, ExpenditureForm
 from bookings.models import Booking
 from django.db.models import Q
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from django.core.mail import EmailMultiAlternatives
+from django.utils import timezone
 
 
 def _require_pg_admin(user):
-    return hasattr(user, 'profile') and user.profile.is_pg_admin and user.profile.status == 'active'
+    """Unified PG admin check.
+    - Allow superusers and website admins into PG-admin/finance areas
+    - Otherwise require explicit PG admin capability (profile flag) or membership
+    """
+    # Superusers and website admins can access PG-admin area
+    if getattr(user, 'is_superuser', False):
+        return True
+    if hasattr(user, 'profile') and getattr(user.profile, 'is_website_admin', False):
+        return True
+    # Fall back to explicit PGAdmin membership or profile flag
+    try:
+        from pgadmin.models import PGAdmin
+        if PGAdmin.objects.filter(user=user).exists():
+            return True
+    except Exception:
+        pass
+    return hasattr(user, 'profile') and getattr(user.profile, 'is_pg_admin', False) and getattr(user.profile, 'status', 'active') == 'active'
 
 
 def _admin_pgs(user):
+    """PGs visible/manageable by the current user.
+    - Superusers and website admins see all PGs
+    - Regular PG admins see only their assigned PGs
+    """
+    if getattr(user, 'is_superuser', False) or (hasattr(user, 'profile') and getattr(user.profile, 'is_website_admin', False)):
+        return PG.objects.all().order_by('name')
     return PG.objects.filter(admins__user=user).order_by('name')
 
 
@@ -101,15 +127,81 @@ def payments_edit(request, pk=None):
     if request.method == 'POST':
         form = PaymentForm(request.POST, instance=instance, user_queryset=user_qs, room_map=room_map)
         if form.is_valid():
+            prev_status = instance.status if instance else None
             obj = form.save(commit=False)
             obj.pg = pg
             obj.save()
+            # Send receipt email only when transitioning to success or creating as success
+            try:
+                if obj.status == 'success' and (prev_status != 'success'):
+                    _send_payment_receipt_email(obj)
+            except Exception as e:
+                # Do not block UI on email failures; log and continue
+                messages.warning(request, f"Payment saved, but receipt email failed: {e}")
             log(request.user, 'payment_saved', 'Payment', obj.id)
             messages.success(request, "Payment saved.")
             return redirect('payments_list')
     else:
         form = PaymentForm(instance=instance, user_queryset=user_qs, room_map=room_map)
     return render(request, 'finance/payments_form.html', {"form": form, "pg": pg, "pgs": list(_admin_pgs(request.user))})
+
+
+def _send_payment_receipt_email(payment: Payment) -> None:
+    """Render and send a payment receipt email to the payer.
+    Uses template: email/payments/receipt.html
+    """
+    # Resolve room number (latest active approved booking for this user in this PG)
+    booking = (
+        Booking.objects.filter(
+            user=payment.user,
+            room__pg=payment.pg,
+            status=Booking.APPROVED,
+            leaving_date__isnull=True,
+        )
+        .select_related('room')
+        .order_by('-created_at')
+        .first()
+    )
+    room_number = getattr(getattr(booking, 'room', None), 'room_no', '—')
+    pg = payment.pg
+
+    context = {
+        'tenant_name': f"{(payment.user.first_name or '').strip()} {(payment.user.last_name or '').strip()}".strip() or payment.user.email,
+        'pg_name': pg.name,
+        'room_number': room_number,
+        'payment_date': payment.date.strftime('%Y-%m-%d') if payment.date else timezone.now().date().strftime('%Y-%m-%d'),
+        'payment_type': dict(Payment.TYPE_CHOICES).get(payment.type, payment.type),
+        'payment_method': dict(Payment.MODE_CHOICES).get(payment.mode, payment.mode),
+        'amount_paid': f"{payment.amount:.2f}",
+        'pg_phone': pg.phone or '',
+        'current_year': timezone.now().year,
+        'pg_address_short': (pg.address.splitlines()[0] if pg.address else ''),
+    }
+
+    # Sanitize WhatsApp phone: digits only, include country code (default to +91 if 10 digits)
+    try:
+        import re
+        raw = context['pg_phone']
+        digits = re.sub(r"\D", "", raw or "")
+        # handle common India patterns: leading 0, 10-digit local
+        if digits.startswith('0') and len(digits) > 1:
+            digits = digits.lstrip('0')
+        if len(digits) == 10:
+            digits = '91' + digits
+        context['whatsapp_phone'] = digits
+    except Exception:
+        context['whatsapp_phone'] = ''
+
+    subject = f"Payment Receipt — {pg.name}"
+    from_email = None  # Use DEFAULT_FROM_EMAIL if configured
+    to = [payment.user.email]
+
+    html_body = render_to_string('email/payments/receipt.html', context)
+    text_body = strip_tags(html_body)
+
+    msg = EmailMultiAlternatives(subject, text_body, from_email, to)
+    msg.attach_alternative(html_body, "text/html")
+    msg.send(fail_silently=True)
 
 
 @login_required

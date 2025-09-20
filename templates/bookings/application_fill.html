@@ -39,48 +39,78 @@
   <span class="info-badge">Fill you details</span>
 </div>
 
-<form method="post" enctype="multipart/form-data" class="w-100">
+<form method="post" enctype="multipart/form-data" class="w-100" data-has-selfie="{% if app and app.selfie_url %}true{% else %}false{% endif %}" data-app-status="{{ app.status|default:'' }}">
   {% csrf_token %}
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger py-2 small">{{ form.non_field_errors }}</div>
+  {% endif %}
   <div class="app-section">
     <h2>Personal Details</h2>
     <div class="grid-three">
-      <div>{{ form.name.label_tag }} {{ form.name }}</div>
-      <div>{{ form.dob.label_tag }} {{ form.dob }}</div>
-      <div>{{ form.age.label_tag }} {{ form.age }}</div>
+      <div>
+        {{ form.name.label_tag }} {{ form.name }}
+        {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors|striptags }}</div>{% endif %}
+      </div>
+      <div>
+        {{ form.dob.label_tag }} {{ form.dob }}
+        {% if form.dob.errors %}<div class="text-danger small">{{ form.dob.errors|striptags }}</div>{% endif %}
+      </div>
+      <div>
+        {{ form.age.label_tag }} {{ form.age }}
+        {% if form.age.errors %}<div class="text-danger small">{{ form.age.errors|striptags }}</div>{% endif %}
+      </div>
     </div>
     <div class="grid-two mt-2">
-      <div>{{ form.phone.label_tag }} {{ form.phone }}</div>
-      <div>{{ form.email.label_tag }} {{ form.email }}</div>
+      <div>
+        {{ form.phone.label_tag }} {{ form.phone }}
+        {% if form.phone.errors %}<div class="text-danger small">{{ form.phone.errors|striptags }}</div>{% endif %}
+      </div>
+      <div>
+        {{ form.email.label_tag }} {{ form.email }}
+        {% if form.email.errors %}<div class="text-danger small">{{ form.email.errors|striptags }}</div>{% endif %}
+      </div>
     </div>
   </div>
   <div class="app-section">
     <h2>Parents / Guardians</h2>
     <div class="grid-two">
-      <div>{{ form.father_name.label_tag }} {{ form.father_name }}</div>
-      <div>{{ form.father_phone.label_tag }} {{ form.father_phone }}</div>
-      <div>{{ form.mother_name.label_tag }} {{ form.mother_name }}</div>
-      <div>{{ form.mother_phone.label_tag }} {{ form.mother_phone }}</div>
+      <div>
+        {{ form.father_name.label_tag }} {{ form.father_name }}
+        {% if form.father_name.errors %}<div class="text-danger small">{{ form.father_name.errors|striptags }}</div>{% endif %}
+      </div>
+      <div>
+        {{ form.father_phone.label_tag }} {{ form.father_phone }}
+        {% if form.father_phone.errors %}<div class="text-danger small">{{ form.father_phone.errors|striptags }}</div>{% endif %}
+      </div>
+      <div>
+        {{ form.mother_name.label_tag }} {{ form.mother_name }}
+        {% if form.mother_name.errors %}<div class="text-danger small">{{ form.mother_name.errors|striptags }}</div>{% endif %}
+      </div>
+      <div>
+        {{ form.mother_phone.label_tag }} {{ form.mother_phone }}
+        {% if form.mother_phone.errors %}<div class="text-danger small">{{ form.mother_phone.errors|striptags }}</div>{% endif %}
+      </div>
     </div>
   </div>
   <div class="app-section">
     <h2>Address & Admission</h2>
-    <div class="mb-2">{{ form.address.label_tag }} {{ form.address }}</div>
+    <div class="mb-2">{{ form.address.label_tag }} {{ form.address }}{% if form.address.errors %}<div class="text-danger small">{{ form.address.errors|striptags }}</div>{% endif %}</div>
     <div class="grid-two">
-      <div>{{ form.date_of_admission.label_tag }} {{ form.date_of_admission }}</div>
-      <div>{{ form.aadhaar_number.label_tag }} {{ form.aadhaar_number }}</div>
+      <div>{{ form.date_of_admission.label_tag }} {{ form.date_of_admission }}{% if form.date_of_admission.errors %}<div class="text-danger small">{{ form.date_of_admission.errors|striptags }}</div>{% endif %}</div>
+      <div>{{ form.aadhaar_number.label_tag }} {{ form.aadhaar_number }}{% if form.aadhaar_number.errors %}<div class="text-danger small">{{ form.aadhaar_number.errors|striptags }}</div>{% endif %}</div>
     </div>
   </div>
   <div class="app-section">
     <h2>Preferences & Background</h2>
     <div class="grid-three">
-      <div>{{ form.food_pref.label_tag }} {{ form.food_pref }}</div>
-      <div>{{ form.marital_status.label_tag }} {{ form.marital_status }}</div>
-      <div>{{ form.education.label_tag }} {{ form.education }}</div>
+  <div>{{ form.food_pref.label_tag }} {{ form.food_pref }}{% if form.food_pref.errors %}<div class="text-danger small">{{ form.food_pref.errors|striptags }}</div>{% endif %}</div>
+  <div>{{ form.marital_status.label_tag }} {{ form.marital_status }}{% if form.marital_status.errors %}<div class="text-danger small">{{ form.marital_status.errors|striptags }}</div>{% endif %}</div>
+  <div>{{ form.education.label_tag }} {{ form.education }}{% if form.education.errors %}<div class="text-danger small">{{ form.education.errors|striptags }}</div>{% endif %}</div>
     </div>
     <div class="grid-three mt-2">
-      <div>{{ form.occupation.label_tag }} {{ form.occupation }}</div>
-      <div>{{ form.org_name.label_tag }} {{ form.org_name }}</div>
-      <div>{{ form.org_address.label_tag }} {{ form.org_address }}</div>
+  <div>{{ form.occupation.label_tag }} {{ form.occupation }}{% if form.occupation.errors %}<div class="text-danger small">{{ form.occupation.errors|striptags }}</div>{% endif %}</div>
+  <div>{{ form.org_name.label_tag }} {{ form.org_name }}{% if form.org_name.errors %}<div class="text-danger small">{{ form.org_name.errors|striptags }}</div>{% endif %}</div>
+  <div>{{ form.org_address.label_tag }} {{ form.org_address }}{% if form.org_address.errors %}<div class="text-danger small">{{ form.org_address.errors|striptags }}</div>{% endif %}</div>
     </div>
   </div>
   <div class="app-section">
@@ -96,25 +126,29 @@
       </div>
     </div>
     <div id="vehicleDetails" class="row g-2 mt-1"{% if app and app.has_vehicle %} style="display:flex;"{% else %} style="display:none;"{% endif %}>
-      <div class="col-12 col-md-6">{{ form.vehicle_number.label_tag }} {{ form.vehicle_number }}</div>
-      <div class="col-12 col-md-6">{{ form.vehicle_model.label_tag }} {{ form.vehicle_model }}</div>
+  <div class="col-12 col-md-6">{{ form.vehicle_number.label_tag }} {{ form.vehicle_number }}{% if form.vehicle_number.errors %}<div class="text-danger small">{{ form.vehicle_number.errors|striptags }}</div>{% endif %}</div>
+  <div class="col-12 col-md-6">{{ form.vehicle_model.label_tag }} {{ form.vehicle_model }}{% if form.vehicle_model.errors %}<div class="text-danger small">{{ form.vehicle_model.errors|striptags }}</div>{% endif %}</div>
     </div>
   </div>
   <div class="app-section">
     <h2>Documents</h2>
     <div class="row g-3">
-      <div class="col-12 col-lg-6 order-2 order-lg-1">
-        <label class="form-label">Aadhaar PDF</label>
-        <input type="file" name="aadhaar_pdf" id="aadhaarPdfInput" class="form-control" accept="application/pdf" />
+      <div class="col-12 col-lg-6 order-1 order-lg-1">
+  <label class="form-label">Aadhaar (PDF or Image)</label>
+  <input type="file" name="aadhaar_pdf" id="aadhaarPdfInput" class="form-control" accept="application/pdf,image/*" />
+        <div class="form-text">If you don't select a new Aadhaar document, the existing one will be kept.</div>
         <div id="aadhaarStatus" class="aadhaar-status"></div>
         <canvas id="aadhaarCanvas"></canvas>
+        <div id="aadhaarImageWrap" class="d-none mt-2">
+          <img id="aadhaarImgPreview" alt="Aadhaar image preview" class="img-fluid border rounded" />
+        </div>
         <div id="aadhaarEmbedWrap" class="d-none mt-2">
           <div class="small text-muted mb-1">Fallback Preview</div>
           <iframe id="aadhaarEmbed" title="Aadhaar PDF Fallback Preview"></iframe>
         </div>
       </div>
-      <div class="col-12 col-lg-6 order-1 order-lg-2">
-        <label class="form-label mb-1">Profile Photo (Live Capture) <span class="required-asterisk">*</span></label>
+  <div class="col-12 col-lg-6 order-2 order-lg-2">
+        <label class="form-label mb-1">Profile Photo (Live Capture){% if not app or not app.selfie_url %} <span class="required-asterisk">*</span>{% endif %}</label>
         <div class="vstack gap-2 align-items-center">
           <div class="selfie-wrapper" aria-label="Live selfie capture area">
             <video id="selfieVideo" autoplay playsinline class="d-none"></video>
@@ -138,6 +172,9 @@
           </div>
           <input type="file" name="selfie" id="selfieInput" class="d-none" accept="image/*" />
           <div class="selfie-hint text-center">Center face • Good lighting • No mask</div>
+          {% if app and app.selfie_url %}
+          <div class="form-text">If you don't capture a new selfie, the existing photo will be kept.</div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -147,16 +184,22 @@
         {% if app.selfie_url %}
         <div class="col-12 col-md-6">
           <div class="border rounded p-2 small bg-light">
-            <div class="fw-semibold mb-1">Current Photo</div>
-            <a class="btn btn-sm btn-outline-primary" href="{{ app.selfie_url }}" target="_blank">Open Photo</a>
+            <div class="fw-semibold mb-1">Current Selfie</div>
+            <iframe src="{{ app.selfie_url }}" title="Current Selfie Preview" allowfullscreen class="border rounded"></iframe>
+            <div>
+              <a class="btn btn-sm btn-outline-primary" href="{{ app.selfie_url }}" target="_blank">Open Selfie</a>
+            </div>
           </div>
         </div>
         {% endif %}
         {% if app.aadhaar_file_url %}
         <div class="col-12 col-md-6">
             <div class="border rounded p-2 small bg-light">
-              <div class="fw-semibold mb-1">Current Aadhaar PDF</div>
-              <a class="btn btn-sm btn-outline-secondary" href="{{ app.aadhaar_file_url }}" target="_blank">Open PDF</a>
+              <div class="fw-semibold mb-1">Current Aadhaar Document</div>
+              <div class="ratio ratio-16x9 mb-2">
+                <iframe src="{{ app.aadhaar_file_url }}" title="Aadhaar Preview" allowfullscreen class="border rounded"></iframe>
+              </div>
+              <a class="btn btn-sm btn-outline-secondary" href="{{ app.aadhaar_file_url }}" target="_blank">Open Aadhaar</a>
             </div>
         </div>
         {% endif %}
@@ -170,9 +213,13 @@
     <div class="form-check">{{ form.decl_deposit }} <label class="form-check-label">If you fail to Inform notice period to Management, Your security deposit will not be refunded.</label></div>
     <div class="form-check">{{ form.decl_truth }} <label class="form-check-label">I here by declare that all the above furnished is true and correct to the best of my knowledge</label></div>
   </div>
+  {% if not app or app.status != 'confirmed' %}
   <div class="sticky-submit text-center mt-3">
     <button class="btn btn-lg btn-success px-4" type="submit"><i class="bi bi-check2-circle me-1"></i>Submit Application</button>
   </div>
+  {% else %}
+  <div class="alert alert-info mt-3">This application is confirmed and cannot be edited. Contact PG Admin to request changes.</div>
+  {% endif %}
 </form>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -188,7 +235,37 @@
     console.warn('[aadhaar] pdfjsLib not present at init');
   }
   const form = document.querySelector('form');
+  const appStatus = form?.dataset?.appStatus || '';
   const selfieInput = document.querySelector('input[name="selfie"]');
+  // DOB -> Age auto-calc and numeric input helpers
+  const dobInput = document.getElementById('id_dob');
+  const ageInput = document.getElementById('id_age');
+  const phoneInputs = [
+    document.getElementById('id_phone'),
+    document.getElementById('id_father_phone'),
+    document.getElementById('id_mother_phone'),
+  ].filter(Boolean);
+  const aadhaarInput = document.getElementById('id_aadhaar_number');
+  function calcAgeFromDobStr(v){
+    if(!v) return '';
+    const d = new Date(v);
+    if(Number.isNaN(d.getTime())) return '';
+    const today = new Date();
+    let age = today.getFullYear() - d.getFullYear();
+    const m = today.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+    return age >= 0 ? String(age) : '';
+  }
+  dobInput?.addEventListener('change', ()=>{ if(ageInput){ ageInput.value = calcAgeFromDobStr(dobInput.value); } });
+  // initialize on load if value exists
+  if(dobInput?.value && ageInput){ ageInput.value = calcAgeFromDobStr(dobInput.value); }
+  // restrict numeric inputs client-side (server also validates)
+  function bindDigits(el, max){
+    if(!el) return;
+    el.addEventListener('input', ()=>{ el.value = el.value.replace(/\D+/g,'').slice(0, max); });
+  }
+  phoneInputs.forEach(el=> bindDigits(el, 10));
+  bindDigits(aadhaarInput, 12);
   // Prefer explicit ID
   const pdfInput = document.getElementById('aadhaarPdfInput') || document.querySelector('input[name="aadhaar_pdf"]');
   // Django renders a hidden input + the actual checkbox for BooleanField; ensure we grab the checkbox
@@ -373,26 +450,40 @@
   const aadhaarCtx = aadhaarCanvas?.getContext('2d');
   const aadhaarEmbedWrap = document.getElementById('aadhaarEmbedWrap');
   const aadhaarEmbed = document.getElementById('aadhaarEmbed');
+  const aadhaarImgWrap = document.getElementById('aadhaarImageWrap');
+  const aadhaarImgPreview = document.getElementById('aadhaarImgPreview');
   let currentAadhaarBlobUrl = null;
   function setAadhaarStatus(msg, cls){ if(!aadhaarStatus) return; aadhaarStatus.textContent=msg; aadhaarStatus.className='aadhaar-status '+(cls||''); }
+  // If modifying, and there is a current doc, we keep server-rendered preview. Selecting a new file will replace the preview below.
   pdfInput?.addEventListener('change', e => {
     const file = e.target.files[0];
     console.log('[aadhaar] change event', file);
     if(!file){ setAadhaarStatus('', ''); if(aadhaarCanvas) aadhaarCanvas.style.display='none'; pdfOk=false; return; }
-    const fileName = file.name || 'selected.pdf';
+    const fileName = file.name || '';
     const isPdf = (file.type === 'application/pdf') || fileName.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      setAadhaarStatus('Please upload a PDF file.','error'); e.target.value=''; pdfOk=false; if(aadhaarCanvas) aadhaarCanvas.style.display='none'; return;
+    const isImg = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(fileName);
+    // Reset previous previews
+  if (aadhaarCanvas) { aadhaarCanvas.style.display='none'; }
+  if (aadhaarImgWrap) aadhaarImgWrap.classList.add('d-none');
+  if (aadhaarImgPreview) aadhaarImgPreview.removeAttribute('src');
+  if (aadhaarEmbedWrap) { aadhaarEmbedWrap.classList.add('d-none'); }
+    if (aadhaarEmbed && aadhaarEmbed.getAttribute('src')) { aadhaarEmbed.removeAttribute('src'); }
+    if (!isPdf && !isImg) {
+      setAadhaarStatus('Please upload a PDF or Image file.','error'); e.target.value=''; pdfOk=false; return;
+    }
+    if (isImg) {
+      const url = URL.createObjectURL(file);
+      if (aadhaarImgPreview) aadhaarImgPreview.src = url;
+      if (aadhaarImgWrap) aadhaarImgWrap.classList.remove('d-none');
+      setAadhaarStatus('Image selected: '+(fileName||'image'),'success');
+      pdfOk = true;
+      return;
     }
     if (!window.pdfjsLib) {
       setAadhaarStatus('PDF preview library not loaded. You can still submit.','error');
       pdfOk = true; // allow submit if library missing
       return;
     }
-    // Reset previous previews
-    if (aadhaarCanvas) { aadhaarCanvas.style.display='none'; }
-    if (aadhaarEmbedWrap) { aadhaarEmbedWrap.classList.add('d-none'); }
-    if (aadhaarEmbed && aadhaarEmbed.getAttribute('src')) { aadhaarEmbed.removeAttribute('src'); }
     if (currentAadhaarBlobUrl) { try { URL.revokeObjectURL(currentAadhaarBlobUrl); } catch(_){} currentAadhaarBlobUrl=null; }
     const fr = new FileReader();
     fr.onerror = () => { setAadhaarStatus('Failed to read file.','error'); pdfOk=false; };
@@ -446,13 +537,21 @@
   });
 
   form?.addEventListener('submit', async (e) => {
-    // Enforce checks strictly client-side
-    if (!(selfieInput?.files?.length)) {
+    if (appStatus === 'confirmed') {
       e.preventDefault();
-      alert('Selfie is required. Please capture or upload a clear face photo.');
+      alert('This application is confirmed and cannot be edited.');
       return;
     }
-    if (!selfieOk) { e.preventDefault(); alert('Please provide a valid face-only selfie.'); return; }
+    // Enforce selfie conditionally: required only if no existing selfie
+    const hasExistingSelfie = form?.dataset?.hasSelfie === 'true';
+    const newSelfieSelected = !!(selfieInput?.files?.length);
+    if (!hasExistingSelfie && !newSelfieSelected) {
+      e.preventDefault();
+      alert('Selfie is required. Please capture a clear face photo.');
+      return;
+    }
+    // Validate selfie only when a new one is provided
+    if (newSelfieSelected && !selfieOk) { e.preventDefault(); alert('Please provide a valid face-only selfie.'); return; }
     if (pdfInput?.files?.length) {
       if (!pdfOk) { e.preventDefault(); alert('Please upload a valid (non password-protected) Aadhaar PDF.'); return; }
     }
