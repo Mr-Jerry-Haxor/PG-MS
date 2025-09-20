@@ -5,3 +5,5 @@ service_account.json
 token.json
 get_token.ps1
 /pgms secrets
+__pycache__/
+*.pyc
