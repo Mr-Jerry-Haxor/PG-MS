@@ -7,7 +7,7 @@
   <div class="row g-3">
   {% for rs, f, occ, has_app in rs_forms %}
       <div class="col-12 col-md-6 col-lg-4">
-  <div class="card border-0 shadow-sm h-100" data-initial-status="{{ rs.status }}">
+  <div class="card border-0 shadow-sm h-100" data-initial-status="{{ rs.status }}" data-vacant-from="{{ rs.vacant_from|date:'Y-m-d' }}">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <div class="fw-semibold">Share {{ rs.share_no }}</div>
@@ -26,22 +26,27 @@
                 <div class="col-6">
                   <label class="form-label small mb-0">First name</label>
                   <input type="text" class="form-control form-control-sm" name="s{{ rs.id }}-new-first_name" />
+                  <div class="form-text">Optional, helps personalize records.</div>
                 </div>
                 <div class="col-6">
                   <label class="form-label small mb-0">Last name</label>
                   <input type="text" class="form-control form-control-sm" name="s{{ rs.id }}-new-last_name" />
+                  <div class="form-text">Optional.</div>
                 </div>
                 <div class="col-12">
-                  <label class="form-label small mb-0">Email</label>
+                  <label class="form-label small mb-0">Email <span class="text-danger d-none" data-required-note>Required for Reserved/Occupied</span></label>
                   <input type="email" class="form-control form-control-sm" name="s{{ rs.id }}-new-email" placeholder="name@example.com" />
+                  <div class="form-text">We'll create/link the user by email.</div>
                 </div>
                 <div class="col-6">
                   <label class="form-label small mb-0">Phone</label>
                   <input type="text" class="form-control form-control-sm" name="s{{ rs.id }}-new-phone" placeholder="10 digits" />
+                  <div class="form-text">Digits only (optional).</div>
                 </div>
                 <div class="col-6">
                   <label class="form-label small mb-0">Joining date</label>
                   <input type="date" class="form-control form-control-sm" name="s{{ rs.id }}-new-joining" />
+                  <div class="form-text">Auto-fills from Vacant From when choosing Occupied (if available).</div>
                 </div>
               </div>
             </div>
@@ -86,13 +91,40 @@
     // When entering edit mode, if status is changing from vacant to reserved/occupied, show vacant-block
     const statusSelect = card.querySelector('select[name$="-status"]');
     const initial = card.dataset.initialStatus;
+    const vacantFrom = card.dataset.vacantFrom;
     const block = card.querySelector('[data-vacant-block]');
     if(statusSelect && block){
       const updateBlock = ()=>{
-        if(initial === 'vacant' && (statusSelect.value === 'reserved' || statusSelect.value === 'occupied')){
+        const wasVacantLike = (initial === 'vacant' || initial === 'vacant_from');
+        const toResOrOcc = (statusSelect.value === 'reserved' || statusSelect.value === 'occupied');
+        if(wasVacantLike && toResOrOcc){
           block.classList.remove('d-none');
         } else {
           block.classList.add('d-none');
+        }
+        // Inline required note for email
+        const reqNote = block.querySelector('[data-required-note]');
+        if(reqNote){ reqNote.classList.toggle('d-none', !toResOrOcc); }
+        // Dynamically require email when moving to Reserved/Occupied
+        const emailInput = block.querySelector('input[name$="-new-email"]');
+        if(emailInput){
+          emailInput.required = !!toResOrOcc;
+          // Visual cue when empty and required
+          if(toResOrOcc){
+            emailInput.classList.toggle('is-invalid', !emailInput.value);
+            emailInput.addEventListener('input', ()=>{
+              emailInput.classList.toggle('is-invalid', !emailInput.value);
+            }, { once: false });
+          } else {
+            emailInput.classList.remove('is-invalid');
+          }
+        }
+        // Auto-fill joining date when choosing occupied from vacant_from
+        if(wasVacantLike && statusSelect.value === 'occupied' && vacantFrom){
+          const joinInput = block.querySelector('input[name$="-new-joining"]');
+          if(joinInput && !joinInput.value){
+            joinInput.value = vacantFrom;
+          }
         }
       };
       statusSelect.addEventListener('change', updateBlock, { once: false });

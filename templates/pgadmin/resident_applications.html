@@ -18,7 +18,7 @@
   @media (max-width:576px){.search-box{width:100%}.apps-toolbar{flex-direction:column;align-items:stretch}}
 </style>
 
-<div class="apps-toolbar">
+<div class="apps-toolbar stack-sm">
   <div class="d-flex flex-column gap-2">
     <div class="d-flex align-items-center gap-2 flex-wrap">
       <h1 class="h4 mb-0">Resident Applications</h1>
@@ -128,8 +128,7 @@
 </div>
 
 {% for b in bookings %}
-  {% if b.application %}
-  <!-- Edit Joining Date Modal -->
+  <!-- Edit Joining Date Modal (available for all bookings) -->
   <div class="modal fade" id="joinDateModal{{ b.id }}" tabindex="-1" aria-labelledby="joinDateLabel{{ b.id }}" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
@@ -151,6 +150,7 @@
       </div>
     </div>
   </div>
+  {% if b.application %}
   <div class="modal fade" id="appModal{{ b.id }}" tabindex="-1" aria-labelledby="appModalLabel{{ b.id }}" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">
@@ -272,8 +272,8 @@
       </div>
     </div>
   </div>
-  {% endif %}
-{% endfor %}
+      {% endif %}
+    {% endfor %}
 
 {% for b in bookings %}
   {% if b.application %}

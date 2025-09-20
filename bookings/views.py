@@ -7,7 +7,7 @@ from django.db import transaction
 from django.conf import settings
 from django.utils import timezone
 
-from pgadmin.models import PG
+from pgadmin.models import PG, PGAdmin
 from accounts.models import Profile
 from .models import Room, RoomShareStatus, Booking
 from core.models import Notification
@@ -333,6 +333,19 @@ def leaving_intimation(request, booking_id):
 @login_required
 def booking_detail(request, booking_id):
     booking = get_object_or_404(Booking, pk=booking_id)
+    # Authorization: only the booking owner, superuser/site-admin, or a PG Admin of this booking's PG can view
+    can_view = False
+    if request.user == booking.user:
+        can_view = True
+    elif getattr(request.user, 'is_superuser', False) or (hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False)):
+        can_view = True
+    else:
+        pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
+        if pg_id and PGAdmin.objects.filter(user=request.user, pg_id=pg_id).exists():
+            can_view = True
+    if not can_view:
+        messages.error(request, "You do not have permission to view this booking.")
+        return redirect('dashboard')
     from core.models import AuditLog
     events = AuditLog.objects.filter(target_type='Booking', target_id=booking.id).order_by('created_at')
     return render(request, 'bookings/booking_detail.html', {"booking": booking, "events": events})

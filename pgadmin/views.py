@@ -37,7 +37,7 @@ from django.utils import timezone
 from django.core.mail import send_mail
 from django.utils.dateparse import parse_date
 from django.db import IntegrityError
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Min, Prefetch
 try:
     from allauth.account.models import EmailAddress
 except Exception:  # allauth not strictly required at import time
@@ -81,6 +81,7 @@ def _active_pg(request):
     pg = None
     pg_id = request.GET.get('pg') or request.session.get('active_pg_id')
     if pg_id:
+        # Only allow selecting PGs within authorized set
         pg = qs.filter(id=pg_id).first()
     if not pg:
         pg = qs.first()
@@ -96,6 +97,21 @@ def my_pg(request):
         return redirect('dashboard')
     # Allow switching if admin of multiple PGs
     pg = _active_pg(request) or PG.objects.filter(created_by_admin=request.user).first()
+    # Auto-convert past-dated VACANT_FROM shares to VACANT on dashboard load
+    if pg:
+        try:
+            today = timezone.now().date()
+            qs_cleanup = RoomShareStatus.objects.filter(
+                room__pg=pg,
+                status=RoomShareStatus.VACANT_FROM,
+                vacant_from__isnull=False,
+                vacant_from__lt=today,
+            )
+            if qs_cleanup.exists():
+                qs_cleanup.update(status=RoomShareStatus.VACANT, vacant_from=None)
+        except Exception:
+            # Non-blocking: ignore failures in cleanup
+            pass
     if request.method == 'POST':
         form = PGForm(request.POST, instance=pg)
         if form.is_valid():
@@ -123,12 +139,31 @@ def rooms_list(request):
                 occupied_count=Count('shares', filter=Q(shares__status=RoomShareStatus.OCCUPIED)),
                 reserved_count=Count('shares', filter=Q(shares__status=RoomShareStatus.RESERVED)),
                 vacant_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT)),
+                leaving_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT_FROM)),
+                next_vacant_from=Min('shares__vacant_from', filter=Q(shares__status=RoomShareStatus.VACANT_FROM)),
+            )
+            .prefetch_related(
+                Prefetch(
+                    'shares',
+                    queryset=RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT_FROM).only('id','share_no','vacant_from').order_by('vacant_from'),
+                    to_attr='vacant_from_shares',
+                )
             )
             .order_by('room_no')
         )
+        # Apply optional filter by room share status
+        only = (request.GET.get('filter') or '').strip().lower()
+        if only == 'vacant':
+            rooms = rooms.filter(vacant_count__gt=0)
+        elif only == 'leaving':
+            rooms = rooms.filter(leaving_count__gt=0)
+        elif only == 'reserved':
+            rooms = rooms.filter(reserved_count__gt=0)
+        elif only == 'occupied':
+            rooms = rooms.filter(occupied_count__gt=0)
     else:
         rooms = []
-    return render(request, 'pgadmin/rooms_list.html', {"pg": pg, "rooms": rooms, "pgs": list(_admin_pgs(request.user))})
+    return render(request, 'pgadmin/rooms_list.html', {"pg": pg, "rooms": rooms, "pgs": list(_admin_pgs(request.user)), "active_filter": (request.GET.get('filter') or '')})
 
 
 @login_required
@@ -433,8 +468,8 @@ def room_shares(request, pk):
             form = ShareStatusForm(request.POST, prefix=f"s{rs.id}", instance=rs)
             if form.is_valid():
                 new_status = form.cleaned_data.get('status')
-                # If moving from vacant to reserved/occupied, collect user details and create or link booking
-                if prev_status == RoomShareStatus.VACANT and new_status in [RoomShareStatus.RESERVED, RoomShareStatus.OCCUPIED]:
+                # If moving from vacant/vacant_from to reserved/occupied, collect user details and create or link booking
+                if prev_status in [RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM] and new_status in [RoomShareStatus.RESERVED, RoomShareStatus.OCCUPIED]:
                     email = request.POST.get(f"s{rs.id}-new-email", "").strip()
                     first_name = request.POST.get(f"s{rs.id}-new-first_name", "").strip()
                     last_name = request.POST.get(f"s{rs.id}-new-last_name", "").strip()
@@ -513,8 +548,11 @@ def room_shares(request, pk):
                         # Skip saving status change for this share
                         continue
 
-                    # Save the share status change after booking created
-                    form.save()
+                    # Save the share status change after booking created and clear vacant_from if set
+                    saved_rs = form.save()
+                    if getattr(saved_rs, 'vacant_from', None):
+                        saved_rs.vacant_from = None
+                        saved_rs.save(update_fields=['vacant_from'])
                     # Feedback
                     if created_user:
                         messages.success(request, f"Share {rs.share_no}: User created: {user.email}, booking: {booking.get_status_display()}.")
@@ -522,7 +560,11 @@ def room_shares(request, pk):
                         messages.success(request, f"Share {rs.share_no}: User linked: {user.email}, booking: {booking.get_status_display()}.")
                 else:
                     # Normal save and inline occupant updates when already occupied
-                    form.save()
+                    saved_rs = form.save()
+                    # If status changed away from VACANT_FROM, clear the date
+                    if prev_status == RoomShareStatus.VACANT_FROM and saved_rs.status != RoomShareStatus.VACANT_FROM and getattr(saved_rs, 'vacant_from', None):
+                        saved_rs.vacant_from = None
+                        saved_rs.save(update_fields=['vacant_from'])
                     any_saved = True
                     occ = (
                         Booking.objects.filter(room=room, share_no=rs.share_no, status=Booking.APPROVED)
@@ -759,8 +801,14 @@ def resident_applications(request):
     pg = _active_pg(request)
     bookings = []
     if pg:
+        today = timezone.now().date()
         bookings = (
-            Booking.objects.filter(room__pg=pg, status=Booking.APPROVED)
+            Booking.objects
+            .filter(
+                room__pg=pg,
+                status=Booking.APPROVED,
+            )
+            .filter(Q(leaving_date__isnull=True) | Q(leaving_date__gt=today))
             .select_related('user', 'room', 'application')
             .order_by('room__room_no', 'share_no')
         )

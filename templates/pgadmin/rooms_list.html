@@ -13,6 +13,7 @@
   .mini-badge.ok{background:#ecfdf5;color:#047857;border-color:#bbf7d0}
   .mini-badge.warn{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
   .mini-badge.alt{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
+  .mini-badge.info{background:#e0f2fe;color:#075985;border-color:#bae6fd}
   .room-actions{margin-top:.25rem;display:flex;flex-wrap:wrap;gap:.5rem}
   .empty-rooms{padding:2.25rem 1.25rem;text-align:center;border:2px dashed #cbd5e1;border-radius:1rem;background:#f8fafc}
 </style>
@@ -30,12 +31,21 @@
     </form>
     {% endif %}
   </div>
-  <a href="{% url 'pg_room_create' %}" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1"><i class="bi bi-plus-lg"></i><span>New Room</span></a>
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <div class="btn-group" role="group" aria-label="Room filters" id="roomFilters">
+      <button type="button" class="btn btn-sm btn-outline-secondary {% if not active_filter %}active{% endif %}" data-room-filter="">All</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary {% if active_filter == 'vacant' %}active{% endif %}" data-room-filter="vacant">Vacant</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary {% if active_filter == 'leaving' %}active{% endif %}" data-room-filter="leaving">Leaving</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary {% if active_filter == 'reserved' %}active{% endif %}" data-room-filter="reserved">Reserved</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary {% if active_filter == 'occupied' %}active{% endif %}" data-room-filter="occupied">Occupied</button>
+    </div>
+    <a href="{% url 'pg_room_create' %}" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1"><i class="bi bi-plus-lg"></i><span>New Room</span></a>
+  </div>
 </div>
 
 <div class="rooms-grid">
   {% for room in rooms %}
-    <div class="room-card fade-in shadow-hover">
+  <div class="room-card fade-in shadow-hover" data-occupied="{{ room.occupied_count|default:0 }}" data-reserved="{{ room.reserved_count|default:0 }}" data-vacant="{{ room.vacant_count|default:0 }}" data-leaving="{{ room.leaving_count|default:0 }}">
       <div class="room-head">
         <div>
           <div class="fw-semibold">Room {{ room.room_no }}</div>
@@ -47,13 +57,104 @@
         <span class="mini-badge alt">Occupied {{ room.occupied_count|default:0 }}</span>
         <span class="mini-badge warn">Reserved {{ room.reserved_count|default:0 }}</span>
         <span class="mini-badge ok">Vacant {{ room.vacant_count|default:0 }}</span>
+        {% if room.leaving_count %}
+          <span class="mini-badge info" title="Number of shares marked as leaving">Leaving {{ room.leaving_count }}</span>
+        {% endif %}
       </div>
       <div class="room-actions">
         <a class="btn btn-sm btn-outline-primary flex-grow-1" href="{% url 'pg_room_shares' room.id %}">Manage Shares</a>
+        {% if room.vacant_from_shares %}
+          <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#vacantFromModal" data-room="{{ room.room_no }}" data-rows-id="vf-rows-{{ room.id }}">Vacant From Details</button>
+        {% endif %}
       </div>
+      {% if room.vacant_from_shares %}
+        <div id="vf-rows-{{ room.id }}" class="d-none">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr><th>Share</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+              {% for s in room.vacant_from_shares %}
+                <tr><td>{{ s.share_no }}</td><td>{{ s.vacant_from|date:'Y-m-d' }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
     </div>
   {% empty %}
     <div class="empty-rooms">No rooms yet. Create one.</div>
   {% endfor %}
 </div>
+<!-- Vacant From Details Modal -->
+<div class="modal fade" id="vacantFromModal" tabindex="-1" aria-labelledby="vacantFromLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="vacantFromLabel">Vacant From Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-secondary mb-2">Room <span id="vfRoom">—</span></div>
+        <div id="vfBody">No upcoming vacancies.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+ </div>
+<script>
+// Client-side filters for rooms
+document.addEventListener('DOMContentLoaded', function(){
+  const buttons = document.querySelectorAll('#roomFilters [data-room-filter]');
+  const cards = Array.from(document.querySelectorAll('.room-card'));
+  function applyFilter(f){
+    cards.forEach(card=>{
+      const v = parseInt(card.dataset.vacant || '0', 10);
+      const l = parseInt(card.dataset.leaving || '0', 10);
+      const r = parseInt(card.dataset.reserved || '0', 10);
+      const o = parseInt(card.dataset.occupied || '0', 10);
+      let show = true;
+      if(f === 'vacant') show = v > 0;
+      else if(f === 'leaving') show = l > 0;
+      else if(f === 'reserved') show = r > 0;
+      else if(f === 'occupied') show = o > 0;
+      card.classList.toggle('d-none', !show);
+    });
+  }
+  buttons.forEach(btn=>{
+    btn.addEventListener('click', function(){
+      buttons.forEach(b=>b.classList.remove('active'));
+      this.classList.add('active');
+      const f = this.getAttribute('data-room-filter') || '';
+      applyFilter(f);
+      // Reflect in URL for shareability (no reload)
+      const url = new URL(window.location);
+      if(f) url.searchParams.set('filter', f); else url.searchParams.delete('filter');
+      window.history.replaceState({}, '', url);
+    });
+  });
+  // Initialize from URL param (or server-provided active_filter)
+  const initial = (new URL(window.location)).searchParams.get('filter') || '{{ active_filter|default:"" }}';
+  const initBtn = document.querySelector(`#roomFilters [data-room-filter="${initial}"]`) || document.querySelector('#roomFilters [data-room-filter=""]');
+  if(initBtn){ initBtn.click(); } else { applyFilter(initial); }
+});
+document.addEventListener('DOMContentLoaded', function(){
+  var modalEl = document.getElementById('vacantFromModal');
+  modalEl.addEventListener('show.bs.modal', function (event) {
+    var btn = event.relatedTarget;
+    var roomNo = btn ? btn.getAttribute('data-room') : '';
+    var rowsId = btn ? btn.getAttribute('data-rows-id') : '';
+    document.getElementById('vfRoom').textContent = roomNo || '—';
+    var src = rowsId ? document.getElementById(rowsId) : null;
+    var body = document.getElementById('vfBody');
+    if(src){
+      body.innerHTML = src.innerHTML;
+    } else {
+      body.textContent = 'No upcoming vacancies.';
+    }
+  });
+});
+</script>
 {% endblock %}

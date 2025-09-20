@@ -1,0 +1,333 @@
+{% extends 'base.html' %}
+{% block title %}Monthly Dashboard • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .status-paid{background:#ecfdf5;color:#047857;border-color:#a7f3d0}
+  .status-unpaid{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
+  .status-partial{background:#fef9c3;color:#854d0e;border-color:#fde68a}
+  .chip{display:inline-block;padding:.2rem .5rem;border-radius:1rem;border:1px solid #e2e8f0;font-weight:600;font-size:.7rem}
+  /* Mobile tweaks */
+  @media (max-width: 576px) {
+    #monthPicker { width: 100% !important; }
+    .table thead th.sticky-sm { position: sticky; top: 0; background: #fff; z-index: 1; }
+    /* Hide less-critical columns on XS to reduce horizontal scroll */
+    .col-room, .col-advance, .col-status, .col-actions { display: none; }
+    /* Tighten table spacing on mobile */
+    table.table td, table.table th { padding: .35rem .5rem; }
+  }
+  /* Keep currency values on one line */
+  .nowrap { white-space: nowrap; }
+</style>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div class="d-flex align-items-center gap-2">
+    <h1 class="h5 mb-0">Monthly Dashboard</h1>
+    <div class="btn-group ms-2" role="group">
+      <a class="btn btn-outline-secondary btn-sm" href="?year={{ summary.nav.prev_year }}&month={{ summary.nav.prev_month }}{% if pg %}&pg={{ pg.id }}{% endif %}">← Prev</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?year={{ summary.nav.next_year }}&month={{ summary.nav.next_month }}{% if pg %}&pg={{ pg.id }}{% endif %}">Next →</a>
+    </div>
+    {% if pgs and pgs|length > 1 %}
+      <form method="get" action="" class="m-0 d-flex gap-2 align-items-center">
+        <label class="small text-secondary">PG:</label>
+        <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for p in pgs %}
+          <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2 flex-wrap w-100 w-md-auto justify-content-start justify-content-md-end mt-2 mt-md-0">
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_pdf' %}?year={{ summary.year }}&month={{ summary.month }}">Export PDF</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_excel' %}?year={{ summary.year }}&month={{ summary.month }}">Export Excel</a>
+    <button class="btn btn-outline-secondary btn-sm" type="button" id="btnToggleAll" data-state="collapsed">Expand All Stays</button>
+  </div>
+</div>
+<form method="get" class="card border-0 shadow-sm mb-3">
+  <div class="card-body d-flex flex-wrap gap-2 align-items-end stack-sm">
+    <div>
+      <label class="form-label small d-flex align-items-center gap-2">
+        Month
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnThisMonth">This Month</button>
+      </label>
+      <div class="d-flex gap-2 align-items-center">
+        <input type="month" id="monthPicker" class="form-control form-control-sm" style="width:170px" min="2000-01" max="2100-12" value="{{ summary.year }}-{{ summary.month|stringformat:'02d' }}">
+        <input type="hidden" name="month" id="monthHidden" value="{{ summary.month }}">
+        <input type="hidden" name="year" id="yearHidden" value="{{ summary.year }}">
+      </div>
+    </div>
+    <div>
+      <label class="form-label small">Filter</label>
+      <select name="only" class="form-select form-select-sm">
+        <option value="" {% if not request.GET.only %}selected{% endif %}>All</option>
+        <option value="paid" {% if request.GET.only == 'paid' %}selected{% endif %}>Paid</option>
+        <option value="unpaid" {% if request.GET.only == 'unpaid' %}selected{% endif %}>Unpaid</option>
+        <option value="partial" {% if request.GET.only == 'partial' %}selected{% endif %}>Partial</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+  </div>
+</form>
+<div class="row g-3 mb-3">
+  <div class="col-sm-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="small text-secondary">Expected</div>
+        <div class="fs-5 fw-semibold">₹ {{ summary.total_expected }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="small text-secondary">Collected</div>
+        <div class="fs-5 fw-semibold">₹ {{ summary.total_collected }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="small text-secondary">Pending</div>
+        <div class="fs-5 fw-semibold">₹ {{ summary.total_pending }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="small text-secondary">Advance</div>
+        <div class="fs-5 fw-semibold">₹ {{ summary.total_advance|default:'0.00' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+<form method="post" action="{% url 'finance_monthly_bulk_remind' %}">
+  {% csrf_token %}
+  <input type="hidden" name="year" value="{{ summary.year }}">
+  <input type="hidden" name="month" value="{{ summary.month }}">
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0" id="monthlyTable">
+        <thead>
+          <tr class="position-sticky top-0 bg-white" style="z-index:1">
+            <th style="width:32px"><input type="checkbox" id="chkAll" onclick="document.querySelectorAll('.rowchk').forEach(c=>c.checked=this.checked)"></th>
+            <th>Resident</th>
+            <th class="col-room">Room</th>
+            <th>Joining</th>
+            <th>Leaving</th>
+            <th class="col-advance">Advance</th>
+            <th>Expected</th>
+            <th>Collected</th>
+            <th>Pending</th>
+            <th class="col-status">Status</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in rows %}
+          <tr data-status="{{ r.status }}">
+            <td><input type="checkbox" class="rowchk" name="user_ids" value="{{ r.user.id }}" {% if r.status == 'paid' %}disabled{% endif %}></td>
+            <td>
+              <a href="{% url 'finance_ledger' r.user.id %}">{{ r.user.first_name }} {{ r.user.last_name }}</a>
+              <div class="small text-secondary">{{ r.user.email }}</div>
+              {% if r.segments and r.segments|length > 1 %}
+                <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#stays-{{ r.user.id }}" aria-expanded="false" aria-controls="stays-{{ r.user.id }}">
+                  View stays ({{ r.segments|length }})
+                </button>
+              {% endif %}
+            </td>
+            <td class="col-room">{{ r.room_no }}</td>
+            <td>{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% else %}—{% endif %}</td>
+            <td>{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% else %}—{% endif %}</td>
+            <td class="col-advance nowrap" title="One-time advance (not monthly)">₹ {{ r.advance|default:'0.00' }}</td>
+            <td>
+              <span class="nowrap" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ r.expected_tip }}">₹ {{ r.expected }}</span>
+              {% if r.segments and r.segments|length > 1 %}
+                <span class="badge bg-secondary ms-1">{{ r.segments|length }}</span>
+              {% endif %}
+            </td>
+            <td class="nowrap">₹ {{ r.collected }}</td>
+            <td class="nowrap">₹ {{ r.pending }}</td>
+            <td>
+              {% if r.status == 'paid' %}<span class="chip status-paid">Paid</span>{% endif %}
+              {% if r.status == 'unpaid' %}<span class="chip status-unpaid">Unpaid</span>{% endif %}
+              {% if r.status == 'partial' %}<span class="chip status-partial">Partial</span>{% endif %}
+            </td>
+            <td>
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'finance_monthly_remind' r.user.id %}?year={{ summary.year }}&month={{ summary.month }}">Send Reminder</a>
+              {% if r.whatsapp_phone %}
+                <a class="btn btn-sm btn-outline-success" target="_blank" href="https://wa.me/{{ r.whatsapp_phone }}?text={{ 'Hello%20this%20is%20a%20rent%20reminder' }}">WhatsApp</a>
+              {% endif %}
+              
+            </td>
+          </tr>
+          {% if r.segments and r.segments|length > 1 %}
+          <tr class="collapse" id="stays-{{ r.user.id }}">
+            <td colspan="11">
+              <div class="border rounded p-2 bg-light">
+                <div class="small text-secondary mb-1">Stays in {{ summary.month }}/{{ summary.year }} ({{ r.month_days }} days in month)</div>
+                <ul class="mb-0">
+                  {% for s in r.segments %}
+                    <li class="small">
+                      Room {{ s.room_no }} — {{ s.joining|date:'Y-m-d' }} to {% if s.leaving %}{{ s.leaving|date:'Y-m-d' }}{% else %}—{% endif %}
+                      · Base ₹ {{ s.base }} ({{ s.source }}) · Days {{ s.stayed }}/{{ r.month_days }} · Expected ₹ {{ s.expected }}
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            </td>
+          </tr>
+          {% endif %}
+        {% empty %}
+          <tr><td colspan="11" class="text-secondary">No residents found for this month.</td></tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="fw-semibold">
+            <td colspan="5" class="text-end">Totals</td>
+            <td title="One-time advance (not monthly)">₹ {{ footer_totals.advance|default:'0.00' }}</td>
+            <td>₹ {{ footer_totals.expected|default:'0.00' }}</td>
+            <td>₹ {{ footer_totals.collected|default:'0.00' }}</td>
+            <td>₹ {{ footer_totals.pending|default:'0.00' }}</td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="card-body">
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <div class="input-group input-group-sm" style="max-width:280px;">
+          <span class="input-group-text">Search</span>
+          <input id="searchBox" type="text" class="form-control" placeholder="Name / Email / Room">
+        </div>
+        <div class="btn-group btn-group-sm ms-auto">
+          <button class="btn btn-outline-secondary" type="button" id="btnSelectUnpaid">Select Unpaid</button>
+          <button class="btn btn-outline-secondary" type="button" id="btnClearSelection">Clear</button>
+        </div>
+        <button class="btn btn-primary" type="submit">Send Bulk Reminder (Email)</button>
+      </div>
+    </div>
+  </div>
+</form>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+      try { new bootstrap.Tooltip(tooltipTriggerEl); } catch (e) {}
+    });
+
+    function setAllStays(open) {
+      document.querySelectorAll('tr.collapse[id^="stays-"]').forEach(function(el){
+        if (open) {
+          el.classList.add('show');
+        } else {
+          el.classList.remove('show');
+        }
+      });
+    }
+
+    function updateToggleLabel() {
+      var btn = document.getElementById('btnToggleAll');
+      if (!btn) return;
+      var rows = document.querySelectorAll('tr.collapse[id^="stays-"]');
+      if (!rows.length) {
+        btn.disabled = true;
+        btn.textContent = 'Expand All Stays';
+        btn.dataset.state = 'collapsed';
+        return;
+      }
+      var openCount = 0;
+      rows.forEach(function(el){ if (el.classList.contains('show')) openCount++; });
+      if (openCount === rows.length) {
+        btn.textContent = 'Collapse All Stays';
+        btn.dataset.state = 'expanded';
+      } else {
+        btn.textContent = 'Expand All Stays';
+        btn.dataset.state = 'collapsed';
+      }
+    }
+
+    var btnToggleAll = document.getElementById('btnToggleAll');
+    if (btnToggleAll) {
+      btnToggleAll.addEventListener('click', function(){
+        var allOpen = true;
+        document.querySelectorAll('tr.collapse[id^="stays-"]').forEach(function(el){
+          if (!el.classList.contains('show')) allOpen = false;
+        });
+        setAllStays(!allOpen);
+        updateToggleLabel();
+      });
+    }
+
+    // Keep toggle label in sync when users open/close individual stays via Bootstrap collapse
+    document.querySelectorAll('tr.collapse[id^="stays-"]').forEach(function(el){
+      el.addEventListener('shown.bs.collapse', updateToggleLabel);
+      el.addEventListener('hidden.bs.collapse', updateToggleLabel);
+    });
+
+    // Initialize toggle label once on load
+    updateToggleLabel();
+
+    // Month picker sync and quick action
+    var monthPicker = document.getElementById('monthPicker');
+    var monthHidden = document.getElementById('monthHidden');
+    var yearHidden = document.getElementById('yearHidden');
+    var btnThisMonth = document.getElementById('btnThisMonth');
+    function applyMonthValue(ym) {
+      // ym is YYYY-MM
+      var parts = (ym || '').split('-');
+      if (parts.length === 2) {
+        var y = parseInt(parts[0], 10);
+        var m = parseInt(parts[1], 10);
+        if (!isNaN(y) && !isNaN(m)) {
+          if (monthHidden) monthHidden.value = m;
+          if (yearHidden) yearHidden.value = y;
+        }
+      }
+    }
+    if (monthPicker) {
+      monthPicker.addEventListener('change', function(){
+        applyMonthValue(this.value);
+        if (this.form) { this.form.submit(); }
+      });
+      // Ensure hidden fields reflect initial visible picker value
+      applyMonthValue(monthPicker.value);
+    }
+    if (btnThisMonth && monthPicker) {
+      btnThisMonth.addEventListener('click', function(){
+        var now = new Date();
+        var y = now.getFullYear();
+        var m = (now.getMonth() + 1).toString().padStart(2, '0');
+        var ym = y + '-' + m;
+        monthPicker.value = ym;
+        applyMonthValue(ym);
+        if (monthPicker.form) { monthPicker.form.submit(); }
+      });
+    }
+
+    // Client-side search
+    var searchBox = document.getElementById('searchBox');
+    if (searchBox) {
+      searchBox.addEventListener('input', function(){
+        var q = this.value.toLowerCase();
+        document.querySelectorAll('#monthlyTable tbody tr').forEach(function(tr){
+          if (tr.classList.contains('collapse')) return; // skip details rows
+          var text = tr.innerText.toLowerCase();
+          tr.style.display = text.indexOf(q) >= 0 ? '' : 'none';
+        });
+      });
+    }
+
+    // Quick select unpaid
+    var btnSelectUnpaid = document.getElementById('btnSelectUnpaid');
+    var btnClearSelection = document.getElementById('btnClearSelection');
+    if (btnSelectUnpaid) btnSelectUnpaid.addEventListener('click', function(){
+      document.querySelectorAll('#monthlyTable tbody tr[data-status="unpaid"] input.rowchk:not([disabled])').forEach(c=>c.checked=true);
+    });
+    if (btnClearSelection) btnClearSelection.addEventListener('click', function(){
+      document.querySelectorAll('input.rowchk').forEach(c=>c.checked=false);
+    });
+  });
+</script>
+{% endblock %}

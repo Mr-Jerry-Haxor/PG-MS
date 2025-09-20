@@ -37,6 +37,16 @@
       .fade-in{animation:fade .4s ease both;}
       @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
       .responsive-actions{display:flex;flex-wrap:wrap;gap:.5rem}
+      /* Global mobile helpers */
+      .nowrap{white-space:nowrap}
+      .toolbar-wrap{display:flex;flex-wrap:wrap;gap:.5rem}
+      .stack-sm{display:flex;gap:.5rem}
+      @media (max-width: 576px){
+        .stack-sm{flex-direction:column!important;align-items:stretch!important}
+        .stack-sm>*{width:100%!important}
+        .hide-xs{display:none!important}
+        .table-mobile-sm td,.table-mobile-sm th{padding:.35rem .5rem}
+      }
       @media (max-width:600px){
         h1,h2,h3.h4{font-size:clamp(1.1rem,4vw,1.25rem)!important}
         .navbar-brand{font-size:1rem}

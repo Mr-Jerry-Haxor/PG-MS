@@ -43,6 +43,7 @@ def dashboard(request):
 		pg = None
 		pg_id = request.GET.get('pg') or request.session.get('active_pg_id')
 		if pg_id:
+			# Enforce: can only switch to PGs you manage
 			pg = pgs_qs.filter(id=pg_id).first()
 		if not pg:
 			pg = pgs_qs.first()

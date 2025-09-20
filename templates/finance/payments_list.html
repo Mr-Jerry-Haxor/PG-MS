@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Payments • PG-MS{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div class="d-flex align-items-center gap-2">
     <h1 class="h4 mb-0">Payments</h1>
     {% if pgs and pgs|length > 1 %}
@@ -18,22 +18,70 @@
   </div>
   <a href="{% url 'payments_new' %}" class="btn btn-primary">New</a>
 </div>
+<form method="get" class="card border-0 shadow-sm mb-3">
+  <div class="card-body d-flex flex-wrap gap-2 align-items-end stack-sm">
+    {% if pgs and pgs|length > 1 %}
+    <div>
+      <label class="form-label small">PG</label>
+      <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div>
+      <label class="form-label small">Search</label>
+      <input type="search" name="q" value="{{ filters.q }}" class="form-control form-control-sm" placeholder="Name / Email / Mode / Type / Notes / Amount">
+    </div>
+    <div>
+      <label class="form-label small">Month</label>
+      <input type="month" name="ym" value="{{ filters.ym }}" class="form-control form-control-sm" style="min-width:160px">
+    </div>
+    <div>
+      <label class="form-label small">From</label>
+      <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+    </div>
+    <div>
+      <label class="form-label small">To</label>
+      <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+    </div>
+    <div class="ms-auto"></div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light btn-sm" href="{% url 'payments_list' %}">Reset</a>
+      <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+    </div>
+  </div>
+</form>
 <div class="card border-0 shadow-sm">
   <div class="table-responsive">
     <table class="table align-middle mb-0">
       <thead>
-        <tr><th>User</th><th>Amount</th><th>Date</th><th>Status</th><th>Mode</th><th>Type</th><th></th></tr>
+        <tr><th>User</th><th>Amount</th><th>Date</th><th>Mode</th><th>Type</th><th>Notes</th><th></th></tr>
       </thead>
       <tbody>
       {% for i in items %}
         <tr>
           <td>{{ i.user.email }}</td>
-          <td>₹ {{ i.amount }}</td>
+          <td class="nowrap">₹ {{ i.amount }}</td>
           <td>{{ i.date }}</td>
-          <td>{{ i.status }}</td>
           <td>{{ i.mode }}</td>
           <td>{{ i.type }}</td>
-          <td class="text-end"><a href="{% url 'payments_edit' i.id %}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+          <td class="text-truncate" style="max-width:260px">{{ i.notes|default:'—' }}</td>
+          <td class="text-end">
+            <form method="post" action="{% url 'payments_delete' i.id %}" id="delete-form-{{ i.id }}">
+              {% csrf_token %}
+              <button type="button" class="btn btn-sm btn-outline-danger"
+                      data-bs-toggle="modal"
+                      data-bs-target="#confirmDeleteModal"
+                      data-form-id="delete-form-{{ i.id }}"
+                      data-user="{{ i.user.email }}"
+                      data-amount="{{ i.amount }}"
+                      data-date="{{ i.date }}">
+                Delete
+              </button>
+            </form>
+          </td>
         </tr>
       {% empty %}
         <tr><td colspan="7" class="text-secondary">No payments.</td></tr>
@@ -42,4 +90,64 @@
     </table>
   </div>
 </div>
+<script>
+  // Auto-submit when month changes for quick filtering
+  document.addEventListener('DOMContentLoaded', function(){
+    var form = document.querySelector('form.card');
+    var ym = document.querySelector('input[name="ym"]');
+    if (form && ym) {
+      ym.addEventListener('change', function(){ form.submit(); });
+    }
+  });
+</script>
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmDeleteLabel">Delete Payment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Are you sure you want to delete this payment?</p>
+        <div class="small text-secondary">
+          <div><span class="fw-semibold">User:</span> <span id="delUser">—</span></div>
+          <div><span class="fw-semibold">Amount:</span> ₹ <span id="delAmount">—</span></div>
+          <div><span class="fw-semibold">Date:</span> <span id="delDate">—</span></div>
+        </div>
+        <div class="alert alert-warning mt-3 mb-0" role="alert">
+          This action cannot be undone.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+ </div>
+<script>
+  // Hook up modal to trigger the correct form submit and populate details
+  document.addEventListener('DOMContentLoaded', function(){
+    var modalEl = document.getElementById('confirmDeleteModal');
+    var formIdToSubmit = null;
+    modalEl.addEventListener('show.bs.modal', function (event) {
+      var button = event.relatedTarget;
+      formIdToSubmit = button.getAttribute('data-form-id');
+      // Populate info
+      var user = button.getAttribute('data-user') || '—';
+      var amount = button.getAttribute('data-amount') || '—';
+      var date = button.getAttribute('data-date') || '—';
+      document.getElementById('delUser').textContent = user;
+      document.getElementById('delAmount').textContent = amount;
+      document.getElementById('delDate').textContent = date;
+    });
+    document.getElementById('confirmDeleteBtn').addEventListener('click', function(){
+      if (formIdToSubmit) {
+        var form = document.getElementById(formIdToSubmit);
+        if (form) form.submit();
+      }
+    });
+  });
+</script>
 {% endblock %}
