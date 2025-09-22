@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Dashboard • PG-MS{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
   <div class="d-flex align-items-center gap-2">
     <h1 class="h3 mb-0">Dashboard</h1>
     {% if user.is_authenticated and user.profile.is_pg_admin and pgs and pgs|length > 1 %}
@@ -18,10 +18,29 @@
     <span class="badge bg-light text-dark">{{ pg.name }}</span>
   {% endif %}
 </div>
-<div class="row g-3">
+<style>
+  /* Scoped to dashboard cards for compact, mobile-first layout */
+  .dashboard-cards .card:not(.month-card) .card-body{padding:.75rem .85rem}
+  .dashboard-cards .display-6{font-size:1.5rem}
+  @media (max-width:576px){
+    .dashboard-cards .display-6{font-size:1.35rem}
+  }
+  /* Equal-height tiles on mobile */
+  .dashboard-cards > [class^="col-"],
+  .dashboard-cards > [class*=" col-"]{display:flex}
+  .dashboard-cards > [class^="col-"] > .card,
+  .dashboard-cards > [class^="col-"] > a.card,
+  .dashboard-cards > [class*=" col-"] > .card,
+  .dashboard-cards > [class*=" col-"] > a.card{width:100%}
+  @media (max-width:576px){
+    .dashboard-cards .card:not(.month-card){min-height:120px;display:flex}
+    .dashboard-cards .card:not(.month-card) .card-body{display:flex;flex-direction:column;justify-content:center}
+  }
+</style>
+<div class="row g-3 dashboard-cards">
   
   {% if user.is_authenticated and user.profile.is_pg_admin %}
-  <div class="col-12 col-md-6 col-lg-3">
+  <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0" style="background:var(--accent)">
       <div class="card-body">
         <div class="d-flex align-items-center gap-3">
@@ -34,7 +53,7 @@
       </div>
     </div>
   </div>
-  <div class="col-12 col-md-6 col-lg-3">
+  <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0" style="background:var(--accent-3)">
       <div class="card-body">
         <div class="text-secondary small">Vacant Shares</div>
@@ -42,7 +61,7 @@
       </div>
     </div>
   </div>
-  <div class="col-12 col-md-6 col-lg-3">
+  <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0" style="background:#dbeafe">
       <div class="card-body">
         <div class="text-secondary small">Occupied Shares</div>
@@ -50,7 +69,7 @@
       </div>
     </div>
   </div>
-  <div class="col-12 col-md-6 col-lg-3">
+  <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0">
       <div class="card-body">
         <div class="text-secondary small d-flex justify-content-between align-items-center">
@@ -64,7 +83,7 @@
     </div>
   </div>
   {% if user.is_authenticated and user.profile.is_pg_admin %}
-  <div class="col-12 col-md-6 col-lg-3">
+  <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0">
       <div class="card-body">
         <div class="text-secondary small d-flex justify-content-between align-items-center">
@@ -75,7 +94,7 @@
       </div>
     </div>
   </div>
-  <div class="col-12 col-md-6 col-lg-3">
+  <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0">
       <div class="card-body">
         <div class="text-secondary small d-flex justify-content-between align-items-center">
@@ -211,17 +230,6 @@
         <div>
           <div class="fw-semibold">Monthly Overview</div>
           <div class="small text-secondary">Expected vs collected</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'payments_new' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-plus-circle fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">New Payment</div>
-          <div class="small text-secondary">Record payment</div>
         </div>
       </div>
     </a>

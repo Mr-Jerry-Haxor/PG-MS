@@ -52,6 +52,20 @@
         .navbar-brand{font-size:1rem}
         .container{padding-left:1rem;padding-right:1rem}
       }
+      /* Mobile-first media defaults */
+      img,svg,video{max-width:100%;height:auto}
+      .w-100-xs{width:100%}
+      @media (max-width: 576px){
+        .gap-xs-1{gap:.25rem}
+        .gap-xs-2{gap:.5rem}
+        .text-wrap-anywhere{overflow-wrap:anywhere;word-break:break-word}
+        .overflow-x-auto-xs{overflow-x:auto}
+      }
+      /* Make wide tables scroll on mobile */
+      @media (max-width: 576px){
+        .table{font-size:.9rem}
+        .table th,.table td{vertical-align:middle}
+      }
       footer {background: transparent;}
     </style>
     {% block head_extra %}{% endblock %}
@@ -207,6 +221,20 @@
             form.submit();
           });
         }
+        // Ensure all tables become horizontally scrollable on small screens if not already wrapped
+        document.querySelectorAll('table').forEach(function(tbl){
+          // Skip tables already inside a .table-responsive wrapper
+          const parent = tbl.parentElement;
+          const alreadyWrapped = parent && parent.classList.contains('table-responsive');
+          if (!alreadyWrapped) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'table-responsive';
+            tbl.parentNode.insertBefore(wrapper, tbl);
+            wrapper.appendChild(tbl);
+          }
+          // Add compact padding helper for smaller screens
+          tbl.classList.add('table-mobile-sm');
+        });
       });
     </script>
     {% block body_extra %}{% endblock %}
