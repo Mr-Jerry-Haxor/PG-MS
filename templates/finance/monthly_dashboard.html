@@ -22,12 +22,16 @@
   <div class="d-flex align-items-center gap-2">
     <h1 class="h5 mb-0">Monthly Dashboard</h1>
     <div class="btn-group ms-2" role="group">
-      <a class="btn btn-outline-secondary btn-sm" href="?year={{ summary.nav.prev_year }}&month={{ summary.nav.prev_month }}{% if pg %}&pg={{ pg.id }}{% endif %}">← Prev</a>
-      <a class="btn btn-outline-secondary btn-sm" href="?year={{ summary.nav.next_year }}&month={{ summary.nav.next_month }}{% if pg %}&pg={{ pg.id }}{% endif %}">Next →</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?year={{ summary.nav.prev_year }}&month={{ summary.nav.prev_month }}{% if pg %}&pg={{ pg.id }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}{% if current_dir %}&dir={{ current_dir }}{% endif %}">← Prev</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?year={{ summary.nav.next_year }}&month={{ summary.nav.next_month }}{% if pg %}&pg={{ pg.id }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}{% if current_dir %}&dir={{ current_dir }}{% endif %}">Next →</a>
     </div>
     {% if pgs and pgs|length > 1 %}
       <form method="get" action="" class="m-0 d-flex gap-2 align-items-center">
         <label class="small text-secondary">PG:</label>
+        <input type="hidden" name="year" value="{{ summary.year }}">
+        <input type="hidden" name="month" value="{{ summary.month }}">
+        <input type="hidden" name="sort" value="{{ current_sort|default:'room' }}">
+        <input type="hidden" name="dir" value="{{ current_dir|default:'asc' }}">
         <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
           {% for p in pgs %}
           <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
@@ -37,8 +41,9 @@
     {% endif %}
   </div>
   <div class="d-flex gap-2 flex-wrap w-100 w-md-auto justify-content-start justify-content-md-end mt-2 mt-md-0">
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_pdf' %}?year={{ summary.year }}&month={{ summary.month }}">Export PDF</a>
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_excel' %}?year={{ summary.year }}&month={{ summary.month }}">Export Excel</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_pdf' %}?year={{ summary.year }}&month={{ summary.month }}{% if current_sort %}&sort={{ current_sort }}{% endif %}{% if current_dir %}&dir={{ current_dir }}{% endif %}">Export PDF</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_excel' %}?year={{ summary.year }}&month={{ summary.month }}{% if current_sort %}&sort={{ current_sort }}{% endif %}{% if current_dir %}&dir={{ current_dir }}{% endif %}">Export Excel</a>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_csv' %}?year={{ summary.year }}&month={{ summary.month }}{% if current_sort %}&sort={{ current_sort }}{% endif %}{% if current_dir %}&dir={{ current_dir }}{% endif %}">Export CSV</a>
     <button class="btn btn-outline-secondary btn-sm" type="button" id="btnToggleAll" data-state="collapsed">Expand All Stays</button>
   </div>
 </div>
@@ -57,12 +62,31 @@
     </div>
     <div>
       <label class="form-label small">Filter</label>
-      <select name="only" class="form-select form-select-sm">
+      <select name="only" class="form-select form-select-sm" onchange="this.form.submit()">
         <option value="" {% if not request.GET.only %}selected{% endif %}>All</option>
         <option value="paid" {% if request.GET.only == 'paid' %}selected{% endif %}>Paid</option>
         <option value="unpaid" {% if request.GET.only == 'unpaid' %}selected{% endif %}>Unpaid</option>
         <option value="partial" {% if request.GET.only == 'partial' %}selected{% endif %}>Partial</option>
       </select>
+    </div>
+    <div>
+      <label class="form-label small">Sort by</label>
+      <div class="d-flex gap-2">
+        <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="room" {% if current_sort == 'room' %}selected{% endif %}>Room</option>
+          <option value="resident" {% if current_sort == 'resident' %}selected{% endif %}>Resident</option>
+          <option value="expected" {% if current_sort == 'expected' %}selected{% endif %}>Expected</option>
+          <option value="collected" {% if current_sort == 'collected' %}selected{% endif %}>Collected</option>
+          <option value="pending" {% if current_sort == 'pending' %}selected{% endif %}>Pending</option>
+          <option value="status" {% if current_sort == 'status' %}selected{% endif %}>Status</option>
+          <option value="joining" {% if current_sort == 'joining' %}selected{% endif %}>Joining</option>
+          <option value="leaving" {% if current_sort == 'leaving' %}selected{% endif %}>Leaving</option>
+        </select>
+        <select name="dir" class="form-select form-select-sm" onchange="this.form.submit()" style="max-width:110px;">
+          <option value="asc" {% if current_dir == 'asc' %}selected{% endif %}>Asc</option>
+          <option value="desc" {% if current_dir == 'desc' %}selected{% endif %}>Desc</option>
+        </select>
+      </div>
     </div>
     <button class="btn btn-primary btn-sm" type="submit">Apply</button>
   </div>
@@ -72,7 +96,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body">
         <div class="small text-secondary">Expected</div>
-        <div class="fs-5 fw-semibold">₹ {{ summary.total_expected }}</div>
+        <div class="fs-5 fw-semibold" id="sumExpected">₹ {{ summary.total_expected }}</div>
       </div>
     </div>
   </div>
@@ -80,7 +104,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body">
         <div class="small text-secondary">Collected</div>
-        <div class="fs-5 fw-semibold">₹ {{ summary.total_collected }}</div>
+        <div class="fs-5 fw-semibold" id="sumCollected">₹ {{ summary.total_collected }}</div>
       </div>
     </div>
   </div>
@@ -88,7 +112,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body">
         <div class="small text-secondary">Pending</div>
-        <div class="fs-5 fw-semibold">₹ {{ summary.total_pending }}</div>
+        <div class="fs-5 fw-semibold" id="sumPending">₹ {{ summary.total_pending }}</div>
       </div>
     </div>
   </div>
@@ -96,7 +120,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body">
         <div class="small text-secondary">Advance</div>
-        <div class="fs-5 fw-semibold">₹ {{ summary.total_advance|default:'0.00' }}</div>
+        <div class="fs-5 fw-semibold" id="sumAdvance">₹ {{ summary.total_advance|default:'0.00' }}</div>
       </div>
     </div>
   </div>
@@ -125,7 +149,7 @@
         </thead>
         <tbody>
         {% for r in rows %}
-          <tr data-status="{{ r.status }}">
+          <tr data-status="{{ r.status }}" data-user-id="{{ r.user.id }}">
             <td><input type="checkbox" class="rowchk" name="user_ids" value="{{ r.user.id }}" {% if r.status == 'paid' %}disabled{% endif %}></td>
             <td>
               <a href="{% url 'finance_ledger' r.user.id %}">{{ r.user.first_name }} {{ r.user.last_name }}</a>
@@ -146,12 +170,27 @@
                 <span class="badge bg-secondary ms-1">{{ r.segments|length }}</span>
               {% endif %}
             </td>
-            <td class="nowrap">₹ {{ r.collected }}</td>
-            <td class="nowrap">₹ {{ r.pending }}</td>
+            <td class="nowrap td-collected">₹ {{ r.collected }}</td>
+            <td class="nowrap td-pending">₹ {{ r.pending }}</td>
             <td>
-              {% if r.status == 'paid' %}<span class="chip status-paid">Paid</span>{% endif %}
-              {% if r.status == 'unpaid' %}<span class="chip status-unpaid">Unpaid</span>{% endif %}
-              {% if r.status == 'partial' %}<span class="chip status-partial">Partial</span>{% endif %}
+              {% if r.status == 'paid' %}<span class="chip status-paid quick-pay-chip"
+                data-user-id="{{ r.user.id }}" data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
+                data-user-email="{{ r.user.email }}" data-expected="{{ r.expected }}"
+                data-collected="{{ r.collected }}" data-pending="{{ r.pending }}"
+                data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
+                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">Paid</span>{% endif %}
+              {% if r.status == 'unpaid' %}<span class="chip status-unpaid quick-pay-chip"
+                data-user-id="{{ r.user.id }}" data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
+                data-user-email="{{ r.user.email }}" data-expected="{{ r.expected }}"
+                data-collected="{{ r.collected }}" data-pending="{{ r.pending }}"
+                data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
+                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">Unpaid</span>{% endif %}
+              {% if r.status == 'partial' %}<span class="chip status-partial quick-pay-chip"
+                data-user-id="{{ r.user.id }}" data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
+                data-user-email="{{ r.user.email }}" data-expected="{{ r.expected }}"
+                data-collected="{{ r.collected }}" data-pending="{{ r.pending }}"
+                data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
+                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">Partial</span>{% endif %}
             </td>
             <td>
               <a class="btn btn-sm btn-outline-secondary" href="{% url 'finance_monthly_remind' r.user.id %}?year={{ summary.year }}&month={{ summary.month }}">Send Reminder</a>
@@ -210,6 +249,76 @@
     </div>
   </div>
 </form>
+<!-- Quick Payment Modal -->
+<div class="modal fade" id="quickPayModal" tabindex="-1" aria-labelledby="quickPayModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{% url 'finance_monthly_quick_payment' %}" id="quickPayForm">
+        {% csrf_token %}
+        <input type="hidden" name="user_id" id="qp_user_id">
+        <input type="hidden" name="pg" value="{% if pg %}{{ pg.id }}{% endif %}">
+        <input type="hidden" name="year" value="{{ summary.year }}">
+        <input type="hidden" name="month" value="{{ summary.month }}">
+        <input type="hidden" name="only" value="{{ request.GET.only }}">
+        <input type="hidden" name="sort" value="{{ current_sort|default:'room' }}">
+        <input type="hidden" name="dir" value="{{ current_dir|default:'asc' }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="quickPayModalLabel">Add Payment</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-1 small text-secondary" id="qp_user_label"></div>
+          <div class="mb-2 small" id="qp_room_label"></div>
+          <div class="row g-2 align-items-end">
+            <div class="col-8">
+              <label class="form-label small">Amount</label>
+              <input type="number" class="form-control" step="0.01" min="0" name="amount" id="qp_amount" required>
+              <div class="form-text">Defaulted to Pending for this month. Toggle to edit.</div>
+            </div>
+            <div class="col-4 form-check form-switch mt-4 pt-2">
+              <input class="form-check-input" type="checkbox" role="switch" id="qp_toggle_edit">
+              <label class="form-check-label small" for="qp_toggle_edit">Edit amount</label>
+            </div>
+          </div>
+          <div class="row g-2 mt-2">
+            <div class="col-6">
+              <label class="form-label small">Date</label>
+              <input type="date" class="form-control" name="date" id="qp_date" value="{% now 'Y-m-d' %}">
+            </div>
+          </div>
+          <div class="row g-2 mt-2">
+            <div class="col">
+              <label class="form-label small">Mode</label>
+              <select class="form-select" name="mode" id="qp_mode">
+                <option value="upi">UPI</option>
+                <option value="cash">Cash</option>
+                <option value="bank">Bank Transfer</option>
+              </select>
+            </div>
+            <div class="col">
+              <label class="form-label small">Type</label>
+              <select class="form-select" name="type" id="qp_type">
+                <option value="fee">Fee</option>
+                <option value="advance">Advance</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-2">
+            <label class="form-label small">Notes (optional)</label>
+            <textarea class="form-control" name="notes" rows="2" placeholder="Reference, last 4 of UPI, etc."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="qp_submit_btn">
+            <span class="spinner-border spinner-border-sm me-1 d-none" role="status" aria-hidden="true" id="qp_submit_spinner"></span>
+            <span id="qp_submit_label">Submit</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  </div>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -328,6 +437,161 @@
     if (btnClearSelection) btnClearSelection.addEventListener('click', function(){
       document.querySelectorAll('input.rowchk').forEach(c=>c.checked=false);
     });
+
+    // Quick Payment: open modal on status chip click, prefill values
+    var qpModalEl = document.getElementById('quickPayModal');
+    var qpModal = qpModalEl ? new bootstrap.Modal(qpModalEl) : null;
+    document.querySelectorAll('.quick-pay-chip').forEach(function(el){
+      el.addEventListener('click', function(){
+        if (!qpModal) return;
+        var userId = this.dataset.userId;
+        var name = (this.dataset.userName || '').trim();
+        var email = (this.dataset.userEmail || '').trim();
+  var pending = parseFloat(this.dataset.pending || '0');
+        // Default amount to pending; lock input until toggled
+        var amt = isFinite(pending) ? pending.toFixed(2) : '0.00';
+        document.getElementById('qp_user_id').value = userId;
+        document.getElementById('qp_user_label').textContent = (name || email) + ' (' + email + ')';
+  // Room details
+  var room = (this.dataset.room || '').trim();
+  var joining = (this.dataset.joining || '').trim();
+  var leaving = (this.dataset.leaving || '').trim();
+  var roomLabel = document.getElementById('qp_room_label');
+  var parts = [];
+  if (room) parts.push('Room: ' + room);
+  if (joining) parts.push('Joining: ' + joining);
+  parts.push('Leaving: ' + (leaving || '—'));
+  roomLabel.textContent = parts.join(' • ');
+        var amtInput = document.getElementById('qp_amount');
+        var toggle = document.getElementById('qp_toggle_edit');
+        amtInput.value = amt; amtInput.readOnly = true; toggle.checked = false;
+        // Overwrite any previous handler to avoid duplicates
+        toggle.onchange = function(){
+          amtInput.readOnly = !this.checked;
+          if (!this.checked) {
+            amtInput.value = amt; // reset to pending when locking
+          }
+        };
+        qpModal.show();
+      });
+    });
+
+    // Confirm before submit
+    // Toast helper
+    function showToast(message, type) {
+      var container = document.getElementById('toastContainer');
+      if (!container) return alert(message);
+      var toastEl = document.createElement('div');
+      toastEl.className = 'toast align-items-center text-bg-' + (type || 'success') + ' border-0';
+      toastEl.setAttribute('role', 'alert'); toastEl.setAttribute('aria-live', 'assertive'); toastEl.setAttribute('aria-atomic', 'true');
+      toastEl.innerHTML = '<div class="d-flex"><div class="toast-body">' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>';
+      container.appendChild(toastEl);
+      try {
+        var t = new bootstrap.Toast(toastEl, { delay: 2500 });
+        t.show();
+        toastEl.addEventListener('hidden.bs.toast', function(){ toastEl.remove(); });
+      } catch (e) {
+        // fallback
+        setTimeout(function(){ toastEl.remove(); }, 2500);
+      }
+    }
+
+    var qpForm = document.getElementById('quickPayForm');
+    // Elements for submit UX
+    var qpSubmitBtn = document.getElementById('qp_submit_btn');
+    var qpSubmitSpinner = document.getElementById('qp_submit_spinner');
+    var qpSubmitLabel = document.getElementById('qp_submit_label');
+    // Debounce/in-flight guard
+    var isSubmitting = false;
+    var lastSubmitTime = 0;
+    var MIN_SUBMIT_GAP_MS = 1200;
+
+    function setSubmittingState(active) {
+      if (active) {
+        isSubmitting = true;
+        if (qpSubmitBtn) qpSubmitBtn.disabled = true;
+        if (qpSubmitSpinner) qpSubmitSpinner.classList.remove('d-none');
+        if (qpSubmitLabel) qpSubmitLabel.textContent = 'Submitting...';
+      } else {
+        isSubmitting = false;
+        if (qpSubmitBtn) qpSubmitBtn.disabled = false;
+        if (qpSubmitSpinner) qpSubmitSpinner.classList.add('d-none');
+        if (qpSubmitLabel) qpSubmitLabel.textContent = 'Submit';
+      }
+    }
+
+    // Reset state when modal is shown/hidden
+    if (qpModalEl) {
+      qpModalEl.addEventListener('shown.bs.modal', function(){ setSubmittingState(false); });
+      qpModalEl.addEventListener('hidden.bs.modal', function(){ setSubmittingState(false); });
+    }
+    if (qpForm) {
+      qpForm.addEventListener('submit', function(e){
+        e.preventDefault();
+        var now = Date.now();
+        // Debounce: ignore very rapid repeated submits
+        if (isSubmitting || (now - lastSubmitTime) < MIN_SUBMIT_GAP_MS) { return; }
+        var amt = parseFloat(document.getElementById('qp_amount').value || '0');
+        if (!(amt > 0)) { showToast('Please enter a valid amount greater than 0.', 'danger'); return; }
+        var mode = document.getElementById('qp_mode').value;
+        var type = document.getElementById('qp_type').value;
+        var confirmMsg = 'Confirm to record payment of ₹' + amt.toFixed(2) + ' (' + type + ', ' + mode.toUpperCase() + ')?';
+        if (!confirm(confirmMsg)) { return; }
+        lastSubmitTime = now;
+        setSubmittingState(true);
+        var fd = new FormData(qpForm);
+        fd.append('ajax', '1');
+        fetch(qpForm.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function(r){ return r.json(); })
+          .then(function(res){
+            if (!res || !res.ok) { showToast((res && res.message) || 'Failed to add payment.', 'danger'); return; }
+            // Update UI inline
+            var row = document.querySelector('#monthlyTable tbody tr[data-user-id="' + res.user_id + '"]');
+            if (row) {
+              var colEl = row.querySelector('.td-collected');
+              var penEl = row.querySelector('.td-pending');
+              if (colEl) colEl.textContent = '₹ ' + (res.collected_display || res.collected);
+              if (penEl) penEl.textContent = '₹ ' + (res.pending_display || res.pending);
+              // Update status chip and row status
+              row.dataset.status = res.status;
+              var chip = row.querySelector('.quick-pay-chip');
+              if (chip) {
+                chip.textContent = (res.status || '').charAt(0).toUpperCase() + (res.status || '').slice(1);
+                chip.classList.remove('status-paid', 'status-unpaid', 'status-partial');
+                if (res.status === 'paid') chip.classList.add('status-paid');
+                else if (res.status === 'unpaid') chip.classList.add('status-unpaid');
+                else chip.classList.add('status-partial');
+                // Update datasets for future clicks
+                chip.dataset.collected = res.collected;
+                chip.dataset.pending = res.pending;
+              }
+              // Checkbox enable/disable depending on paid
+              var chk = row.querySelector('input.rowchk');
+              if (chk) chk.disabled = (res.status === 'paid');
+            }
+            // Update summary cards
+            if (res.sum_expected !== undefined) {
+              var se = document.getElementById('sumExpected'); if (se) se.textContent = '₹ ' + res.sum_expected;
+            }
+            if (res.sum_collected !== undefined) {
+              var sc = document.getElementById('sumCollected'); if (sc) sc.textContent = '₹ ' + res.sum_collected;
+            }
+            if (res.sum_pending !== undefined) {
+              var sp = document.getElementById('sumPending'); if (sp) sp.textContent = '₹ ' + res.sum_pending;
+            }
+            if (res.sum_advance !== undefined) {
+              var sa = document.getElementById('sumAdvance'); if (sa) sa.textContent = '₹ ' + res.sum_advance;
+            }
+            // Close modal
+            if (qpModal) qpModal.hide();
+            showToast(res.message || 'Payment recorded successfully.', 'success');
+          })
+          .catch(function(){ showToast('Network error while adding payment.', 'danger'); })
+          .finally(function(){ setSubmittingState(false); });
+      });
+    }
   });
 </script>
+<!-- Toast container -->
+<div id="toastContainer" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1060;"></div>
 {% endblock %}

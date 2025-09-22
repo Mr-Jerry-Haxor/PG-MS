@@ -4,6 +4,8 @@ from . import views
 
 urlpatterns = [
     path('my/', views.my_pg, name='pg_my'),
+    path('my/<int:pg_id>/qr.pdf', views.quick_booking_qr_pdf, name='pg_quick_booking_qr_pdf'),
+    path('tenants/', views.tenants, name='pg_tenants'),
     path('rooms/', views.rooms_list, name='pg_rooms'),
     path('rooms/new/', views.room_create, name='pg_room_create'),
     path('rooms/<int:pk>/edit/', views.room_edit, name='pg_room_edit'),

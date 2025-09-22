@@ -132,6 +132,8 @@ class ResidentApplication(TimeStampedModel):
 	aadhaar_number = models.CharField(max_length=20, blank=True)
 	selfie_url = models.URLField(blank=True)
 	aadhaar_file_url = models.URLField(blank=True)
+	# Optional second image URL when user uploads front/back images instead of a PDF
+	aadhaar_file_url_2 = models.URLField(blank=True)
 	# Vehicle details
 	has_vehicle = models.BooleanField(default=False)
 	vehicle_number = models.CharField(max_length=32, blank=True)

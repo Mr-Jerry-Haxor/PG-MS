@@ -1,18 +1,9 @@
 from django import forms
 from .models import Profile
-from django.core.validators import RegexValidator
 
 
 class ProfileForm(forms.ModelForm):
-    class Meta:
-        model = Profile
-        fields = ["phone"]
-        widgets = {
-            "phone": forms.TextInput(attrs={"class": "form-control", "placeholder": "+91 9xxxxxxxxx"})
-        }
-
-
-class OnboardingForm(forms.Form):
+    # Include User fields for convenient editing on the same form
     first_name = forms.CharField(
         max_length=150,
         required=True,
@@ -24,11 +15,14 @@ class OnboardingForm(forms.Form):
         required=True,
         widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Last name (surname)"}),
     )
-    phone = forms.CharField(
-        max_length=10,
-        required=True,
-        validators=[RegexValidator(r"^\d{10}$", message="Enter 10 digits (numbers only)")],
-        widget=forms.TextInput(attrs={"class": "form-control", "inputmode": "numeric", "pattern": "\\d{10}", "placeholder": "10-digit phone"}),
-    )
-    # Selfie removed per updated requirements
+
+    class Meta:
+        model = Profile
+        fields = ["phone", "first_name", "last_name"]
+        widgets = {
+            "phone": forms.TextInput(attrs={"class": "form-control", "placeholder": "+91 9xxxxxxxxx"})
+        }
+
+
+    # OnboardingForm removed; phone can be edited on profile or application pages per new flow.
 

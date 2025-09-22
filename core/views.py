@@ -13,30 +13,30 @@ def dashboard(request):
 	notes = Notification.objects.filter(user=request.user, is_read=False).order_by('-created_at')[:10]
 	ctx = {"notifications": notes}
 	from datetime import date as _date
+
 	ctx["today"] = _date.today()
-	# For PG users, show their current booking details on dashboard
-	if hasattr(request.user, 'profile') and request.user.profile.is_pg_user:
-		approved_qs = (
-			Booking.objects.filter(user=request.user, status=Booking.APPROVED)
-			.select_related('room', 'room__pg')
-			.prefetch_related('application')
-			.order_by('-created_at')
-		)
-		pending_qs = (
-			Booking.objects.filter(user=request.user, status=Booking.PENDING)
-			.select_related('room', 'room__pg')
-			.order_by('-created_at')
-		)
-		my_booking = approved_qs.first() or pending_qs.first()
-		ctx["my_booking"] = my_booking
-		ctx["my_pending_bookings"] = list(pending_qs)
-		ctx["my_approved_bookings"] = list(approved_qs)
-		completed_qs = (
-			Booking.objects.filter(user=request.user, status=Booking.COMPLETED)
-			.select_related('room', 'room__pg')
-			.order_by('-updated_at')[:5]
-		)
-		ctx["my_completed_bookings"] = list(completed_qs)
+	# Always show user's bookings on dashboard (approved/pending/completed)
+	approved_qs = (
+		Booking.objects.filter(user=request.user, status=Booking.APPROVED)
+		.select_related('room', 'room__pg')
+		.prefetch_related('application')
+		.order_by('-created_at')
+	)
+	pending_qs = (
+		Booking.objects.filter(user=request.user, status=Booking.PENDING)
+		.select_related('room', 'room__pg')
+		.order_by('-created_at')
+	)
+	my_booking = approved_qs.first() or pending_qs.first()
+	ctx["my_booking"] = my_booking
+	ctx["my_pending_bookings"] = list(pending_qs)
+	ctx["my_approved_bookings"] = list(approved_qs)
+	completed_qs = (
+		Booking.objects.filter(user=request.user, status=Booking.COMPLETED)
+		.select_related('room', 'room__pg')
+		.order_by('-updated_at')[:5]
+	)
+	ctx["my_completed_bookings"] = list(completed_qs)
 	if hasattr(request.user, 'profile') and request.user.profile.is_pg_admin:
 		# Determine PGs this admin can manage and active selection
 		pgs_qs = PG.objects.filter(admins__user=request.user).order_by('name')
@@ -52,6 +52,11 @@ def dashboard(request):
 		# Metrics for selected PG (or across all if none)
 		today = timezone.now().date()
 		month_start = today.replace(day=1)
+		# Compute first day of next month for upper bound
+		if month_start.month == 12:
+			next_month_start = month_start.replace(year=month_start.year + 1, month=1, day=1)
+		else:
+			next_month_start = month_start.replace(month=month_start.month + 1, day=1)
 		if pg:
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg=pg).count()
 			occupied = RoomShareStatus.objects.filter(status=RoomShareStatus.OCCUPIED, room__pg=pg).count()
@@ -61,10 +66,10 @@ def dashboard(request):
 			leaving_pending = leaving_qs.filter(leaving_confirmed_date__isnull=True).count()
 			leaving_confirmed = leaving_qs.filter(leaving_confirmed_date__isnull=False).count()
 			income = (
-				Payment.objects.filter(pg=pg, date__gte=month_start).aggregate(total=Sum('amount')).get('total') or 0
+				Payment.objects.filter(pg=pg, date__gte=month_start, date__lt=next_month_start).aggregate(total=Sum('amount')).get('total') or 0
 			)
 			expense = (
-				Expenditure.objects.filter(pg=pg, date__gte=month_start).aggregate(total=Sum('amount')).get('total') or 0
+				Expenditure.objects.filter(pg=pg, date__gte=month_start, date__lt=next_month_start).aggregate(total=Sum('amount')).get('total') or 0
 			)
 		else:
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg__admins__user=request.user).count()
@@ -74,10 +79,10 @@ def dashboard(request):
 			leaving_pending = leaving_qs.filter(leaving_confirmed_date__isnull=True).count()
 			leaving_confirmed = leaving_qs.filter(leaving_confirmed_date__isnull=False).count()
 			income = (
-				Payment.objects.filter(pg__admins__user=request.user, date__gte=month_start).aggregate(total=Sum('amount')).get('total') or 0
+				Payment.objects.filter(pg__admins__user=request.user, date__gte=month_start, date__lt=next_month_start).aggregate(total=Sum('amount')).get('total') or 0
 			)
 			expense = (
-				Expenditure.objects.filter(pg__admins__user=request.user, date__gte=month_start).aggregate(total=Sum('amount')).get('total') or 0
+				Expenditure.objects.filter(pg__admins__user=request.user, date__gte=month_start, date__lt=next_month_start).aggregate(total=Sum('amount')).get('total') or 0
 			)
 		ctx.update({
 			"vacant_shares": vacant,
@@ -98,6 +103,12 @@ def notifications(request):
 	items = Notification.objects.filter(user=request.user).order_by('-created_at')
 	return render(request, 'notifications.html', {"items": items})
 
+
+def home(request):
+	"""Render home for anonymous users; redirect authenticated users to dashboard."""
+	if request.user.is_authenticated:
+		return redirect('dashboard')
+	return render(request, 'home.html')
 
 @login_required
 def notification_read(request, pk):

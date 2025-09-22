@@ -164,7 +164,7 @@
             .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
             .field small{display:block;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:.15rem}
             .doc-preview{display:flex;flex-wrap:wrap;gap:.5rem}
-            .doc-thumb{width:80px;height:80px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
+              .doc-thumb{width:64px;height:64px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
             .declarations-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;margin-top:.5rem}
             .decl-item{display:flex;align-items:center;gap:.35rem;font-size:.75rem;padding:.4rem .55rem;border:1px solid #e2e8f0;border-radius:.5rem;background:#f8fafc}
             .field-box{background:#f8fafc;padding:.55rem .6rem;border:1px solid #e2e8f0;border-radius:.6rem;min-height:72px}
@@ -196,14 +196,15 @@
             <div class="field field-box"><small>Food Pref</small><span>{{ b.application.food_pref|default:"—" }}</span></div>
             <div class="field field-box"><small>Marital</small><span>{{ b.application.marital_status|default:"—" }}</span></div>
             <div class="field field-box"><small>Date of Admission</small><span>{{ b.application.date_of_admission|default:"—" }}</span></div>
+            <div class="field field-box"><small>Joining Date</small><span>{% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
           </div>
           <div class="field mt-2 field-box"><small>Address</small><div>{{ b.application.address|default:"—" }}</div></div>
           <div class="section-title">Family</div>
           <div class="field-grid">
             <div class="field field-box"><small>Father Name</small><span>{{ b.application.father_name|default:"—" }}</span></div>
-            <div class="field field-box"><small>Father Phone</small><span>{{ b.application.father_phone|default:"—" }}</span></div>
+            <div class="field field-box"><small>Father Phone or Emergency Contact 1</small><span>{{ b.application.father_phone|default:"—" }}</span></div>
             <div class="field field-box"><small>Mother Name</small><span>{{ b.application.mother_name|default:"—" }}</span></div>
-            <div class="field field-box"><small>Mother Phone</small><span>{{ b.application.mother_phone|default:"—" }}</span></div>
+            <div class="field field-box"><small>Mother Phone or Emergency Contact 2</small><span>{{ b.application.mother_phone|default:"—" }}</span></div>
           </div>
           <div class="section-title">Education / Work</div>
           <div class="field-grid">
@@ -223,18 +224,25 @@
               </a>
             {% endif %}
             {% if b.application.aadhaar_file_url %}
-              <a class="btn btn-outline-secondary btn-sm" href="{{ b.application.aadhaar_file_url }}" target="_blank">Open Aadhaar PDF</a>
+              <a class="btn btn-outline-secondary btn-sm" href="{{ b.application.aadhaar_file_url }}" target="_blank">Open Aadhaar/Document</a>
+              {% if b.application.aadhaar_file_url_2 %}
+                <a class="btn btn-outline-secondary btn-sm" href="{{ b.application.aadhaar_file_url_2 }}" target="_blank">Open Back Side</a>
+              {% endif %}
             {% endif %}
           </div>
           {% if b.application.aadhaar_file_url %}
           <div class="mt-2">
             <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#aadhaarPreview{{ b.id }}" aria-expanded="false" aria-controls="aadhaarPreview{{ b.id }}">
-              <i class="bi bi-file-earmark-pdf me-1"></i>Preview Aadhaar
+              <i class="bi bi-file-earmark-text me-1"></i>Preview Document
             </button>
             <div class="collapse mt-2" id="aadhaarPreview{{ b.id }}">
               <div class="doc-embed p-2">
-                <iframe src="{{ b.application.aadhaar_file_url }}" title="Aadhaar PDF" style="width:100%;height:480px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load PDF (blocked).'}))"></iframe>
-                <div class="small text-secondary mt-2">If the PDF doesn't display, it may be blocked by the server. <a href="{{ b.application.aadhaar_file_url }}" target="_blank">Open in new tab</a>.</div>
+                <iframe src="{{ b.application.aadhaar_file_url }}" title="Aadhaar/Document" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load document (blocked).'}))"></iframe>
+                {% if b.application.aadhaar_file_url_2 %}
+                  <div class="small text-secondary mt-2">Back Side</div>
+                  <iframe src="{{ b.application.aadhaar_file_url_2 }}" title="Aadhaar/Document Back Side" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load document (blocked).'}))"></iframe>
+                {% endif %}
+                <div class="small text-secondary mt-2">If the document doesn't display, it may be blocked by the server. <a href="{{ b.application.aadhaar_file_url }}" target="_blank">Open in new tab</a>.</div>
               </div>
             </div>
           </div>

@@ -15,7 +15,8 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from datetime import date, timedelta
 import calendar
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from decimal import Decimal, InvalidOperation
 from io import StringIO
 import csv
 from .models import ResidentRate, ReminderLog, Adjustment
@@ -609,6 +610,12 @@ def monthly_dashboard(request):
     prev_year, prev_month = _shift(year, month, -1)
     next_year, next_month = _shift(year, month, +1)
 
+    # Sorting parameters (default: room number ascending)
+    sort_key = (request.GET.get('sort') or 'room').strip().lower()
+    sort_dir = (request.GET.get('dir') or 'asc').strip().lower()
+    if sort_dir not in ('asc', 'desc'):
+        sort_dir = 'asc'
+
     # Active residents overlapping with month. Select ONE booking per user: the one with max overlap days in the month
     active_bks = (
         Booking.objects.filter(
@@ -740,6 +747,50 @@ def monthly_dashboard(request):
     if only in ('paid', 'unpaid', 'partial'):
         rows = [r for r in rows if r['status'] == only]
 
+    # Apply sorting
+    import re
+    def _room_sort_val(room_no):
+        s = str(room_no or '')
+        m = re.search(r"\d+", s)
+        if m:
+            try:
+                return (0, int(m.group()))
+            except Exception:
+                pass
+        # Fallback: place non-numeric after numeric, then by string
+        return (1, s.strip().lower())
+
+    def _resident_name(u):
+        name = f"{(getattr(u, 'first_name', '') or '').strip()} {(getattr(u, 'last_name', '') or '').strip()}".strip()
+        return (name or getattr(u, 'email', '') or '').strip().lower()
+
+    status_order = {'unpaid': 0, 'partial': 1, 'paid': 2}
+
+    def _key(row):
+        if sort_key == 'room':
+            return _room_sort_val(row.get('room_no'))
+        if sort_key in ('resident', 'user'):
+            return _resident_name(row.get('user'))
+        if sort_key == 'expected':
+            return float(row.get('expected') or 0.0)
+        if sort_key == 'collected':
+            return float(row.get('collected') or 0.0)
+        if sort_key == 'pending':
+            return float(row.get('pending') or 0.0)
+        if sort_key == 'status':
+            return status_order.get(row.get('status'), 99)
+        if sort_key == 'joining':
+            # None should sort last in asc, first in desc; we encode as (is_none, value)
+            j = row.get('joining')
+            return (j is None, j or m_first)
+        if sort_key == 'leaving':
+            l = row.get('leaving')
+            return (l is None, l or m_first)
+        # Default fallback
+        return _room_sort_val(row.get('room_no'))
+
+    rows.sort(key=_key, reverse=(sort_dir == 'desc'))
+
     # Footer totals for displayed rows
     footer_totals = {
         'advance': round(sum((r.get('advance') or 0.0) for r in rows), 2),
@@ -772,6 +823,8 @@ def monthly_dashboard(request):
         'summary': summary,
         'pgs': list(_admin_pgs(request.user)),
         'm_first': m_first,
+        'current_sort': sort_key,
+        'current_dir': sort_dir,
     })
 
 
@@ -789,6 +842,12 @@ def monthly_export_csv(request):
     month = int(request.GET.get('month') or today.month)
     m_first, m_last, _ = _month_range(year, month)
 
+    # Sorting params (default to dashboard defaults)
+    sort_key = (request.GET.get('sort') or 'room').strip().lower()
+    sort_dir = (request.GET.get('dir') or 'asc').strip().lower()
+    if sort_dir not in ('asc', 'desc'):
+        sort_dir = 'asc'
+
     # Build rows like dashboard by summing all overlapping stays per user
     active_bks = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg).select_related('user', 'room')
     by_user = {}
@@ -799,9 +858,8 @@ def monthly_export_csv(request):
         if ov <= 0:
             continue
         by_user.setdefault(b.user_id, []).append(b)
-    sio = StringIO()
-    w = csv.writer(sio)
-    w.writerow(['User', 'Email', 'Room', 'Joining', 'Advance', 'Expected', 'Collected', 'Pending', 'Status'])
+    # Build data rows for sorting
+    data_rows = []
     for user_id, bookings in by_user.items():
         bookings.sort(key=lambda b: (b.joining_date or b.start_date or b.created_at.date()))
         u = bookings[0].user
@@ -825,13 +883,61 @@ def monthly_export_csv(request):
         else:
             status = 'unpaid'
         advance = _advance_paid_for_user_pg(u, pg)
+        data_rows.append({
+            'user': u,
+            'user_name': (f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email),
+            'email': u.email,
+            'room_no': getattr(bookings[-1].room, 'room_no', ''),
+            'joining': earliest_start,
+            'advance': float(advance),
+            'expected': float(expected),
+            'collected': float(collected),
+            'pending': float(max(0.0, pending)),
+            'status': status,
+        })
+
+    # Sort rows like dashboard
+    import re
+    status_order = {'unpaid': 0, 'partial': 1, 'paid': 2}
+    def _room_sort_val(room_no):
+        s = str(room_no or '')
+        m = re.search(r"\d+", s)
+        if m:
+            try:
+                return (0, int(m.group()))
+            except Exception:
+                pass
+        return (1, s.strip().lower())
+    def _resident_name_lower(row):
+        return (row.get('user_name') or '').strip().lower()
+    def _key(row):
+        if sort_key == 'room':
+            return _room_sort_val(row.get('room_no'))
+        if sort_key in ('resident', 'user'):
+            return _resident_name_lower(row)
+        if sort_key == 'expected':
+            return float(row.get('expected') or 0.0)
+        if sort_key == 'collected':
+            return float(row.get('collected') or 0.0)
+        if sort_key == 'pending':
+            return float(row.get('pending') or 0.0)
+        if sort_key == 'status':
+            return status_order.get(row.get('status'), 99)
+        if sort_key == 'joining':
+            j = row.get('joining')
+            return (j is None, j or m_first)
+        # Default
+        return _room_sort_val(row.get('room_no'))
+    data_rows.sort(key=_key, reverse=(sort_dir == 'desc'))
+
+    sio = StringIO()
+    w = csv.writer(sio)
+    w.writerow(['User', 'Email', 'Room', 'Joining', 'Advance', 'Expected', 'Collected', 'Pending', 'Status'])
+    for r in data_rows:
         w.writerow([
-            f"{u.first_name} {u.last_name}".strip() or u.email,
-            u.email,
-            getattr(bookings[-1].room, 'room_no', ''),
-            (earliest_start.strftime('%Y-%m-%d') if earliest_start else ''),
-            f"{float(advance):.2f}",
-            f"{expected:.2f}", f"{float(collected):.2f}", f"{max(0.0, pending):.2f}", status
+            r['user_name'], r['email'], r['room_no'],
+            (r['joining'].strftime('%Y-%m-%d') if r['joining'] else ''),
+            f"{r['advance']:.2f}", f"{r['expected']:.2f}", f"{r['collected']:.2f}", f"{r['pending']:.2f}", r['status']
         ])
     resp = HttpResponse(sio.getvalue(), content_type='text/csv')
     resp['Content-Disposition'] = f'attachment; filename="monthly-{year}-{month:02d}.csv"'
@@ -1094,6 +1200,12 @@ def monthly_export_pdf(request):
     month = int(request.GET.get('month') or today.month)
     m_first, m_last, m_days = _month_range(year, month)
 
+    # Sorting params (default to dashboard defaults)
+    sort_key = (request.GET.get('sort') or 'room').strip().lower()
+    sort_dir = (request.GET.get('dir') or 'asc').strip().lower()
+    if sort_dir not in ('asc', 'desc'):
+        sort_dir = 'asc'
+
     # Reuse dashboard grouping logic
     active_bks = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg).select_related('user', 'room')
     by_user = {}
@@ -1143,6 +1255,54 @@ def monthly_export_pdf(request):
         data.append({'user': u, 'segments': segs, 'expected': round(expected_total, 2), 'collected': round(float(collected), 2), 'pending': round(max(0.0, expected_total - collected), 2)})
         total_expected += expected_total
         total_collected += float(collected)
+
+    # Sort tenant data like dashboard
+    import re
+    status_order = {'unpaid': 0, 'partial': 1, 'paid': 2}
+    def _room_sort_val(room_no):
+        s = str(room_no or '')
+        m = re.search(r"\d+", s)
+        if m:
+            try:
+                return (0, int(m.group()))
+            except Exception:
+                pass
+        return (1, s.strip().lower())
+    def _resident_name(u):
+        name = f"{(getattr(u, 'first_name', '') or '').strip()} {(getattr(u, 'last_name', '') or '').strip()}".strip()
+        return (name or getattr(u, 'email', '') or '').strip().lower()
+    def _key(row):
+        if sort_key == 'room':
+            # Representative room: latest segment's room
+            rep_room = None
+            if row['segments']:
+                rep_room = row['segments'][-1]['room']
+            return _room_sort_val(rep_room)
+        if sort_key in ('resident', 'user'):
+            return _resident_name(row['user'])
+        if sort_key == 'expected':
+            return float(row.get('expected') or 0.0)
+        if sort_key == 'collected':
+            return float(row.get('collected') or 0.0)
+        if sort_key == 'pending':
+            return float(row.get('pending') or 0.0)
+        if sort_key == 'status':
+            # Derive status like dashboard
+            exp = float(row.get('expected') or 0.0)
+            col = float(row.get('collected') or 0.0)
+            st = 'paid' if col >= exp - 0.5 else ('partial' if col > 0 else 'unpaid')
+            return status_order.get(st, 99)
+        if sort_key == 'joining':
+            joins = [(s['start']) for s in row['segments'] if s.get('start')]
+            j = min(joins) if joins else None
+            return (j is None, j or m_first)
+        if sort_key == 'leaving':
+            leaves = [(s['end']) for s in row['segments'] if s.get('end')]
+            l = max(leaves) if leaves else None
+            return (l is None, l or m_first)
+        return _room_sort_val(row['segments'][-1]['room'] if row['segments'] else None)
+
+    data.sort(key=_key, reverse=(sort_dir == 'desc'))
 
     # Build PDF (lazy import ReportLab)
     rl_pagesizes = importlib.util.find_spec('reportlab.lib.pagesizes')
@@ -1313,6 +1473,12 @@ def monthly_export_excel(request):
     openpyxl = importlib.import_module('openpyxl')
     get_column_letter = importlib.import_module('openpyxl.utils').get_column_letter
 
+    # Sorting params (default to dashboard defaults)
+    sort_key = (request.GET.get('sort') or 'room').strip().lower()
+    sort_dir = (request.GET.get('dir') or 'asc').strip().lower()
+    if sort_dir not in ('asc', 'desc'):
+        sort_dir = 'asc'
+
     # Group by user
     active_bks = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg).select_related('user', 'room')
     by_user = {}
@@ -1329,10 +1495,61 @@ def monthly_export_excel(request):
     ws_overall.title = 'Overall Summary'
     ws_tenants = wb.create_sheet('Tenant-wise Details')
 
+    # Prepare sorted user order like dashboard
+    import re
+    def _room_sort_val(room_no):
+        s = str(room_no or '')
+        m = re.search(r"\d+", s)
+        if m:
+            try:
+                return (0, int(m.group()))
+            except Exception:
+                pass
+        return (1, s.strip().lower())
+    status_order = {'unpaid': 0, 'partial': 1, 'paid': 2}
+    def _resident_name(u):
+        name = f"{(getattr(u, 'first_name', '') or '').strip()} {(getattr(u, 'last_name', '') or '').strip()}".strip()
+        return (name or getattr(u, 'email', '') or '').strip().lower()
+    def _user_sort_key(item):
+        user_id, bookings = item
+        bookings = sorted(bookings, key=lambda b: (b.joining_date or b.start_date or b.created_at.date(), b.id))
+        u = bookings[0].user
+        # Representative fields
+        room_no = getattr(bookings[-1].room, 'room_no', '') if bookings else ''
+        # expected/collected for status/pending based sorts
+        expected_total = 0.0
+        for b in bookings:
+            expected_total += _expected_rent_for_user_pg_month(u, pg, b, m_first, m_last)
+        collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
+        pending = max(0.0, expected_total - collected)
+        if sort_key == 'room':
+            return _room_sort_val(room_no)
+        if sort_key in ('resident', 'user'):
+            return _resident_name(u)
+        if sort_key == 'expected':
+            return float(expected_total)
+        if sort_key == 'collected':
+            return float(collected)
+        if sort_key == 'pending':
+            return float(pending)
+        if sort_key == 'status':
+            st = 'paid' if collected >= expected_total - 0.5 else ('partial' if collected > 0 else 'unpaid')
+            return status_order.get(st, 99)
+        if sort_key == 'joining':
+            j = min((b.joining_date or b.start_date or b.created_at.date()) for b in bookings)
+            return (j is None, j or m_first)
+        if sort_key == 'leaving':
+            leaves = [b.leaving_date for b in bookings if b.leaving_date]
+            l = max(leaves) if leaves else None
+            return (l is None, l or m_first)
+        return _room_sort_val(room_no)
+
+    sorted_users = sorted(by_user.items(), key=_user_sort_key, reverse=(sort_dir == 'desc'))
+
     # Overall Summary (Metric | Amount (Rs.))
     total_expected = 0.0
     total_collected = 0.0
-    for user_id, bookings in by_user.items():
+    for user_id, bookings in sorted_users:
         bookings.sort(key=lambda b: (b.joining_date or b.start_date or b.created_at.date()))
         u = bookings[0].user
         expected_total = 0.0
@@ -1350,7 +1567,7 @@ def monthly_export_excel(request):
     ws_tenants.append(['Tenant Name', 'Room', 'Joining Date', 'Leaving Date', 'Base Rent', 'Days Stayed', 'Expected', 'Collected', 'Pending'])
     from django.contrib.auth import get_user_model
     User = get_user_model()
-    for user_id, bookings in by_user.items():
+    for user_id, bookings in sorted_users:
         u = bookings[0].user
         # Compute collected/pending once per tenant for this month
         collected_u = _collected_for_user_pg_month(u, pg, m_first, m_last)
@@ -1880,3 +2097,235 @@ def monthly_bulk_remind(request):
         ReminderLog.objects.create(by_user=request.user, to_user=u, pg=pg, method='email', subject=subject, message=body, for_month=m_first)
     messages.success(request, f"Bulk reminder emailed to {len(users)} resident(s) in this PG.")
     return redirect('finance_monthly')
+
+
+@login_required
+def monthly_quick_payment(request):
+    """Create a quick payment from the monthly dashboard modal and email the resident.
+    Expected POST fields: user_id, pg, amount, mode (upi|cash|bank), type (fee|advance), optional notes.
+    Preserves month context on redirect via year, month, sort, dir, only.
+    """
+    if request.method != 'POST':
+        return redirect('finance_monthly')
+    if not _require_pg_admin(request.user):
+        messages.error(request, 'PG Admin access required.')
+        return redirect('dashboard')
+
+    # Context params for redirect
+    year = request.POST.get('year'); month = request.POST.get('month')
+    only = request.POST.get('only')
+    sort_key = request.POST.get('sort'); sort_dir = request.POST.get('dir')
+    req_pg = request.POST.get('pg') or request.GET.get('pg')
+    if req_pg and not _is_authorized_pg(request.user, req_pg):
+        return HttpResponse('Forbidden: Unauthorized PG.', status=403)
+    pg = _active_pg(request)
+    # If explicit pg provided and user has access, prefer it
+    if req_pg and str(getattr(pg, 'id', '')) != str(req_pg):
+        try:
+            from pgadmin.models import PG as PGModel
+            pg = PGModel.objects.get(pk=req_pg)
+        except Exception:
+            pass
+
+    # Validate inputs
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        u = User.objects.get(pk=int(request.POST.get('user_id') or 0))
+    except Exception:
+        messages.error(request, 'Invalid resident selected.')
+        return redirect('finance_monthly')
+    if not _user_related_to_pg(u, pg):
+        return HttpResponse('Forbidden: Resident not in selected PG.', status=403)
+    raw_amount = (request.POST.get('amount') or '').strip()
+    try:
+        amount = Decimal(raw_amount)
+    except (InvalidOperation, TypeError):
+        messages.error(request, 'Invalid amount.')
+        return redirect('finance_monthly')
+    if amount <= 0:
+        messages.error(request, 'Amount should be greater than 0.')
+        return redirect('finance_monthly')
+    mode = (request.POST.get('mode') or 'upi').lower()
+    if mode not in ('upi', 'cash', 'bank'):
+        mode = 'upi'
+    ptype = (request.POST.get('type') or 'fee').lower()
+    if ptype not in ('fee', 'advance'):
+        ptype = 'fee'
+    notes = (request.POST.get('notes') or '').strip()
+    # Optional date override
+    date_str = (request.POST.get('date') or '').strip()
+    pay_date = None
+    if date_str:
+        try:
+            pay_date = parse_date(date_str)
+        except Exception:
+            pay_date = None
+    if not pay_date:
+        pay_date = timezone.now().date()
+
+    # Create Payment (success by default)
+    try:
+        Payment.objects.create(
+            user=u, pg=pg, amount=amount, date=pay_date,
+            status='success', mode=mode, type=ptype, notes=notes,
+        )
+    except Exception as e:
+        messages.error(request, f'Failed to create payment: {e}')
+        # AJAX error
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+            return JsonResponse({'ok': False, 'message': f'Failed to create payment: {e}'})
+        return redirect('finance_monthly')
+
+    # Send HTML receipt email using shared template (best-effort)
+    try:
+        # Build context for email template
+        tenant_name = f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email
+        # Room number from the most recent/current booking in this PG
+        room_no = ''
+        try:
+            latest_b = Booking.objects.filter(user=u, room__pg=pg).select_related('room').order_by('-joining_date', '-start_date', '-created_at').first()
+            room_no = getattr(getattr(latest_b, 'room', None), 'room_no', '') or ''
+        except Exception:
+            pass
+        # Phone numbers
+        pg_phone = getattr(pg, 'phone', '') or ''
+        # WhatsApp phone from resident profile, normalized with country prefix 91 if 10 digits
+        import re
+        raw_phone = getattr(getattr(u, 'profile', None), 'phone', '') or ''
+        digits = re.sub(r"\D", "", raw_phone)
+        if digits.startswith('0') and len(digits) > 1:
+            digits = digits.lstrip('0')
+        if len(digits) == 10:
+            whatsapp_phone = '91' + digits
+        else:
+            whatsapp_phone = digits or ''
+        # Address short (first line)
+        addr = getattr(pg, 'address', '') or ''
+        pg_address_short = (addr.splitlines()[0] if addr else '')
+        # Payment details display
+        payment_type_disp = 'Fee' if ptype == 'fee' else 'Advance'
+        payment_mode_disp = {'upi': 'UPI', 'cash': 'Cash', 'bank': 'Bank Transfer'}.get(mode, mode.title())
+        payment_date_disp = pay_date.strftime('%Y-%m-%d')
+        ctx = {
+            'tenant_name': tenant_name,
+            'pg_name': getattr(pg, 'name', '') or 'PG',
+            'room_number': room_no,
+            'payment_date': payment_date_disp,
+            'payment_type': payment_type_disp,
+            'payment_method': payment_mode_disp,
+            'amount_paid': f"{amount:.2f}",
+            'pg_phone': pg_phone,
+            'whatsapp_phone': whatsapp_phone,
+            'current_year': timezone.now().year,
+            'pg_address_short': pg_address_short,
+        }
+        html = render_to_string('email/payments/receipt.html', ctx)
+        text = strip_tags(html)
+        subject = 'Payment Receipt'
+        msg = EmailMultiAlternatives(subject, text, to=[u.email])
+        msg.attach_alternative(html, 'text/html')
+        msg.send(fail_silently=True)
+    except Exception:
+        pass
+
+    # Compute updated monthly metrics for this user
+    # Determine month context for metrics; fallback to payment date month if not provided
+    try:
+        y = int(year) if year else pay_date.year
+    except Exception:
+        y = pay_date.year
+    try:
+        m = int(month) if month else pay_date.month
+    except Exception:
+        m = pay_date.month
+    m_first, m_last, _ = _month_range(y, m)
+
+    # Expected across overlapping bookings in the month
+    expected_total = 0.0
+    user_bookings = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg, user=u).select_related('room')
+    for b in user_bookings:
+        s = b.joining_date or b.start_date or b.created_at.date()
+        e = b.leaving_date
+        if _overlap_days(s, e, m_first, m_last) > 0:
+            expected_total += _expected_rent_for_user_pg_month(u, pg, b, m_first, m_last)
+    expected_total = float(round(expected_total, 2))
+    collected_total = float(round(_collected_for_user_pg_month(u, pg, m_first, m_last), 2))
+    pending_total = float(round(max(0.0, expected_total - collected_total), 2))
+    # Status classification
+    if collected_total >= expected_total - 0.5:
+        new_status = 'paid'
+    elif collected_total > 0:
+        new_status = 'partial'
+    else:
+        new_status = 'unpaid'
+
+    # Recompute overall summary totals for the selected PG and month (respecting filter 'only' if provided)
+    # Build resident rows data similar to monthly_dashboard but only gathering totals
+    active_bks = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg).select_related('user', 'room')
+    by_user = {}
+    for b in active_bks:
+        s = b.joining_date or b.start_date or b.created_at.date()
+        e = b.leaving_date
+        if _overlap_days(s, e, m_first, m_last) <= 0:
+            continue
+        by_user.setdefault(b.user_id, []).append(b)
+    totals_expected = 0.0
+    totals_collected = 0.0
+    totals_advance = 0.0
+    # Precompute total advance across all users in this PG
+    try:
+        adv_qs = Payment.objects.filter(pg=pg, status='success', type='advance')
+        totals_advance = float(adv_qs.aggregate(total=Sum('amount')).get('total') or 0.0)
+    except Exception:
+        totals_advance = 0.0
+    # Calculate expected/collected across users, with optional status filter
+    only_filter = (only or '').strip().lower()
+    for user_id, bookings in by_user.items():
+        u2 = bookings[0].user
+        exp_u = 0.0
+        for b in bookings:
+            s = b.joining_date or b.start_date or b.created_at.date()
+            e = b.leaving_date
+            if _overlap_days(s, e, m_first, m_last) > 0:
+                exp_u += _expected_rent_for_user_pg_month(u2, pg, b, m_first, m_last)
+        col_u = _collected_for_user_pg_month(u2, pg, m_first, m_last)
+        status_u = 'paid' if col_u >= exp_u - 0.5 else ('partial' if col_u > 0 else 'unpaid')
+        if only_filter in ('paid', 'partial', 'unpaid') and status_u != only_filter:
+            continue
+        totals_expected += exp_u
+        totals_collected += float(col_u)
+    totals_pending = max(0.0, totals_expected - totals_collected)
+
+    # AJAX response
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+        return JsonResponse({
+            'ok': True,
+            'message': f'Payment of ₹{amount:.2f} added for {u.email}.',
+            'user_id': u.id,
+            'expected': f"{expected_total:.2f}",
+            'collected': f"{collected_total:.2f}",
+            'pending': f"{pending_total:.2f}",
+            'collected_display': f"{collected_total:.2f}",
+            'pending_display': f"{pending_total:.2f}",
+            'status': new_status,
+            # Overall cards
+            'sum_expected': f"{totals_expected:.2f}",
+            'sum_collected': f"{totals_collected:.2f}",
+            'sum_pending': f"{totals_pending:.2f}",
+            'sum_advance': f"{totals_advance:.2f}",
+        })
+
+    # Non-AJAX: flash and redirect back with context
+    messages.success(request, f'Payment of ₹{amount:.2f} added for {u.email}.')
+    from django.urls import reverse
+    base = reverse('finance_monthly')
+    params = []
+    if year: params.append(f'year={year}')
+    if month: params.append(f'month={month}')
+    if only: params.append(f'only={only}')
+    if sort_key: params.append(f'sort={sort_key}')
+    if sort_dir: params.append(f'dir={sort_dir}')
+    if pg: params.append(f'pg={pg.id}')
+    q = ('?' + '&'.join(params)) if params else ''
+    return redirect(base + q)

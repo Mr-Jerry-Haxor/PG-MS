@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
-from core.views import dashboard, notifications, notification_read, notifications_mark_all
+from core.views import dashboard, notifications, notification_read, notifications_mark_all, home
 from core.views import dashboard
 
 urlpatterns = [
@@ -29,7 +29,7 @@ urlpatterns = [
     path('b/', include('bookings.urls')),
     path('f/', include('finance.urls')),
     path('sa/', include('siteadmin.urls')),
-    path('', TemplateView.as_view(template_name='home.html'), name='home'),
+    path('', home, name='home'),
     path('dashboard/', dashboard, name='dashboard'),
     path('notifications/', notifications, name='notifications'),
     path('notifications/<int:pk>/read/', notification_read, name='notification_read'),

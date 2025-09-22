@@ -28,14 +28,14 @@ class ResidentApplicationAdmin(admin.ModelAdmin):
 	list_display = ("id", "user", "pg", "room", "phone", "date_of_admission", "has_vehicle", "created_at")
 	list_filter = ("pg", "room__pg", "has_vehicle", "occupation", "marital_status", "food_pref")
 	search_fields = ("user__email", "phone", "name", "vehicle_number")
-	readonly_fields = ("selfie_url", "aadhaar_file_url", "created_at", "updated_at")
+	readonly_fields = ("selfie_url", "aadhaar_file_url", "aadhaar_file_url_2", "created_at", "updated_at")
 	autocomplete_fields = ("user", "booking", "pg", "room")
 	fieldsets = (
 		(None, {"fields": ("user", "booking", "pg", "room", "name", "dob", "age", "phone", "email")}),
 		("Parents", {"fields": ("father_name", "father_phone", "mother_name", "mother_phone")}),
 		("Organization / Education", {"fields": ("education", "occupation", "org_name", "org_address")}),
 		("Admission", {"fields": ("date_of_admission", "food_pref", "marital_status")}),
-		("Documents", {"fields": ("aadhaar_number", "selfie_url", "aadhaar_file_url")}),
+		("Documents", {"fields": ("aadhaar_number", "selfie_url", "aadhaar_file_url", "aadhaar_file_url_2")}),
 		("Vehicle", {"fields": ("has_vehicle", "vehicle_number", "vehicle_model")}),
 		("Declarations", {"fields": ("decl_valuables", "decl_notice", "decl_deposit", "decl_truth")}),
 		("Timestamps", {"fields": ("created_at", "updated_at")}),

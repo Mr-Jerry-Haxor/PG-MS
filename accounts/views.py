@@ -2,7 +2,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.contrib import messages
 
-from .forms import ProfileForm, OnboardingForm
+from .forms import ProfileForm
 from django.conf import settings
 from core.drive import drive_upload
 from django.views.decorators.http import require_http_methods
@@ -10,6 +10,7 @@ from django.http import JsonResponse
 import requests
 from django.contrib.auth import login as auth_login, get_user_model
 from allauth.socialaccount.models import SocialAccount
+from .utils import names_from_email
 
 User = get_user_model()
 
@@ -20,41 +21,25 @@ def profile_view(request):
     if request.method == 'POST':
         form = ProfileForm(request.POST, request.FILES, instance=profile)
         if form.is_valid():
+            # Save user fields
+            request.user.first_name = form.cleaned_data.get('first_name', '').strip()
+            request.user.last_name = form.cleaned_data.get('last_name', '').strip()
+            request.user.save(update_fields=['first_name', 'last_name'])
+            # Save profile
             obj = form.save(commit=False)
-            selfie_file = request.FILES.get('selfie')
-                # Selfie removed from onboarding per updated requirements
-            obj.save()
+            # Selfie removed from onboarding per updated requirements
+            obj.save(update_fields=['phone'])
             messages.success(request, "Profile updated.")
             return redirect('profile')
     else:
-        form = ProfileForm(instance=profile)
+        form = ProfileForm(instance=profile, initial={
+            'first_name': request.user.first_name or '',
+            'last_name': request.user.last_name or '',
+        })
     return render(request, 'accounts/profile.html', {"form": form, "profile": profile})
 
 
-@login_required
-@require_http_methods(["GET", "POST"])
-def onboarding(request):
-    profile = request.user.profile
-    if request.method == 'POST':
-        form = OnboardingForm(request.POST, request.FILES)
-        if form.is_valid():
-            # Update user's names as well
-            request.user.first_name = form.cleaned_data['first_name']
-            request.user.last_name = form.cleaned_data['last_name']
-            request.user.save(update_fields=['first_name', 'last_name'])
-            profile.phone = form.cleaned_data['phone']
-            # Selfie capture moved to post-approval application flow
-                # Selfie removed from onboarding; may be added later in application process
-            profile.save(update_fields=['phone'])
-            messages.success(request, "Thanks! You're all set.")
-            return redirect('dashboard')
-    else:
-        form = OnboardingForm(initial={
-            'first_name': request.user.first_name or '',
-            'last_name': request.user.last_name or '',
-            'phone': profile.phone if profile.phone else ''
-        })
-    return render(request, 'accounts/onboarding.html', {"form": form, "profile": profile})
+from django.shortcuts import render
 from django.shortcuts import render
 
 # Create your views here.
@@ -80,6 +65,18 @@ def google_onetap(request):
         if not email or not email_verified:
             return JsonResponse({'ok': False, 'error': 'unverified_email'}, status=400)
         user, created = User.objects.get_or_create(email__iexact=email, defaults={'email': email, 'username': email.split('@')[0]})
+        # If newly created or names missing, derive names from email
+        if created or not ((user.first_name or '').strip() or (user.last_name or '').strip()):
+            first, last = names_from_email(email)
+            changed = False
+            if first and (not (user.first_name or '').strip()):
+                user.first_name = first
+                changed = True
+            if last and (not (user.last_name or '').strip()):
+                user.last_name = last
+                changed = True
+            if changed:
+                user.save(update_fields=['first_name', 'last_name'])
         if created:
             # Ensure profile created by signal
             pass

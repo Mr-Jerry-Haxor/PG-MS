@@ -180,7 +180,10 @@
                 <a href="{{ b.application.selfie_url }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-person-bounding-box me-1"></i>Selfie</a>
               {% endif %}
               {% if b.application.aadhaar_file_url %}
-                <a href="{{ b.application.aadhaar_file_url }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-pdf me-1"></i>Aadhaar PDF</a>
+                <a href="{{ b.application.aadhaar_file_url }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-text me-1"></i>Document</a>
+                {% if b.application.aadhaar_file_url_2 %}
+                  <a href="{{ b.application.aadhaar_file_url_2 }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-image me-1"></i>Back Side</a>
+                {% endif %}
               {% endif %}
             </div>
             {% endif %}

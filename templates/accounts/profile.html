@@ -17,7 +17,11 @@
         {% endif %}
         <form method="post" enctype="multipart/form-data" novalidate>
           {% csrf_token %}
-          <div class="mb-3">{{ form.phone|as_crispy_field }}</div>
+          <div class="row g-3">
+            <div class="col-md-6">{{ form.first_name|as_crispy_field }}</div>
+            <div class="col-md-6">{{ form.last_name|as_crispy_field }}</div>
+            <div class="col-12">{{ form.phone|as_crispy_field }}</div>
+          </div>
             {# Selfie display/upload removed per updated requirements #}
           <div class="d-flex gap-2 mt-2">
             <button class="btn btn-primary" type="submit">Save</button>

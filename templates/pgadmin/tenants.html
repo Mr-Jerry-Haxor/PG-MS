@@ -1,0 +1,396 @@
+{% extends 'base.html' %}
+{% block title %}My PG Tenants • PG-MS{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <h1 class="h4 mb-0">My PG Tenants</h1>
+    {% if pgs and pgs|length > 1 %}
+    <form method="get">
+      <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% elif pg %}
+      <span class="badge bg-light text-dark">{{ pg.name }}</span>
+    {% endif %}
+  </div>
+  <div>
+    <a href="{% url 'pg_rooms' %}" class="btn btn-outline-primary">Manage Rooms</a>
+  </div>
+</div>
+
+{% if not pg %}
+  <div class="alert alert-info">No PG selected. Please create a PG or request access.</div>
+{% else %}
+  {% if not rooms %}
+    <div class="alert alert-secondary">No rooms found for this PG.</div>
+  {% else %}
+  <div class="accordion" id="roomsAccordion">
+    {% for r in rooms %}
+    <div class="accordion-item mb-2 shadow-sm border-0">
+      <h2 class="accordion-header" id="heading{{ r.room.id }}">
+        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ r.room.id }}" aria-expanded="false" aria-controls="collapse{{ r.room.id }}">
+          <div class="d-flex flex-column w-100">
+            <div class="d-flex justify-content-between">
+              <span class="fw-semibold">Room {{ r.room.room_no }}</span>
+              <span class="text-secondary small">Shares: {{ r.room.total_shares }} • Vacant: {{ r.counts.vacant }} • Occupied: {{ r.counts.occupied }} • Reserved: {{ r.counts.reserved }} • Leaving: {{ r.counts.leaving }}</span>
+            </div>
+          </div>
+        </button>
+      </h2>
+      <div id="collapse{{ r.room.id }}" class="accordion-collapse collapse" aria-labelledby="heading{{ r.room.id }}" data-bs-parent="#roomsAccordion">
+        <div class="accordion-body">
+          <div class="row g-3">
+            {% for sd in r.shares %}
+            <div class="col-12 col-md-6 col-lg-4">
+              <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-3">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="fw-semibold">Share {{ sd.share.share_no }}</div>
+                    {% if sd.share.status == 'occupied' %}
+                      <span class="badge bg-success-subtle text-dark border">Occupied</span>
+                    {% elif sd.share.status == 'reserved' %}
+                      <span class="badge bg-warning-subtle text-dark border">Reserved</span>
+                    {% elif sd.share.status == 'vacant_from' %}
+                      <span class="badge bg-info-subtle text-dark border">Vacant from {{ sd.share.vacant_from|date:"Y-m-d" }}</span>
+                    {% else %}
+                      <span class="badge bg-secondary-subtle text-dark border">Vacant</span>
+                    {% endif %}
+                  </div>
+
+                  {% if sd.booking and sd.occupant %}
+                    <div class="mb-2">
+                      <div class="fw-semibold">{{ sd.occupant.get_full_name|default:sd.occupant.email }}</div>
+                      <div class="text-secondary small">{{ sd.occupant.email }}</div>
+                      <div class="text-secondary small">Phone: {{ sd.occupant.profile.phone|default:'—' }}</div>
+                      <div class="text-secondary small">Joining: {{ sd.booking.joining_date|default:'—' }}</div>
+                      <div class="text-secondary small">Leaving: {{ sd.booking.leaving_date|default:'—' }}</div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                      {% if sd.application %}
+                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ sd.booking.id }}">View Application</button>
+                        {% if sd.application.status != 'confirmed' %}
+                          <!-- Confirm -->
+                          <form method="post" action="{% url 'pg_application_confirm' sd.application.id %}">
+                            {% csrf_token %}
+                            <button class="btn btn-sm btn-success" type="submit">Confirm</button>
+                          </form>
+                          <!-- Reject modal trigger -->
+                          <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ sd.application.id }}">Reject</button>
+                          <!-- Refill modal trigger -->
+                          <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#refillModal{{ sd.application.id }}">Refill</button>
+                        {% endif %}
+                      {% else %}
+                        <a href="{% url 'pg_application_email_send' sd.booking.id %}" class="btn btn-sm btn-outline-primary">Send Reminder</a>
+                      {% endif %}
+                      {% if sd.is_pending and sd.booking %}
+                        <form method="post" action="{% url 'pg_booking_approve' sd.booking.id %}">{% csrf_token %}
+                          <button class="btn btn-sm btn-success" type="submit">Approve Booking</button>
+                        </form>
+                        <form method="post" action="{% url 'pg_booking_reject' sd.booking.id %}">{% csrf_token %}
+                          <button class="btn btn-sm btn-outline-danger" type="submit">Reject Booking</button>
+                        </form>
+                      {% endif %}
+                    </div>
+
+                    {% if sd.application %}
+                    <!-- Reject Modal -->
+                    <div class="modal fade" id="rejectModal{{ sd.application.id }}" tabindex="-1" aria-labelledby="rejectLabel{{ sd.application.id }}" aria-hidden="true">
+                      <div class="modal-dialog">
+                        <div class="modal-content">
+                          <form method="post" action="{% url 'pg_application_reject' sd.application.id %}">
+                            {% csrf_token %}
+                            <div class="modal-header">
+                              <h5 class="modal-title" id="rejectLabel{{ sd.application.id }}">Reject Application</h5>
+                              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                              <label class="form-label">Reason</label>
+                              <textarea class="form-control" name="reason" rows="3" required></textarea>
+                            </div>
+                            <div class="modal-footer">
+                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                              <button type="submit" class="btn btn-danger">Reject</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Refill Modal -->
+                    <div class="modal fade" id="refillModal{{ sd.application.id }}" tabindex="-1" aria-labelledby="refillLabel{{ sd.application.id }}" aria-hidden="true">
+                      <div class="modal-dialog">
+                        <div class="modal-content">
+                          <form method="post" action="{% url 'pg_application_refill' sd.application.id %}">
+                            {% csrf_token %}
+                            <div class="modal-header">
+                              <h5 class="modal-title" id="refillLabel{{ sd.application.id }}">Request Re-Fill</h5>
+                              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                              <label class="form-label">Comment</label>
+                              <textarea class="form-control" name="comment" rows="3" placeholder="Provide details on what needs updating" required></textarea>
+                            </div>
+                            <div class="modal-footer">
+                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                              <button type="submit" class="btn btn-primary">Send</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                    {% endif %}
+
+                    {% if sd.application %}
+                    <!-- Application View Modal (mirrors resident applications) -->
+                    <div class="modal fade" id="appModal{{ sd.booking.id }}" tabindex="-1" aria-labelledby="appModalLabel{{ sd.booking.id }}" aria-hidden="true">
+                      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                        <div class="modal-content">
+                          <div class="modal-header">
+                            <h5 class="modal-title" id="appModalLabel{{ sd.booking.id }}">Application — {{ sd.occupant.first_name }} {{ sd.occupant.last_name }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                          </div>
+                          <div class="modal-body">
+                            <style>
+                              .section-title{font-size:.7rem;letter-spacing:.08em;font-weight:600;text-transform:uppercase;color:#64748b;margin:1rem 0 .35rem}
+                              .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+                              .field small{display:block;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:.15rem}
+                              .doc-preview{display:flex;flex-wrap:wrap;gap:.5rem}
+                              .doc-thumb{width:64px;height:64px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
+                              .declarations-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;margin-top:.5rem}
+                              .decl-item{display:flex;align-items:center;gap:.35rem;font-size:.75rem;padding:.4rem .55rem;border:1px solid #e2e8f0;border-radius:.5rem;background:#f8fafc}
+                              .field-box{background:#f8fafc;padding:.55rem .6rem;border:1px solid #e2e8f0;border-radius:.6rem;min-height:72px}
+                              .doc-embed{border:1px solid #e2e8f0;border-radius:.6rem;background:#f8fafc}
+                              .selfie-embed{border:1px solid #e2e8f0;border-radius:.75rem;background:#f1f5f9;position:relative;overflow:hidden}
+                              .selfie-embed iframe{width:100%;height:280px;border:0}
+                              @media (min-width:768px){.selfie-embed iframe{height:320px}}
+                            </style>
+                            <div class="section-title mt-0">Personal</div>
+                            {% if sd.application.selfie_url %}
+                            <div class="mb-3">
+                              <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#selfieWrap{{ sd.booking.id }}" aria-expanded="false" aria-controls="selfieWrap{{ sd.booking.id }}">
+                                <i class="bi bi-person-bounding-box me-1"></i>Show Selfie
+                              </button>
+                              <div class="collapse mt-2" id="selfieWrap{{ sd.booking.id }}">
+                                <div class="selfie-embed p-2">
+                                  <iframe src="{{ sd.application.selfie_url }}" title="Selfie" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups" onload="this.dataset.loaded=1"></iframe>
+                                  <div class="small text-secondary mt-2">If the selfie doesn't render, <a href="{{ sd.application.selfie_url }}" target="_blank">open in new tab</a>.</div>
+                                </div>
+                              </div>
+                            </div>
+                            {% endif %}
+                            <div class="field-grid">
+                              <div class="field field-box"><small>Name</small><span class="fw-semibold d-block">{{ sd.application.name|default:sd.occupant.first_name }} {{ sd.occupant.last_name }}</span></div>
+                              <div class="field field-box"><small>DOB</small><span>{{ sd.application.dob|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Age</small><span>{{ sd.application.age|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Phone</small><span>{{ sd.application.phone|default:sd.occupant.profile.phone|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Email</small><span class="text-break">{{ sd.application.email|default:sd.occupant.email }}</span></div>
+                              <div class="field field-box"><small>Food Pref</small><span>{{ sd.application.food_pref|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Marital</small><span>{{ sd.application.marital_status|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Date of Admission</small><span>{{ sd.application.date_of_admission|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Joining Date</small><span>{% if sd.booking.joining_date %}{{ sd.booking.joining_date|date:"Y-m-d" }}{% elif sd.booking.start_date %}{{ sd.booking.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
+                            </div>
+                            <div class="field mt-2 field-box"><small>Address</small><div>{{ sd.application.address|default:"—" }}</div></div>
+                            <div class="section-title">Family</div>
+                            <div class="field-grid">
+                              <div class="field field-box"><small>Father Name</small><span>{{ sd.application.father_name|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Father Phone or Emergency Contact 1</small><span>{{ sd.application.father_phone|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Mother Name</small><span>{{ sd.application.mother_name|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Mother Phone or Emergency Contact 2</small><span>{{ sd.application.mother_phone|default:"—" }}</span></div>
+                            </div>
+                            <div class="section-title">Education / Work</div>
+                            <div class="field-grid">
+                              <div class="field field-box"><small>Occupation</small><span>{{ sd.application.occupation|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Education</small><span>{{ sd.application.education|default:"—" }}</span></div>
+                              <div class="field field-box"><small>Organisation</small><span>{{ sd.application.org_name|default:"—" }}</span></div>
+                            </div>
+                            <div class="field mt-2 field-box"><small>Organisation Address</small><div>{{ sd.application.org_address|default:"—" }}</div></div>
+                            <div class="section-title">Documents</div>
+                            <div class="field-grid">
+                              <div class="field field-box"><small>Aadhaar Number</small><span>{{ sd.application.aadhaar_number|default:"—" }}</span></div>
+                            </div>
+                            <div class="doc-preview mt-2">
+                              {% if sd.application.selfie_url %}
+                                <a href="{{ sd.application.selfie_url }}" target="_blank" class="text-decoration-none" title="Open Selfie">
+                                  <img src="{{ sd.application.selfie_url }}" alt="Selfie" class="doc-thumb" onerror="this.style.display='none'" />
+                                </a>
+                              {% endif %}
+                              {% if sd.application.aadhaar_file_url %}
+                                <a class="btn btn-outline-secondary btn-sm" href="{{ sd.application.aadhaar_file_url }}" target="_blank">Open Aadhaar/Document</a>
+                                {% if sd.application.aadhaar_file_url_2 %}
+                                  <a class="btn btn-outline-secondary btn-sm" href="{{ sd.application.aadhaar_file_url_2 }}" target="_blank">Open Back Side</a>
+                                {% endif %}
+                              {% endif %}
+                            </div>
+                            {% if sd.application.aadhaar_file_url %}
+                            <div class="mt-2">
+                              <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#aadhaarPreview{{ sd.booking.id }}" aria-expanded="false" aria-controls="aadhaarPreview{{ sd.booking.id }}">
+                                <i class="bi bi-file-earmark-text me-1"></i>Preview Document
+                              </button>
+                              <div class="collapse mt-2" id="aadhaarPreview{{ sd.booking.id }}">
+                                <div class="doc-embed p-2">
+                                  <iframe src="{{ sd.application.aadhaar_file_url }}" title="Aadhaar/Document" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer"></iframe>
+                                </div>
+                              </div>
+                            </div>
+                            {% endif %}
+                            <div class="section-title">Declarations</div>
+                            <div class="declarations-grid">
+                              <div class="decl-item">Valuables: <strong class="ms-1">{% if sd.application.decl_valuables %}Agreed{% else %}Not agreed{% endif %}</strong></div>
+                              <div class="decl-item">Notice: <strong class="ms-1">{% if sd.application.decl_notice %}Agreed{% else %}Not agreed{% endif %}</strong></div>
+                              <div class="decl-item">Deposit: <strong class="ms-1">{% if sd.application.decl_deposit %}Agreed{% else %}Not agreed{% endif %}</strong></div>
+                              <div class="decl-item">Truth: <strong class="ms-1">{% if sd.application.decl_truth %}Agreed{% else %}Not agreed{% endif %}</strong></div>
+                            </div>
+                          </div>
+                          <div class="modal-footer">
+                            <a class="btn btn-outline-secondary btn-sm" href="{% url 'pg_application_pdf' sd.application.id %}"><i class="bi bi-download me-1"></i>Export PDF</a>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {% endif %}
+
+                  {% else %}
+                    <div class="text-secondary small">No occupant.</div>
+                    {% if sd.share.status == 'reserved' %}
+                      <div class="text-secondary small">Reserved, awaiting move-in.</div>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Intercept all forms within tenants page for AJAX submit if supported
+  (function(){
+    // Toast helper (reuses site toast container if present)
+    function ensureToastContainer(){
+      let cont = document.querySelector('.toast-container');
+      if (!cont){
+        cont = document.createElement('div');
+        cont.className = 'toast-container position-fixed top-0 start-50 translate-middle-x p-3';
+        cont.style.zIndex = 1080;
+        document.body.appendChild(cont);
+      }
+      return cont;
+    }
+    function showToast(msg, variant){
+      const cont = ensureToastContainer();
+      const el = document.createElement('div');
+      el.className = `toast align-items-center text-bg-${variant||'primary'} border-0 shadow`;
+      el.role = 'alert'; el.ariaLive = 'assertive'; el.ariaAtomic = 'true'; el.dataset.bsDelay = '4500';
+      el.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>`;
+      cont.appendChild(el);
+      try { new bootstrap.Toast(el).show(); } catch(e) {}
+      setTimeout(()=>{ el.remove(); }, 5000);
+    }
+
+    // CSRF support from cookie
+    function getCookie(name){
+      const m = document.cookie.match('(^|;)\\s*'+name+'\\s*=\\s*([^;]+)');
+      return m ? m.pop() : '';
+    }
+    const csrfToken = getCookie('csrftoken');
+
+    function ajaxSubmit(form, onDone){
+      const fd = new FormData(form);
+      fd.append('ajax', '1');
+      const btn = form.querySelector('button[type="submit"],button');
+      const prevHtml = btn ? btn.innerHTML : null;
+      if (btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Working...'; }
+      fetch(form.action, {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrfToken}, body: fd, credentials: 'same-origin'})
+        .then(r=>r.json()).then(data=>{
+          if (btn){ btn.disabled = false; btn.innerHTML = prevHtml; }
+          onDone && onDone(data);
+        }).catch(()=>{ if (btn){ btn.disabled = false; btn.innerHTML = prevHtml; } onDone && onDone({ok:false}); });
+    }
+
+    function findCard(el){
+      while (el && !el.classList.contains('card')) el = el.parentElement; return el;
+    }
+
+    function adjustRoomHeaderCounts(card, delta){
+      // Find the room header text span in this accordion panel
+      const accCollapse = card.closest('.accordion-collapse');
+      if (!accCollapse) return;
+      const header = accCollapse.previousElementSibling?.querySelector('.text-secondary.small');
+      if (!header) return;
+      // Parse current counts: "Shares: N • Vacant: a • Occupied: b • Reserved: c • Leaving: d"
+      const text = header.textContent;
+      const re = /Shares:\s*(\d+)\s*•\s*Vacant:\s*(\d+)\s*•\s*Occupied:\s*(\d+)\s*•\s*Reserved:\s*(\d+)\s*•\s*Leaving:\s*(\d+)/;
+      const m = text.match(re);
+      if (!m) return;
+      let shares = +m[1], vacant = +m[2], occupied = +m[3], reserved = +m[4], leaving = +m[5];
+      // Apply delta: {vacant, occupied, reserved, leaving}
+      vacant += delta.vacant||0; occupied += delta.occupied||0; reserved += delta.reserved||0; leaving += delta.leaving||0;
+      header.textContent = `Shares: ${shares} • Vacant: ${vacant} • Occupied: ${occupied} • Reserved: ${reserved} • Leaving: ${leaving}`;
+    }
+
+    // Use capture phase to reliably intercept submit before browser navigation
+    document.addEventListener('submit', function(e){
+      const form = e.target;
+      const action = (form.getAttribute('action')||'');
+      const isTenantsAction = action.includes('/pg/bookings/') || action.includes('/pg/applications/');
+      if (!isTenantsAction && !form.closest('#roomsAccordion')) return; // scope to relevant forms on this page
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      ajaxSubmit(form, function(res){
+        if (!res || !res.ok) { alert('Action failed.'); return; }
+        // Update UI by simple heuristics
+        const card = findCard(form);
+        if (!card) return;
+        // Booking approve -> mark as Occupied
+        if (res.action === 'booking_approve'){
+          const badge = card.querySelector('.badge');
+          if (badge){ badge.className = 'badge bg-success-subtle text-dark border'; badge.textContent = 'Occupied'; }
+          // Hide approve/reject buttons for booking
+          form.closest('.d-flex')?.querySelectorAll('form').forEach(f=>{
+            if (f.action.includes('pg_booking_approve') || f.action.includes('pg_booking_reject')) f.style.display='none';
+          });
+          adjustRoomHeaderCounts(card, {occupied:+1, reserved:-1});
+          showToast('Booking approved.', 'success');
+        }
+        if (res.action === 'booking_reject'){
+          const badge = card.querySelector('.badge');
+          if (badge){
+            if (res.share_status === 'vacant_from' && res.vacant_from){ badge.className='badge bg-info-subtle text-dark border'; badge.textContent = 'Vacant from '+res.vacant_from; }
+            else { badge.className='badge bg-secondary-subtle text-dark border'; badge.textContent = 'Vacant'; }
+          }
+          form.closest('.d-flex')?.querySelectorAll('form').forEach(f=>{
+            if (f.action.includes('pg_booking_approve') || f.action.includes('pg_booking_reject')) f.style.display='none';
+          });
+          // reserved -> vacant or leaving
+          if (res.share_status === 'vacant_from') adjustRoomHeaderCounts(card, {reserved:-1, leaving:+1});
+          else adjustRoomHeaderCounts(card, {reserved:-1, vacant:+1});
+          showToast('Booking rejected.', 'warning');
+        }
+        if (res.action === 'application_confirm'){
+          const btns = card.querySelectorAll('form[action*="pg_application_confirm"], button[data-bs-target^="#rejectModal"], button[data-bs-target^="#refillModal"]');
+          btns.forEach(b=>b.closest('form')?b.closest('form').style.display='none':b.style.display='none');
+          showToast('Application confirmed.', 'success');
+        }
+        if (res.action === 'application_reject' || res.action === 'application_refill'){
+          // Just close modal
+          const m = bootstrap.Modal.getInstance(document.querySelector('.modal.show')); m && m.hide();
+          showToast(res.action === 'application_reject' ? 'Application rejected.' : 'Refill requested.', res.action === 'application_reject' ? 'warning' : 'info');
+        }
+      });
+    }, true);
+  })();
+</script>
+{% endblock %}

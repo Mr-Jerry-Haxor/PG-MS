@@ -44,13 +44,15 @@ except Exception:  # allauth not strictly required at import time
     EmailAddress = None
 
 from .models import PG, PGAdmin
+from finance.models import Fees
 from bookings.models import Room, RoomShareStatus, Booking
 from bookings.models import ResidentApplication
 from .forms import PGForm, RoomForm, ShareStatusForm
 from core.models import Notification
 from core.audit import log
 from django.db.models import Exists, OuterRef
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 
 
 def _require_pg_admin(user):
@@ -123,7 +125,173 @@ def my_pg(request):
             return redirect('pg_my')
     else:
         form = PGForm(instance=pg)
-    return render(request, 'pgadmin/my_pg.html', {"form": form, "pg": pg, "pgs": list(_admin_pgs(request.user))})
+    quick_url = None
+    if pg:
+        try:
+            quick_url = request.build_absolute_uri(reverse('pg_quick_booking', kwargs={'pgslug': pg.slug}))
+        except Exception:
+            quick_url = None
+    fees = list(Fees.objects.filter(pg=pg)) if pg else []
+    return render(request, 'pgadmin/my_pg.html', {"form": form, "pg": pg, "pgs": list(_admin_pgs(request.user)), "quick_booking_url": quick_url, "fees": fees})
+
+
+@login_required
+def tenants(request):
+    """My PG Tenants view: shows rooms in ascending order and per-share occupancy details.
+    If admin has multiple PGs, shows a PG selector; otherwise directly shows the active PG.
+    """
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    # Allow switching PG via ?pg= param (already handled by _active_pg)
+    pg = _active_pg(request)
+    rooms = []
+    if pg:
+        rooms = (
+            Room.objects.filter(pg=pg)
+            .prefetch_related('shares', 'bookings__user', 'bookings__user__profile')
+            .order_by('room_no')
+        )
+    # Build a derived structure for template: per room -> counts and share details
+    data = []
+    for room in rooms:
+        shares = list(room.shares.all())
+        # Counts
+        vac = sum(1 for s in shares if s.status == RoomShareStatus.VACANT)
+        occ = sum(1 for s in shares if s.status == RoomShareStatus.OCCUPIED)
+        res = sum(1 for s in shares if s.status == RoomShareStatus.RESERVED)
+        leaving = sum(1 for s in shares if s.status == RoomShareStatus.VACANT_FROM)
+        # For each share, find latest approved booking for occupant details
+        share_details = []
+        for s in sorted(shares, key=lambda x: x.share_no):
+            occupant = None
+            booking = None
+            if s.status == RoomShareStatus.OCCUPIED:
+                booking = (
+                    Booking.objects.filter(room=room, share_no=s.share_no, status=Booking.APPROVED)
+                    .select_related('user', 'user__profile')
+                    .order_by('-created_at')
+                    .first()
+                )
+                occupant = getattr(booking, 'user', None)
+            elif s.status == RoomShareStatus.RESERVED:
+                booking = (
+                    Booking.objects.filter(room=room, share_no=s.share_no, status=Booking.PENDING)
+                    .select_related('user', 'user__profile')
+                    .order_by('-created_at')
+                    .first()
+                )
+                occupant = getattr(booking, 'user', None)
+            # Determine if application exists for this booking
+            app = None
+            if booking is not None:
+                try:
+                    app = booking.application  # one-to-one
+                except Exception:
+                    app = None
+            share_details.append({
+                'share': s,
+                'booking': booking,
+                'occupant': occupant,
+                'application': app,
+                'is_pending': bool(booking and booking.status == Booking.PENDING),
+            })
+        data.append({
+            'room': room,
+            'counts': {
+                'vacant': vac,
+                'occupied': occ,
+                'reserved': res,
+                'leaving': leaving,
+            },
+            'shares': share_details,
+        })
+
+    ctx = {
+        'pg': pg,
+        'pgs': list(_admin_pgs(request.user)),
+        'rooms': data,
+    }
+    return render(request, 'pgadmin/tenants.html', ctx)
+
+
+@login_required
+def quick_booking_qr_pdf(request, pg_id: int):
+    """Generate a single-page PDF containing a QR code for the PG's quick booking URL."""
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    pg = get_object_or_404(PG, pk=pg_id)
+    # Ensure user is admin of this PG
+    if not _admin_pgs(request.user).filter(id=pg.id).exists():
+        messages.error(request, 'PG Admin access required for this PG.')
+        return redirect('pg_my')
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.units import mm
+        from reportlab.graphics.barcode import qr as rl_qr
+        from reportlab.graphics.shapes import Drawing
+        from reportlab.graphics import renderPDF
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        import io as _io
+    except Exception as e:
+        return HttpResponse(f"PDF generation dependencies missing: {e}", status=500)
+
+    quick_url = request.build_absolute_uri(reverse('pg_quick_booking', kwargs={'pgslug': pg.slug}))
+
+    buf = _io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    width, height = A4
+
+    # Header: PG name and label text centered at top
+    top_margin = 12 * mm
+    side_margin = 10 * mm
+    footer_space = 10 * mm
+    # Draw title (PG name) with auto-scaling if too long
+    title_font = "Helvetica-Bold"
+    title_size = 18.0
+    max_title_width = width - 2 * side_margin
+    while title_size > 10 and stringWidth(pg.name, title_font, title_size) > max_title_width:
+        title_size -= 1
+    c.setFont(title_font, title_size)
+    title_y = height - top_margin
+    c.drawCentredString(width / 2.0, title_y, pg.name)
+
+    # Subtitle: Quick Booking
+    subtitle_font = "Helvetica"
+    subtitle_size = 12.0
+    max_subtitle_width = width - 2 * side_margin
+    while subtitle_size > 8 and stringWidth("Quick Booking", subtitle_font, subtitle_size) > max_subtitle_width:
+        subtitle_size -= 1
+    c.setFont(subtitle_font, subtitle_size)
+    subtitle_y = title_y - 8 * mm
+    c.drawCentredString(width / 2.0, subtitle_y, "Quick Booking")
+
+    # Reserve header space and compute available area for QR
+    header_space = max((height - subtitle_y) + 8 * mm, 30 * mm)  # ensure some space under subtitle
+    available_height = height - header_space - footer_space
+
+    # Create a large QR under header, within margins, centered
+    qr_widget = rl_qr.QrCodeWidget(quick_url)
+    bounds = qr_widget.getBounds()
+    w = bounds[2] - bounds[0]
+    h = bounds[3] - bounds[1]
+    size = min(width - 2 * side_margin, available_height)
+    d = Drawing(size, size, transform=[size / w, 0, 0, size / h, 0, 0])
+    d.add(qr_widget)
+    x = (width - size) / 2.0
+    y = footer_space + (available_height - size) / 2.0
+    renderPDF.draw(d, c, x, y)
+
+    c.showPage()
+    c.save()
+    pdf = buf.getvalue()
+    buf.close()
+    resp = HttpResponse(pdf, content_type='application/pdf')
+    resp['Content-Disposition'] = f'attachment; filename="{pg.name}_quick_booking_qr.pdf"'
+    return resp
 
 
 @login_required
@@ -336,6 +504,7 @@ def application_pdf(request, app_id):
         ["Food Pref", f"{app.food_pref or '—'}"],
         ["Marital", f"{app.marital_status or '—'}"],
         ["Date of Admission", f"{app.date_of_admission or '—'}"],
+        ["Joining Date", f"{getattr(app.booking, 'joining_date', None) or getattr(app.booking, 'start_date', None) or '—'}"],
         ["Address", f"{app.address or '—'}"],
     ]
     table = Table(info, hAlign='LEFT', colWidths=[120, 360])
@@ -356,12 +525,21 @@ def application_pdf(request, app_id):
     # Family
     fam = [
         ["Father Name", f"{app.father_name or '—'}"],
-        ["Father Phone", f"{app.father_phone or '—'}"],
+        ["Father Phone or Emergency Contact 1", f"{app.father_phone or '—'}"],
         ["Mother Name", f"{app.mother_name or '—'}"],
-        ["Mother Phone", f"{app.mother_phone or '—'}"],
+        ["Mother Phone or Emergency Contact 2", f"{app.mother_phone or '—'}"],
     ]
     story.append(Paragraph("Family", styles['Heading4']))
-    story.append(Table(fam, colWidths=[120, 360], style=[('FONT', (0,0), (-1,-1), 'Helvetica', 9), ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey), ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.white, colors.whitesmoke])]))
+    # Make column 1 wider to accommodate long labels (e.g., "Mother Phone or Emergency Contact 2")
+    story.append(Table(
+        fam,
+        colWidths=[180, 300],
+        style=[
+            ('FONT', (0,0), (-1,-1), 'Helvetica', 9),
+            ('GRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+            ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.white, colors.whitesmoke])
+        ]
+    ))
     story.append(Spacer(1, 10))
 
     # Education / Work
@@ -386,7 +564,7 @@ def application_pdf(request, app_id):
 
     # Aadhaar summary and prefetch document before building main PDF
     story.append(Paragraph("Documents", styles['Heading4']))
-    story.append(Paragraph(f"Aadhaar Number: {app.aadhaar_number or '—'}", styles['Normal']))
+    story.append(Paragraph(f"Aadhaar/Other Card Number: {app.aadhaar_number or '—'}", styles['Normal']))
 
     aadhaar_pdf_bytes = None
     if getattr(app, 'aadhaar_file_url', None):
@@ -397,18 +575,33 @@ def application_pdf(request, app_id):
             if is_pdf:
                 aadhaar_pdf_bytes = content
                 story.append(Spacer(1, 6))
-                story.append(Paragraph("Aadhaar: (attached PDF will be appended)", styles['Italic']))
+                story.append(Paragraph("Document: (attached PDF will be appended)", styles['Italic']))
             else:
                 try:
                     story.append(Spacer(1, 6))
-                    story.append(Paragraph("Aadhaar Image:", styles['Heading4']))
+                    story.append(Paragraph("Document Image:", styles['Heading4']))
                     aimg = RLImage(BytesIO(content))
                     aimg._restrictSize(420, 560)  # fit nicely on A4
                     story.append(aimg)
                 except Exception:
-                    story.append(Paragraph(f"Aadhaar: <link href='{app.aadhaar_file_url}'>Open online</link>", styles['Normal']))
+                    story.append(Paragraph(f"Document: <link href='{app.aadhaar_file_url}'>Open online</link>", styles['Normal']))
         else:
-            story.append(Paragraph(f"Aadhaar: <link href='{app.aadhaar_file_url}'>Open online</link>", styles['Normal']))
+            story.append(Paragraph(f"Document: <link href='{app.aadhaar_file_url}'>Open online</link>", styles['Normal']))
+
+    # Optional second image (back side)
+    if getattr(app, 'aadhaar_file_url_2', None):
+        try:
+            content2, ctype2 = _download_with_type(app.aadhaar_file_url_2, 'image/*, application/octet-stream')
+            if content2:
+                story.append(Spacer(1, 6))
+                story.append(Paragraph("Back Side Image:", styles['Heading4']))
+                img2 = RLImage(BytesIO(content2))
+                img2._restrictSize(420, 560)
+                story.append(img2)
+            else:
+                story.append(Paragraph(f"Back Side: <link href='{app.aadhaar_file_url_2}'>Open online</link>", styles['Normal']))
+        except Exception:
+            story.append(Paragraph(f"Back Side: <link href='{app.aadhaar_file_url_2}'>Open online</link>", styles['Normal']))
 
     # Declarations
     decls = [
@@ -660,6 +853,16 @@ def booking_approve(request, booking_id):
     except Exception:
         pass
     messages.success(request, "Booking approved and user notified.")
+    # AJAX response
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+        return JsonResponse({
+            'ok': True,
+            'action': 'booking_approve',
+            'booking_id': booking.id,
+            'share_id': share.id,
+            'share_status': share.status,
+            'message': 'Booking approved.'
+        })
     return redirect('pg_bookings_pending')
 
 
@@ -704,6 +907,16 @@ def booking_reject(request, booking_id):
     except Exception:
         pass
     messages.info(request, "Booking rejected.")
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+        return JsonResponse({
+            'ok': True,
+            'action': 'booking_reject',
+            'booking_id': booking.id,
+            'share_id': share.id,
+            'share_status': share.status,
+            'vacant_from': share.vacant_from.isoformat() if getattr(share, 'vacant_from', None) else None,
+            'message': 'Booking rejected.'
+        })
     return redirect('pg_bookings_pending')
 
 
@@ -857,6 +1070,8 @@ def application_confirm(request, app_id):
     except Exception:
         pass
     messages.success(request, "Application confirmed.")
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+        return JsonResponse({'ok': True, 'action': 'application_confirm', 'application_id': app.id, 'status': app.status})
     return redirect('pg_resident_applications')
 
 
@@ -892,6 +1107,8 @@ def application_reject(request, app_id):
     except Exception as e:
         messages.error(request, f"Failed to send rejection email: {e}")
     messages.info(request, "Application rejected and user notified.")
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+        return JsonResponse({'ok': True, 'action': 'application_reject', 'application_id': app.id, 'status': app.status})
     return redirect('pg_resident_applications')
 
 
@@ -924,4 +1141,6 @@ def application_refill_request(request, app_id):
     except Exception as e:
         messages.error(request, f"Failed to send update request email: {e}")
     messages.success(request, "Re-Fill request sent to user.")
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+        return JsonResponse({'ok': True, 'action': 'application_refill', 'application_id': app.id, 'status': app.status})
     return redirect('pg_resident_applications')

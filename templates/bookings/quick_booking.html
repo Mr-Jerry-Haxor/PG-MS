@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% block title %}Quick Booking • {{ pg.name }}{% endblock %}
+{% block content %}
+<h1 class="h4 mb-3">Book a Room — {{ pg.name }}</h1>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    {% if has_active %}
+      <div class="alert alert-warning">You already have an active booking in this PG. You can't book another room in the same PG.</div>
+    {% endif %}
+
+    <ol class="small text-secondary mb-3">
+      <li>Validation: ensure you don't have an active booking in this PG.</li>
+  <li>Select Room and Bed (only rooms with available beds are shown).</li>
+      <li>Pick a joining date and submit to create your booking request.</li>
+    </ol>
+
+    {% if errors %}
+      <div class="alert alert-danger">
+        <div class="fw-semibold mb-1">Please correct the following:</div>
+        <ul class="mb-0">
+          {% for e in errors %}<li class="small">{{ e }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form method="post" class="vstack gap-3" id="quickForm" enctype="multipart/form-data">
+      {% csrf_token %}
+      <!-- Step 1: Validation summary -->
+      <div class="border rounded p-2 {% if has_active %}bg-warning-subtle{% else %}bg-light{% endif %}">
+        <div class="d-flex align-items-center gap-2"><i class="bi bi-shield-check"></i><strong>Step 1:</strong> Validation</div>
+        {% if has_active %}
+          <div class="mt-1">You can't book another room in the same PG.</div>
+        {% else %}
+          <div class="mt-1">You're eligible to book in this PG.</div>
+        {% endif %}
+      </div>
+
+      <!-- Step 2: Room and Share selection -->
+      <div class="border rounded p-2">
+  <div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-door-open"></i><strong>Step 2:</strong> Select Room & Bed</div>
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-6">
+            <label class="form-label">Room</label>
+            <select id="roomSelect" class="form-select" name="room_id" {% if has_active %}disabled{% endif %}>
+              <option value="">Loading rooms…</option>
+            </select>
+            <div class="form-text">Only rooms with vacant shares are listed.</div>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">Bed</label>
+            <select id="shareSelect" class="form-select" name="share_no" disabled>
+              <option value="">Select a room first</option>
+            </select>
+            <div id="shareLegend" class="form-text mt-1"><span class="text-warning">⏳</span> indicates a future-dated availability.</div>
+            <div id="shareHint" class="form-text mt-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Application details and joining date -->
+      <div class="border rounded p-2" id="step3Block" style="display:none;">
+        <div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-person-vcard"></i><strong>Step 3:</strong> Your Details & Joining Date</div>
+        <div class="row g-2">
+          <div class="col-12 col-lg-8">
+            {% include 'bookings/_application_form_fields.html' with form=form %}
+          </div>
+          <div class="col-12 col-lg-4">
+            <div class="mb-2">
+              <label class="form-label">Joining Date</label>
+              <input type="date" class="form-control" name="joining_date" id="joiningDate" value="{{ joining_date_value|default:'' }}" required {% if has_active %}disabled{% endif %} />
+            </div>
+            <div class="text-end mt-3">
+              <button type="submit" class="btn btn-primary" id="submitBtn" {% if has_active %}disabled{% endif %}>
+                <span class="spinner-border spinner-border-sm d-none me-1" id="submitSpinner" role="status" aria-hidden="true"></span>
+                Submit Request
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const roomSel = document.getElementById('roomSelect');
+    const shareSel = document.getElementById('shareSelect');
+    const spinner = document.getElementById('submitSpinner');
+    const form = document.getElementById('quickForm');
+    const selectedRoom = '{{ selected_room_id|default:"" }}';
+    const selectedShare = '{{ selected_share_no|default:"" }}';
+    const shareHint = document.getElementById('shareHint');
+    const joiningDate = document.getElementById('joiningDate');
+  const step3Block = document.getElementById('step3Block');
+
+  function showStep3(){ if (step3Block) step3Block.style.display = 'block'; }
+  function hideStep3(){ if (step3Block) step3Block.style.display = 'none'; }
+
+    function setRooms(list){
+      roomSel.innerHTML = '';
+      if (!list || !list.length) {
+        roomSel.innerHTML = '<option value="">No rooms with vacancy</option>';
+        roomSel.disabled = true;
+        return;
+      }
+      roomSel.disabled = false;
+      roomSel.insertAdjacentHTML('beforeend','<option value="">Select a room…</option>');
+      list.forEach(function(r){
+        const opt = document.createElement('option');
+        const count = r.share_count || (r.vacant_shares ? r.vacant_shares.length : '');
+        const label = count ? `${r.room_no} — ${count} sharing room` : `${r.room_no}`;
+        opt.value = r.id; opt.textContent = label;
+        roomSel.appendChild(opt);
+      });
+      // Preselect if returning from errors
+      if (selectedRoom) {
+        roomSel.value = selectedRoom;
+        roomSel.dispatchEvent(new Event('change'));
+      }
+    }
+
+    function setShares(list){
+      shareSel.innerHTML = '';
+      if (!list || !list.length) {
+        shareSel.innerHTML = '<option value="">No vacant beds</option>';
+        shareSel.disabled = true;
+        hideStep3();
+        return;
+      }
+      shareSel.disabled = false;
+  shareSel.insertAdjacentHTML('beforeend','<option value="">Select a bed…</option>');
+      // Only include shares that are VACANT or VACANT_FROM; hide OCCUPIED/RESERVED
+      list.forEach(function(s){
+        const opt = document.createElement('option');
+        // support both number and object records
+        const rec = (typeof s === 'object') ? s : { share_no: s };
+        const shareNo = rec.share_no;
+        const statusStr = (rec.status ? String(rec.status) : '').toUpperCase();
+        // Determine if we should display this share: allow VACANT and VACANT_FROM
+        const isVacantType = statusStr.startsWith('VACANT');
+        // Fallback heuristic if status is missing
+        const fallbackAllow = (!rec.status && (rec.available_from || rec.selectable));
+        if (!isVacantType && !fallbackAllow) {
+          return; // skip occupied/reserved
+        }
+        const availableFrom = rec.available_from ? ` (from ${rec.available_from})` : '';
+        const badge = rec.available_from && rec.selectable === false ? ' ⏳' : '';
+        opt.value = shareNo; opt.textContent = 'Bed ' + shareNo + availableFrom + badge;
+        if (typeof rec.selectable !== 'undefined') opt.dataset.selectable = rec.selectable ? '1' : '0';
+        if (rec.available_from) opt.dataset.availableFrom = rec.available_from;
+        shareSel.appendChild(opt);
+      });
+      if (selectedShare) {
+        shareSel.value = selectedShare;
+      }
+      // Apply hint/min date based on current selection if any
+      shareSel.dispatchEvent(new Event('change'));
+    }
+
+    // Load rooms with vacancy
+    fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/')
+      .then(r=>r.json())
+      .then(json=> setRooms(json.rooms))
+      .catch(()=>{ roomSel.innerHTML = '<option value="">Failed to load rooms</option>'; roomSel.disabled = true; });
+
+    // When room changes, load its vacant shares
+    roomSel.addEventListener('change', function(){
+      shareSel.innerHTML = '<option value="">Loading…</option>';
+      shareSel.disabled = true;
+      const rid = roomSel.value;
+      if (!rid) { shareSel.innerHTML = '<option value="">Select a room first</option>'; hideStep3(); return; }
+      hideStep3();
+      fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/' + rid + '/shares/')
+        .then(r=>r.json())
+        .then(json=> setShares(json.shares || json.vacant_shares))
+        .catch(()=>{ shareSel.innerHTML = '<option value="">Failed to load shares</option>'; shareSel.disabled = true; });
+    });
+
+    // Removed type-to-search UI for rooms
+
+    // Share selection hint + joining date rules
+    shareSel.addEventListener('change', function(){
+      shareHint.textContent = '';
+      const opt = shareSel.options[shareSel.selectedIndex];
+      if (!opt || !opt.value) { hideStep3(); return; }
+      const selectable = opt.dataset.selectable === '1' || typeof opt.dataset.selectable === 'undefined';
+      const availableFrom = opt.dataset.availableFrom || '';
+      const today = new Date();
+      function fmt(d){ return d.toISOString().slice(0,10); }
+      // Reset constraints
+      joiningDate.removeAttribute('min');
+      if (selectable){
+        // Ensure min is today for selectable beds
+        const min = fmt(today);
+        joiningDate.setAttribute('min', min);
+        showStep3();
+      } else {
+        // Not yet available: inform the user and enforce min = available_from, clear value
+        if (availableFrom){
+          shareHint.textContent = `This bed will be vacant from ${availableFrom}. Please select a joining date on or after this date.`;
+          joiningDate.value = '';
+          joiningDate.setAttribute('min', availableFrom);
+        } else {
+          shareHint.textContent = 'This bed is not yet available. Please choose a different bed or pick a later joining date.';
+          joiningDate.value = '';
+        }
+        // Reveal Step 3 so user can pick a valid joining date even if future-dated
+        showStep3();
+      }
+    });
+
+    // Debounce submit
+    form.addEventListener('submit', function(e){
+      const btn = document.getElementById('submitBtn');
+      if (btn.disabled) { e.preventDefault(); return; }
+      btn.disabled = true;
+      spinner.classList.remove('d-none');
+    });
+  });
+</script>
+{% endblock %}

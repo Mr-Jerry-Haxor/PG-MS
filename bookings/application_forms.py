@@ -2,9 +2,43 @@ from django import forms
 from .models import ResidentApplication
 
 
+class MultiFileInput(forms.ClearableFileInput):
+    # Enable multiple file selection for this input
+    allow_multiple_selected = True
+
+
+class MultiFileField(forms.Field):
+    widget = MultiFileInput
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('required', False)
+        super().__init__(*args, **kwargs)
+
+    def to_python(self, data):
+        # Normalize to a list of UploadedFile (or empty list)
+        if not data:
+            return []
+        if isinstance(data, (list, tuple)):
+            return list(data)
+        return [data]
+
+    def validate(self, value):
+        # Basic required check; detailed validation is in form.clean_*()
+        if self.required and not value:
+            raise forms.ValidationError(self.error_messages.get('required', 'This field is required.'))
+
+
 class ResidentApplicationForm(forms.ModelForm):
     selfie = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control"}))
-    aadhaar_pdf = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control", "accept": "application/pdf,image/*"}))
+    # Accept multiple files for other card: either 1 PDF or up to 2 images
+    aadhaar_pdf = MultiFileField(
+        required=False,
+        widget=MultiFileInput(attrs={
+            "class": "form-control",
+            "accept": "application/pdf,image/*",
+            "multiple": True,
+        })
+    )
 
     class Meta:
         model = ResidentApplication
@@ -32,25 +66,40 @@ class ResidentApplicationForm(forms.ModelForm):
         })
 
     def clean_aadhaar_pdf(self):
-        f = self.files.get('aadhaar_pdf')
-        if not f:
-            return f
-        name = (f.name or '').lower()
-        ctype = getattr(f, 'content_type', '') or ''
-        is_pdf = name.endswith('.pdf') or ctype == 'application/pdf'
-        is_img = any(name.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp')) or ctype.startswith('image/')
-        if not (is_pdf or is_img):
-            raise forms.ValidationError('Upload a PDF or Image file for Aadhaar (PDF, JPG, PNG, WEBP).')
-        if is_pdf:
+        # Prefer normalized cleaned value from custom field, fallback to FILES list
+        files = self.cleaned_data.get('aadhaar_pdf') or self.files.getlist('aadhaar_pdf') or []
+        if not files:
+            return None
+        # Rule: either exactly 1 PDF, or 1-2 images. Mixed types not allowed.
+        imgs = []
+        pdfs = []
+        for f in files:
+            name = (getattr(f, 'name', '') or '').lower()
+            ctype = getattr(f, 'content_type', '') or ''
+            if ctype == 'application/pdf' or name.endswith('.pdf'):
+                pdfs.append(f)
+            elif ctype.startswith('image/') or any(name.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp')):
+                imgs.append(f)
+            else:
+                raise forms.ValidationError('Only PDF or image files are allowed (PDF, JPG, PNG, WEBP).')
+        if pdfs and imgs:
+            raise forms.ValidationError('Please upload either a single PDF or up to two images, not both.')
+        if pdfs:
+            if len(pdfs) != 1:
+                raise forms.ValidationError('Upload exactly one PDF.')
+            # Optional: basic encrypted check best-effort
             try:
                 import PyPDF2  # type: ignore
-                reader = PyPDF2.PdfReader(f)
+                reader = PyPDF2.PdfReader(pdfs[0])
                 if getattr(reader, 'is_encrypted', False):
                     raise forms.ValidationError('Password-protected PDFs are not allowed.')
             except Exception:
-                # If PyPDF2 missing or parsing fails, skip strict check here.
                 pass
-        return f
+            return pdfs
+        # Images path
+        if not (1 <= len(imgs) <= 2):
+            raise forms.ValidationError('Upload one or two images (front/back).')
+        return imgs
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,7 +122,9 @@ class ResidentApplicationForm(forms.ModelForm):
             self.fields['date_of_admission'].widget.attrs['onfocus'] = 'this.blur()'
         # Update label for mother_phone
         if 'mother_phone' in self.fields:
-            self.fields['mother_phone'].label = 'Mother/Secondary mobile number'
+            self.fields['mother_phone'].label = 'Mother Phone or Emergency Contact 2'
+        if 'father_phone' in self.fields:
+            self.fields['father_phone'].label = 'Father Phone or Emergency Contact 1'
         # Input constraints for phone and Aadhaar (client hint; server validates too)
         for p in ('phone','father_phone','mother_phone'):
             if p in self.fields:

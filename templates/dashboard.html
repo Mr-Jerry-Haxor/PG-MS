@@ -19,19 +19,7 @@
   {% endif %}
 </div>
 <div class="row g-3">
-  <div class="col-12 col-md-6 col-lg-3">
-    <div class="card shadow-sm border-0" style="background:var(--accent-2)">
-      <div class="card-body">
-        <div class="d-flex align-items-center gap-3">
-          <i class="bi bi-house-door fs-2 text-primary"></i>
-          <div>
-            <div class="text-secondary small">PGs</div>
-            <a class="fw-bold text-decoration-none" href="{% url 'availability' %}">Check Availability</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  
   {% if user.is_authenticated and user.profile.is_pg_admin %}
   <div class="col-12 col-md-6 col-lg-3">
     <div class="card shadow-sm border-0" style="background:var(--accent)">
@@ -122,11 +110,11 @@
         <div class="month-metrics">
           <div class="month-chip">
             <div class="month-chip-title">Income</div>
-            <div class="month-chip-value"><i class="bi bi-graph-up-arrow"></i><span>₹ {{ month_income|default:0 }}</span></div>
+            <div class="month-chip-value"><i class="bi bi-graph-up-arrow"></i><span>₹ {{ month_income|default:0|floatformat:2 }}</span></div>
           </div>
             <div class="month-chip">
               <div class="month-chip-title">Expense</div>
-              <div class="month-chip-value"><i class="bi bi-cash-stack"></i><span>₹ {{ month_expense|default:0 }}</span></div>
+              <div class="month-chip-value"><i class="bi bi-cash-stack"></i><span>₹ {{ month_expense|default:0|floatformat:2 }}</span></div>
             </div>
         </div>
       </div>
@@ -159,17 +147,7 @@
       </div>
     </a>
   </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_room_create' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-plus-square fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">New Room</div>
-          <div class="small text-secondary">Add a room</div>
-        </div>
-      </div>
-    </a>
-  </div>
+  
   <div class="col-6 col-md-4 col-lg-3">
     <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_bookings_pending' %}">
       <div class="card-body d-flex align-items-center gap-3">
@@ -193,6 +171,17 @@
     </a>
   </div>
   <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_tenants' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-people-fill fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">My PG Tenants</div>
+          <div class="small text-secondary">Rooms and occupants</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
     <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_leaving_requests' %}">
       <div class="card-body d-flex align-items-center gap-3">
         <i class="bi bi-box-arrow-left fs-3 text-primary"></i>
@@ -203,17 +192,7 @@
       </div>
     </a>
   </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'fees_list' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-cash-coin fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Fees</div>
-          <div class="small text-secondary">Configure fees</div>
-        </div>
-      </div>
-    </a>
-  </div>
+  
   <div class="col-6 col-md-4 col-lg-3">
     <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'payments_list' %}">
       <div class="card-body d-flex align-items-center gap-3">
@@ -287,9 +266,10 @@
 </div>
 {% endif %}
 
-{% if user.is_authenticated and my_approved_bookings %}
+{% if user.is_authenticated %}
 <div class="mt-4">
   <h2 class="h6 text-secondary mb-2">My Bookings</h2>
+  {% if my_approved_bookings %}
   <div class="card border-0 shadow-sm">
     <div class="list-group list-group-flush">
       {% for b in my_approved_bookings %}
@@ -331,6 +311,13 @@
       {% endfor %}
     </div>
   </div>
+  {% else %}
+    {% if my_pending_bookings %}
+      <div class="alert alert-info small">Your booking request is pending approval. See details below.</div>
+    {% else %}
+      <div class="text-secondary small">You don't have any bookings as of now.</div>
+    {% endif %}
+  {% endif %}
 </div>
 
 <!-- Per-booking Leave Modals -->
@@ -380,7 +367,7 @@
               .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
               .field small{display:block;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:.15rem}
               .doc-preview{display:flex;flex-wrap:wrap;gap:.5rem}
-              .doc-thumb{width:80px;height:80px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
+              .doc-thumb{width:64px;height:64px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
               .field-box{background:#f8fafc;padding:.55rem .6rem;border:1px solid #e2e8f0;border-radius:.6rem;min-height:72px}
               .doc-embed{border:1px solid #e2e8f0;border-radius:.6rem;background:#f8fafc}
               .selfie-embed{border:1px solid #e2e8f0;border-radius:.75rem;background:#f1f5f9;position:relative;overflow:hidden}
@@ -410,14 +397,15 @@
               <div class="field field-box"><small>Food Pref</small><span>{{ b.application.food_pref|default:"—" }}</span></div>
               <div class="field field-box"><small>Marital</small><span>{{ b.application.marital_status|default:"—" }}</span></div>
               <div class="field field-box"><small>Date of Admission</small><span>{{ b.application.date_of_admission|default:"—" }}</span></div>
+              <div class="field field-box"><small>Joining Date</small><span>{% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
             </div>
             <div class="field mt-2 field-box"><small>Address</small><div>{{ b.application.address|default:"—" }}</div></div>
             <div class="section-title">Family</div>
             <div class="field-grid">
               <div class="field field-box"><small>Father Name</small><span>{{ b.application.father_name|default:"—" }}</span></div>
-              <div class="field field-box"><small>Father Phone</small><span>{{ b.application.father_phone|default:"—" }}</span></div>
+              <div class="field field-box"><small>Father Phone or Emergency Contact 1</small><span>{{ b.application.father_phone|default:"—" }}</span></div>
               <div class="field field-box"><small>Mother Name</small><span>{{ b.application.mother_name|default:"—" }}</span></div>
-              <div class="field field-box"><small>Mother Phone</small><span>{{ b.application.mother_phone|default:"—" }}</span></div>
+              <div class="field field-box"><small>Mother Phone or Emergency Contact 2</small><span>{{ b.application.mother_phone|default:"—" }}</span></div>
             </div>
             <div class="section-title">Education / Work</div>
             <div class="field-grid">
@@ -437,18 +425,25 @@
                 </a>
               {% endif %}
               {% if b.application.aadhaar_file_url %}
-                <a class="btn btn-outline-secondary btn-sm" href="{{ b.application.aadhaar_file_url }}" target="_blank">Open Aadhaar PDF</a>
+                <a class="btn btn-outline-secondary btn-sm" href="{{ b.application.aadhaar_file_url }}" target="_blank">Open Aadhaar/Document</a>
+                {% if b.application.aadhaar_file_url_2 %}
+                  <a class="btn btn-outline-secondary btn-sm" href="{{ b.application.aadhaar_file_url_2 }}" target="_blank">Open Back Side</a>
+                {% endif %}
               {% endif %}
             </div>
             {% if b.application.aadhaar_file_url %}
             <div class="mt-2">
               <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#aadhaarPreviewUser{{ b.id }}" aria-expanded="false" aria-controls="aadhaarPreviewUser{{ b.id }}">
-                <i class="bi bi-file-earmark-pdf me-1"></i>Preview Aadhaar
+                <i class="bi bi-file-earmark-text me-1"></i>Preview Document
               </button>
               <div class="collapse mt-2" id="aadhaarPreviewUser{{ b.id }}">
                 <div class="doc-embed p-2">
-                  <iframe src="{{ b.application.aadhaar_file_url }}" title="Aadhaar PDF" style="width:100%;height:480px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load PDF (blocked).'}))"></iframe>
-                  <div class="small text-secondary mt-2">If the PDF doesn't display, it may be blocked by the server. <a href="{{ b.application.aadhaar_file_url }}" target="_blank">Open in new tab</a>.</div>
+                  <iframe src="{{ b.application.aadhaar_file_url }}" title="Aadhaar/Document" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load document (blocked).'}))"></iframe>
+                  {% if b.application.aadhaar_file_url_2 %}
+                    <div class="small text-secondary mt-2">Back Side</div>
+                    <iframe src="{{ b.application.aadhaar_file_url_2 }}" title="Back Side" style="width:100%;height:280px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load back side (blocked).'}))"></iframe>
+                  {% endif %}
+                  <div class="small text-secondary mt-2">If the document doesn't display, it may be blocked by the server. <a href="{{ b.application.aadhaar_file_url }}" target="_blank">Open in new tab</a>.</div>
                 </div>
               </div>
             </div>

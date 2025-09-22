@@ -37,4 +37,147 @@
     <button class="btn btn-primary" type="submit">Save</button>
   </div>
 </form>
+
+{% if pg %}
+<div class="card border-0 shadow-sm mt-3">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="h6 mb-0">Fees</h2>
+      <div class="d-flex gap-2">
+        <a href="{% url 'fees_list' %}" class="btn btn-sm btn-outline-secondary">Manage</a>
+        <a href="{% url 'fees_new' %}" class="btn btn-sm btn-primary">New</a>
+      </div>
+    </div>
+    {% if fees %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Share Type</th>
+            <th class="text-end">Monthly Fee</th>
+            <th class="text-end">Advance</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in fees %}
+          <tr>
+            <td>{{ f.get_share_type_display }}</td>
+            <td class="text-end">{{ f.monthly_fee }}</td>
+            <td class="text-end">{{ f.advance_amount }}</td>
+            <td class="text-end"><a href="{% url 'fees_edit' f.id %}" class="btn btn-sm btn-outline-primary">Edit</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-secondary small">No fees configured yet for this PG.</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if pg and quick_booking_url %}
+<div class="card border-0 shadow-sm mt-3">
+  <div class="card-body p-4">
+    <h2 class="h6 mb-3">Quick Booking Link</h2>
+    <div class="input-group mb-2">
+      <input type="text" id="qbUrl" class="form-control" value="{{ quick_booking_url }}" readonly>
+      <button class="btn btn-outline-secondary" type="button" id="btnCopyUrl"><i class="bi bi-clipboard"></i> Copy</button>
+      <button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#qrModal"><i class="bi bi-qr-code"></i> Download QR</button>
+    </div>
+    <div class="form-text">Share this link with prospective residents to start the quick booking flow.</div>
+  </div>
+</div>
+
+<!-- QR Download Modal -->
+<div class="modal fade" id="qrModal" tabindex="-1" aria-labelledby="qrModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="qrModalLabel">Download QR Code</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-center">
+          <canvas id="qrCanvas"></canvas>
+          <div class="small text-secondary mt-2">This QR encodes the quick booking URL.</div>
+        </div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <div class="small text-secondary">Choose your format:</div>
+        <div>
+          <a class="btn btn-outline-primary" href="{% url 'pg_quick_booking_qr_pdf' pg.id %}"><i class="bi bi-filetype-pdf me-1"></i>Download as PDF</a>
+          <button type="button" class="btn btn-primary" id="btnDownloadPng"><i class="bi bi-image me-1"></i>Download Image</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+<!-- Load QR library (QRious) -->
+<script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js" defer></script>
+
+<script>
+  // Copy URL
+  document.getElementById('btnCopyUrl')?.addEventListener('click', async function(){
+    const input = document.getElementById('qbUrl');
+    try {
+      await navigator.clipboard.writeText(input.value);
+      this.innerHTML = '<i class="bi bi-clipboard-check"></i> Copied';
+      setTimeout(()=>{ this.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 1500);
+    } catch{
+      input.select(); document.execCommand('copy');
+    }
+  });
+
+  // Generate QR in modal using QRious (local rendering on canvas)
+  (function(){
+    const modalEl = document.getElementById('qrModal');
+    if (!modalEl) return;
+    const url = document.getElementById('qbUrl')?.value || '';
+    let shown = false;
+    modalEl.addEventListener('shown.bs.modal', function(){
+      if (shown) return; shown = true;
+      // Render QR into canvas using QRious. If not yet loaded, inject the script and retry once it loads.
+      const canvas = document.getElementById('qrCanvas');
+      if (!canvas) return;
+      const renderQR = () => {
+        // Choose a reasonable size for readability on most screens
+        const size = 300; // px
+        try {
+          new window.QRious({ element: canvas, value: url, size, background: 'white', foreground: 'black' });
+        } catch(e) {
+          console.error('QR render error:', e);
+        }
+      };
+      if (window.QRious) {
+        renderQR();
+      } else {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js';
+        script.onload = renderQR;
+        document.head.appendChild(script);
+      }
+    });
+
+    // Download as PNG
+    document.getElementById('btnDownloadPng')?.addEventListener('click', function(){
+      const canvas = document.getElementById('qrCanvas');
+      if (!canvas) return;
+      try {
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = '{{ pg.name|escapejs }}_quick_booking_qr.png';
+        a.click();
+      } catch (e) {
+        console.error('Download PNG failed:', e);
+        // Fallback: offer PDF download if image generation fails
+  window.location.href = "{% url 'pg_quick_booking_qr_pdf' pg.id %}";
+      }
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}

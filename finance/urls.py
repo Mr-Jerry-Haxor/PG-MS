@@ -20,6 +20,7 @@ urlpatterns = [
     path('monthly/export.xlsx', views.monthly_export_excel, name='finance_monthly_export_excel'),
     path('monthly/remind/<int:user_id>/', views.monthly_remind, name='finance_monthly_remind'),
     path('monthly/remind-bulk/', views.monthly_bulk_remind, name='finance_monthly_bulk_remind'),
+    path('monthly/quick-payment/', views.monthly_quick_payment, name='finance_monthly_quick_payment'),
     path('monthly/<int:user_id>/export-segments.csv', views.monthly_export_segments_user_csv, name='finance_monthly_export_segments_user_csv'),
 
     # Ledger

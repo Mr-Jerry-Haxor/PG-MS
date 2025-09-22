@@ -72,7 +72,6 @@ MIDDLEWARE = [
     'accounts.middleware.HideAllauthMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'accounts.middleware.OnboardingRequiredMiddleware',
 ]
 
 ROOT_URLCONF = 'pgms.urls'

@@ -1,0 +1,450 @@
+<div class="vstack gap-3">
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger py-2 small">{{ form.non_field_errors }}</div>
+  {% endif %}
+
+  <div>
+    <div class="fw-semibold mb-1">Personal Details</div>
+    <div class="row g-2">
+      <div class="col-md-6">{{ form.name.label_tag }} {{ form.name }}{% if form.name.errors %}<div class="text-danger small">{{ form.name.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-3">{{ form.dob.label_tag }} {{ form.dob }}{% if form.dob.errors %}<div class="text-danger small">{{ form.dob.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-3">{{ form.age.label_tag }} {{ form.age }}{% if form.age.errors %}<div class="text-danger small">{{ form.age.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-6">{{ form.phone.label_tag }} {{ form.phone }}{% if form.phone.errors %}<div class="text-danger small">{{ form.phone.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-6">{{ form.email.label_tag }} {{ form.email }}{% if form.email.errors %}<div class="text-danger small">{{ form.email.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-12">{{ form.address.label_tag }} {{ form.address }}{% if form.address.errors %}<div class="text-danger small">{{ form.address.errors|striptags }}</div>{% endif %}</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="fw-semibold mb-1">Parents / Guardians</div>
+    <div class="row g-2">
+      <div class="col-md-6">{{ form.father_name.label_tag }} {{ form.father_name }}{% if form.father_name.errors %}<div class="text-danger small">{{ form.father_name.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-6">{{ form.father_phone.label_tag }} {{ form.father_phone }}{% if form.father_phone.errors %}<div class="text-danger small">{{ form.father_phone.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-6">{{ form.mother_name.label_tag }} {{ form.mother_name }}{% if form.mother_name.errors %}<div class="text-danger small">{{ form.mother_name.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-6">{{ form.mother_phone.label_tag }} {{ form.mother_phone }}{% if form.mother_phone.errors %}<div class="text-danger small">{{ form.mother_phone.errors|striptags }}</div>{% endif %}</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="fw-semibold mb-1">Background & Preferences</div>
+    <div class="row g-2">
+      <div class="col-md-4">{{ form.food_pref.label_tag }} {{ form.food_pref }}{% if form.food_pref.errors %}<div class="text-danger small">{{ form.food_pref.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-4">{{ form.marital_status.label_tag }} {{ form.marital_status }}{% if form.marital_status.errors %}<div class="text-danger small">{{ form.marital_status.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-4">{{ form.education.label_tag }} {{ form.education }}{% if form.education.errors %}<div class="text-danger small">{{ form.education.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-4">{{ form.occupation.label_tag }} {{ form.occupation }}{% if form.occupation.errors %}<div class="text-danger small">{{ form.occupation.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-4">{{ form.org_name.label_tag }} {{ form.org_name }}{% if form.org_name.errors %}<div class="text-danger small">{{ form.org_name.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-4">{{ form.aadhaar_number.label_tag }} {{ form.aadhaar_number }}{% if form.aadhaar_number.errors %}<div class="text-danger small">{{ form.aadhaar_number.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-12">{{ form.org_address.label_tag }} {{ form.org_address }}{% if form.org_address.errors %}<div class="text-danger small">{{ form.org_address.errors|striptags }}</div>{% endif %}</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="fw-semibold mb-1">Vehicle</div>
+    <div class="mb-1">
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="has_vehicle" id="has_vehicle_no" value="" {% if not form.initial.has_vehicle %}checked{% endif %}>
+        <label class="form-check-label" for="has_vehicle_no">No Vehicle</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="has_vehicle" id="has_vehicle_yes" value="true" {% if form.initial.has_vehicle %}checked{% endif %}>
+        <label class="form-check-label" for="has_vehicle_yes">Has Vehicle</label>
+      </div>
+    </div>
+    <div class="row g-2" id="vehicleFields" style="display:none;">
+      <div class="col-md-6">{{ form.vehicle_number.label_tag }} {{ form.vehicle_number }}{% if form.vehicle_number.errors %}<div class="text-danger small">{{ form.vehicle_number.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-6">{{ form.vehicle_model.label_tag }} {{ form.vehicle_model }}{% if form.vehicle_model.errors %}<div class="text-danger small">{{ form.vehicle_model.errors|striptags }}</div>{% endif %}</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="fw-semibold mb-1">Documents</div>
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label">Aadhaar / Other Card (PDF or Images)</label>
+        <input type="file" name="aadhaar_pdf" class="form-control" accept="application/pdf,image/*" multiple required />
+        <div class="form-text">Upload one PDF, or one/two images.</div>
+        <div id="aadhaarPreview" class="mt-2"></div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label mb-1">Profile Photo (Live Capture)</label>
+        <div class="vstack gap-2 align-items-center">
+          <div class="selfie-wrapper position-relative" aria-label="Live selfie capture area" style="width:100%;max-width:280px;aspect-ratio:3/4;background:#111;border-radius:12px;overflow:hidden;border:1px solid #1f2937;">
+            <video id="qbSelfieVideo" autoplay playsinline class="d-none" style="width:100%;height:100%;object-fit:cover;"></video>
+            <canvas id="qbSelfieCanvas" class="d-none"></canvas>
+            <img id="qbSelfiePreview" alt="Selfie preview" class="d-none" style="width:100%;height:100%;object-fit:cover;" />
+            <div id="qbCameraLoading" class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center bg-dark bg-opacity-75 text-white d-none" style="backdrop-filter:blur(2px);">
+              <div class="spinner-border" role="status" style="width:2rem;height:2rem;"></div>
+              <small class="mt-2">Initializing camera...</small>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary btn-sm" type="button" id="qbBtnStartSelfie" disabled>Start camera</button>
+            <button class="btn btn-primary btn-sm" type="button" id="qbBtnCaptureSelfie" disabled>Capture</button>
+            <button class="btn btn-warning btn-sm d-none" type="button" id="qbBtnRetakeSelfie">Retake</button>
+          </div>
+          <input type="file" name="selfie" id="qbSelfieInput" class="d-none" accept="image/*" />
+          <div id="qbSelfieGateMsg" class="form-text">Upload your ID document first to enable selfie capture.</div>
+          <div class="form-text">Center face • Good lighting • No mask</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="fw-semibold mb-1">Declarations</div>
+    <div class="row g-1">
+      <div class="col-12 form-check">{{ form.decl_valuables }} {{ form.decl_valuables.label_tag }}{% if form.decl_valuables.errors %}<div class="text-danger small">{{ form.decl_valuables.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-12 form-check">{{ form.decl_notice }} {{ form.decl_notice.label_tag }}{% if form.decl_notice.errors %}<div class="text-danger small">{{ form.decl_notice.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-12 form-check">{{ form.decl_deposit }} {{ form.decl_deposit.label_tag }}{% if form.decl_deposit.errors %}<div class="text-danger small">{{ form.decl_deposit.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-12 form-check">{{ form.decl_truth }} {{ form.decl_truth.label_tag }}{% if form.decl_truth.errors %}<div class="text-danger small">{{ form.decl_truth.errors|striptags }}</div>{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const yes = document.getElementById('has_vehicle_yes');
+    const no = document.getElementById('has_vehicle_no');
+    const fields = document.getElementById('vehicleFields');
+    function sync(){ fields.style.display = (yes && yes.checked) ? 'flex' : 'none'; }
+    if (yes) yes.addEventListener('change', sync);
+    if (no) no.addEventListener('change', sync);
+    sync();
+  })();
+
+  // Quick booking selfie capture logic
+  (function(){
+    const startBtn = document.getElementById('qbBtnStartSelfie');
+    const capBtn = document.getElementById('qbBtnCaptureSelfie');
+    const retakeBtn = document.getElementById('qbBtnRetakeSelfie');
+    const video = document.getElementById('qbSelfieVideo');
+    const canvas = document.getElementById('qbSelfieCanvas');
+    const preview = document.getElementById('qbSelfiePreview');
+    const fileInput = document.getElementById('qbSelfieInput');
+    const loading = document.getElementById('qbCameraLoading');
+    const gateMsg = document.getElementById('qbSelfieGateMsg');
+    let stream = null;
+
+    async function startCamera(){
+      try {
+        loading.classList.remove('d-none');
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        video.srcObject = stream;
+        video.classList.remove('d-none');
+        capBtn.disabled = false;
+      } catch (e){
+        alert('Unable to access camera. You can upload a photo instead.');
+      } finally {
+        loading.classList.add('d-none');
+      }
+    }
+
+    function stopCamera(){
+      if (stream){
+        stream.getTracks().forEach(t=>t.stop());
+        stream = null;
+      }
+      video.classList.add('d-none');
+    }
+
+    function dataURLToFile(dataUrl, filename){
+      const arr = dataUrl.split(',');
+      const mime = arr[0].match(/:(.*?);/)[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length; const u8arr = new Uint8Array(n);
+      while(n--){ u8arr[n] = bstr.charCodeAt(n); }
+      return new File([u8arr], filename, { type: mime });
+    }
+
+    startBtn && startBtn.addEventListener('click', function(){
+      if (startBtn.disabled) return; // gated by ID upload
+      startCamera();
+    });
+    capBtn && capBtn.addEventListener('click', function(){
+      if (!video || video.classList.contains('d-none')) return;
+      const w = video.videoWidth, h = video.videoHeight;
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      // populate hidden file input
+      const file = dataURLToFile(dataUrl, 'selfie.jpg');
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      fileInput.files = dt.files;
+      // show preview
+      preview.src = dataUrl;
+      preview.classList.remove('d-none');
+      // switch buttons
+      retakeBtn.classList.remove('d-none');
+      capBtn.disabled = true;
+      stopCamera();
+    });
+    retakeBtn && retakeBtn.addEventListener('click', function(){
+      preview.classList.add('d-none');
+      fileInput.value = '';
+      capBtn.disabled = false;
+      retakeBtn.classList.add('d-none');
+      startCamera();
+    });
+    // Cleanup on unload
+    window.addEventListener('beforeunload', stopCamera);
+  })();
+
+  // Auto-calc age from DOB and enforce DOB <= 2009-12-31
+  (function(){
+    const dobInput = document.getElementById('id_dob');
+    const ageInput = document.getElementById('id_age');
+    if (!dobInput) return;
+    // Restrict DOB to before year 2010
+    dobInput.setAttribute('max', '2009-12-31');
+    function syncAge(){
+      const v = dobInput.value;
+      if (!v || !ageInput) return;
+      const dob = new Date(v);
+      if (isNaN(dob.getTime())) return;
+      const today = new Date();
+      let age = today.getFullYear() - dob.getFullYear();
+      const m = today.getMonth() - dob.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+      if (!isNaN(age)) ageInput.value = String(age);
+    }
+    dobInput.addEventListener('change', syncAge);
+    dobInput.addEventListener('blur', syncAge);
+    if (dobInput.value) syncAge();
+  })();
+
+  // Aadhaar/PDF/Image preview with validation and password-protected PDF detection
+  (function(){
+    const input = document.querySelector('input[name="aadhaar_pdf"]');
+    const preview = document.getElementById('aadhaarPreview');
+    const startBtn = document.getElementById('qbBtnStartSelfie');
+    const capBtn = document.getElementById('qbBtnCaptureSelfie');
+    const retakeBtn = document.getElementById('qbBtnRetakeSelfie');
+    const gateMsg = document.getElementById('qbSelfieGateMsg');
+
+    function forceStopSelfieCamera(){
+      const video = document.getElementById('qbSelfieVideo');
+      if (video && video.srcObject){
+        try { video.srcObject.getTracks().forEach(t=>t.stop()); } catch(e) {}
+        video.srcObject = null;
+      }
+      if (video) video.classList.add('d-none');
+    }
+
+    function resetSelfieUI(){
+      const selfiePreview = document.getElementById('qbSelfiePreview');
+      const selfieInput = document.getElementById('qbSelfieInput');
+      if (selfiePreview){ selfiePreview.src = ''; selfiePreview.classList.add('d-none'); }
+      if (selfieInput){ selfieInput.value = ''; }
+      if (capBtn) capBtn.disabled = true;
+      if (retakeBtn) retakeBtn.classList.add('d-none');
+    }
+
+    function setSelfieEnabled(enabled){
+      if (startBtn) startBtn.disabled = !enabled;
+      if (!enabled){
+        forceStopSelfieCamera();
+        resetSelfieUI();
+        if (gateMsg) gateMsg.textContent = 'Upload your ID document first to enable selfie capture.';
+      } else {
+        if (gateMsg) gateMsg.textContent = 'ID uploaded. You can now start the camera to take a selfie.';
+      }
+    }
+
+    function ensureToastContainer(){
+      let cont = document.querySelector('.toast-container');
+      if (!cont){
+        cont = document.createElement('div');
+        cont.className = 'toast-container position-fixed top-0 start-50 translate-middle-x p-3';
+        cont.style.zIndex = 1080;
+        document.body.appendChild(cont);
+      }
+      return cont;
+    }
+
+    function showToast(msg, variant){
+      const cont = ensureToastContainer();
+      const el = document.createElement('div');
+      el.className = `toast align-items-center text-bg-${variant||'warning'} border-0 shadow`;
+      el.setAttribute('role','alert'); el.setAttribute('aria-live','assertive'); el.setAttribute('aria-atomic','true');
+      el.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>`;
+      cont.appendChild(el);
+      try { new bootstrap.Toast(el, { delay: 4500 }).show(); } catch(e) { /* ignore */ }
+    }
+
+    function clearPreview(){ preview.innerHTML = ''; }
+
+    function urlFor(file){ return URL.createObjectURL(file); }
+
+    function revokeAll(){
+      // Best-effort: revoke any object URLs we created
+      preview.querySelectorAll('iframe,img,object,a').forEach(n=>{
+        try {
+          const url = n.tagName === 'A' ? n.getAttribute('href') : n.getAttribute('src') || n.getAttribute('data');
+          if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+        } catch(e){}
+      });
+    }
+
+    function invalidSelection(msg){
+      showToast(msg || 'Invalid selection.', 'danger');
+      input.value = '';
+      clearPreview();
+      setSelfieEnabled(false);
+    }
+
+    function renderImages(files){
+      clearPreview();
+      const wrap = document.createElement('div');
+      wrap.className = 'd-flex flex-wrap gap-2';
+      files.forEach(f=>{
+        const img = document.createElement('img');
+        img.src = urlFor(f); img.alt = f.name; img.style.width = '120px'; img.style.height='120px'; img.style.objectFit='cover';
+        img.className = 'border rounded';
+        wrap.appendChild(img);
+      });
+      preview.appendChild(wrap);
+    }
+
+    async function renderPdf(file){
+      clearPreview();
+      const blobUrl = urlFor(file);
+      // Container for canvas
+      const canvas = document.createElement('canvas');
+      canvas.style.width = '100%';
+      canvas.style.height = 'auto';
+      canvas.style.border = '1px solid #e2e8f0';
+      canvas.className = 'rounded w-100';
+      preview.appendChild(canvas);
+      const ctx = canvas.getContext('2d');
+
+      // PDF.js setup
+      const pdfjsLib = window['pdfjs-dist/build/pdf'];
+      if (!pdfjsLib || !pdfjsLib.getDocument){
+        // Fallback: open in new tab
+        const a = document.createElement('a'); a.href = blobUrl; a.target = '_blank'; a.textContent = 'Open PDF in new tab';
+        a.className = 'btn btn-outline-secondary btn-sm';
+        preview.appendChild(document.createElement('div')).appendChild(a);
+        showToast('Inline PDF preview not available. Opened link as fallback.', 'info');
+        // Consider this a valid selection -> enable selfie
+        setSelfieEnabled(true);
+        return;
+      }
+      // Worker source (pdf.worker.js is auto-resolved in modern builds, but set if needed)
+      try {
+        if (!pdfjsLib.GlobalWorkerOptions.workerSrc){
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+        }
+      } catch(e){}
+
+      try {
+        const loadingTask = pdfjsLib.getDocument({ url: blobUrl });
+        loadingTask.onPassword = (updatePassword, reason) => {
+          // We don't support passwords
+          showToast('Please select a PDF which is not password protected.', 'danger');
+          input.value = ''; clearPreview();
+        };
+  const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
+        // Responsive scale: fit to container width
+        const containerWidth = preview.clientWidth || canvas.clientWidth || 600;
+        const viewport = page.getViewport({ scale: 1.0 });
+        const scale = containerWidth / viewport.width;
+        const scaledViewport = page.getViewport({ scale });
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
+
+        // Offer open-in-new-tab link
+        const linkWrap = document.createElement('div');
+        linkWrap.className = 'mt-2';
+        const openLink = document.createElement('a');
+        openLink.href = blobUrl; openLink.target = '_blank'; openLink.rel = 'noopener';
+        openLink.textContent = 'Open full PDF in new tab';
+        openLink.className = 'btn btn-outline-secondary btn-sm';
+        linkWrap.appendChild(openLink);
+        preview.appendChild(linkWrap);
+        // Valid PDF selection -> enable selfie
+        setSelfieEnabled(true);
+      } catch (err){
+        console.error('PDF.js render error', err);
+        showToast('Unable to preview PDF. It may be encrypted or corrupted.', 'danger');
+        input.value = '';
+        clearPreview();
+        setSelfieEnabled(false);
+      }
+    }
+
+    function bytesToMB(b){ return (b/1048576).toFixed(2); }
+
+    async function pdfLooksEncrypted(file){
+      try {
+        const buf = await file.arrayBuffer();
+        const text = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(buf).slice(0, 1_048_576));
+        // Heuristic: encrypted PDFs usually contain "/Encrypt"
+        return /\/Encrypt\b/.test(text);
+      } catch (e){
+        return false;
+      }
+    }
+
+    input && input.addEventListener('change', async function(){
+      revokeAll();
+      clearPreview();
+      const files = Array.from(input.files || []);
+      if (!files.length) { setSelfieEnabled(false); return; }
+
+      // Enforce per-file size limit (2MB)
+      const tooLarge = files.find(f => f.size > 2*1024*1024);
+      if (tooLarge){
+        invalidSelection(`File too large: ${tooLarge.name} (${bytesToMB(tooLarge.size)} MB). Max allowed is 2 MB.`);
+        return;
+      }
+
+      const pdfs = files.filter(f=> f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      const images = files.filter(f=> f.type.startsWith('image/'));
+
+      // Enforce rules: either 1 PDF, or up to 2 images
+      if (pdfs.length > 0 && images.length > 0){
+        return invalidSelection('Please select either one PDF or images, not both.');
+      }
+      if (pdfs.length > 1){
+        return invalidSelection('Please select only one PDF.');
+      }
+      if (images.length > 2){
+        return invalidSelection('Please select a maximum of two images.');
+      }
+
+      if (pdfs.length === 1){
+        // Detect password protection heuristically
+        if (await pdfLooksEncrypted(pdfs[0])){
+          return invalidSelection('Please select a PDF which is not password protected.');
+        }
+        renderPdf(pdfs[0]);
+        return;
+      }
+
+      if (images.length >= 1){
+        renderImages(images.slice(0,2));
+        // Valid image(s) selection -> enable selfie
+        setSelfieEnabled(true);
+        return;
+      }
+
+      // Unknown file types — clear
+      invalidSelection('Unsupported file type. Please upload a PDF or images.');
+    });
+
+    // Initialize gating on load based on whether a document is already present
+    if (input){
+      if (input.files && input.files.length > 0){
+        setSelfieEnabled(true);
+      } else {
+        setSelfieEnabled(false);
+      }
+    }
+  })();
+</script>
+<!-- PDF.js for robust PDF preview -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
