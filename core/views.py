@@ -10,8 +10,14 @@ from pgadmin.models import PG
 
 @login_required
 def dashboard(request):
-	notes = Notification.objects.filter(user=request.user, is_read=False).order_by('-created_at')[:10]
+	# Load top unread notifications to display on dashboard
+	notes_qs = Notification.objects.filter(user=request.user, is_read=False).order_by('-created_at')[:10]
+	# Evaluate to list so we can safely mark them as read while still rendering these items
+	notes = list(notes_qs)
 	ctx = {"notifications": notes}
+	# Mark only these displayed notifications as read so the unread badge updates immediately
+	if notes:
+		Notification.objects.filter(id__in=[n.id for n in notes], user=request.user, is_read=False).update(is_read=True)
 	from datetime import date as _date
 
 	ctx["today"] = _date.today()
