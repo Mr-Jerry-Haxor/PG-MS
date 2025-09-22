@@ -122,13 +122,14 @@ SOCIALACCOUNT_PROVIDERS = {
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'Asia/Calcutta'
+# Enforce Asia/Kolkata timezone across all environments
+TIME_ZONE = 'Asia/Kolkata'
 
 USE_I18N = True
 
-USE_L10N = True
+# Django 5 defaults to built-in formatting; USE_L10N is deprecated
 
-USE_TZ = False
+USE_TZ = True
 
 
 SOCIALACCOUNT_LOGIN_ON_GET = True
@@ -175,13 +176,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
-USE_I18N = True
-
-USE_TZ = True
+# Remove duplicate i18n/timezone block; values set above
 
 
 # Static files (CSS, JavaScript, Images)
