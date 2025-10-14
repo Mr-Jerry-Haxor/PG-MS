@@ -36,7 +36,7 @@
         {% endif %}
       </div>
 
-      <!-- Step 2: Room and Share selection -->
+  <!-- Step 2: Room and Bed selection -->
       <div class="border rounded p-2">
   <div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-door-open"></i><strong>Step 2:</strong> Select Room & Bed</div>
         <div class="row g-2 align-items-end">
@@ -45,7 +45,7 @@
             <select id="roomSelect" class="form-select" name="room_id" {% if has_active %}disabled{% endif %}>
               <option value="">Loading rooms…</option>
             </select>
-            <div class="form-text">Only rooms with vacant shares are listed.</div>
+            <div class="form-text">Only rooms with vacant beds are listed.</div>
           </div>
           <div class="col-12 col-md-6">
             <label class="form-label">Bed</label>
@@ -109,8 +109,8 @@
       roomSel.insertAdjacentHTML('beforeend','<option value="">Select a room…</option>');
       list.forEach(function(r){
         const opt = document.createElement('option');
-        const count = r.share_count || (r.vacant_shares ? r.vacant_shares.length : '');
-        const label = count ? `${r.room_no} — ${count} sharing room` : `${r.room_no}`;
+        const bedCount = r.bed_count ?? r.share_count ?? (r.vacant_beds ? r.vacant_beds.length : (r.vacant_shares ? r.vacant_shares.length : ''));
+        const label = bedCount ? `${r.room_no} — ${bedCount}-bed room` : `${r.room_no}`;
         opt.value = r.id; opt.textContent = label;
         roomSel.appendChild(opt);
       });
@@ -121,7 +121,7 @@
       }
     }
 
-    function setShares(list){
+    function setBeds(list){
       shareSel.innerHTML = '';
       if (!list || !list.length) {
         shareSel.innerHTML = '<option value="">No vacant beds</option>';
@@ -131,12 +131,13 @@
       }
       shareSel.disabled = false;
   shareSel.insertAdjacentHTML('beforeend','<option value="">Select a bed…</option>');
-      // Only include shares that are VACANT or VACANT_FROM; hide OCCUPIED/RESERVED
+  // Only include beds that are VACANT or VACANT_FROM; hide OCCUPIED/RESERVED
       list.forEach(function(s){
         const opt = document.createElement('option');
         // support both number and object records
         const rec = (typeof s === 'object') ? s : { share_no: s };
-        const shareNo = rec.share_no;
+        const bedNo = rec.bed_no ?? rec.share_no;
+        if (!bedNo) { return; }
         const statusStr = (rec.status ? String(rec.status) : '').toUpperCase();
         // Determine if we should display this share: allow VACANT and VACANT_FROM
         const isVacantType = statusStr.startsWith('VACANT');
@@ -147,7 +148,7 @@
         }
         const availableFrom = rec.available_from ? ` (from ${rec.available_from})` : '';
         const badge = rec.available_from && rec.selectable === false ? ' ⏳' : '';
-        opt.value = shareNo; opt.textContent = 'Bed ' + shareNo + availableFrom + badge;
+        opt.value = bedNo; opt.textContent = 'Bed ' + bedNo + availableFrom + badge;
         if (typeof rec.selectable !== 'undefined') opt.dataset.selectable = rec.selectable ? '1' : '0';
         if (rec.available_from) opt.dataset.availableFrom = rec.available_from;
         shareSel.appendChild(opt);
@@ -162,10 +163,10 @@
     // Load rooms with vacancy
     fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/')
       .then(r=>r.json())
-      .then(json=> setRooms(json.rooms))
+  .then(json=> setRooms(json.rooms))
       .catch(()=>{ roomSel.innerHTML = '<option value="">Failed to load rooms</option>'; roomSel.disabled = true; });
 
-    // When room changes, load its vacant shares
+  // When room changes, load its vacant beds
     roomSel.addEventListener('change', function(){
       shareSel.innerHTML = '<option value="">Loading…</option>';
       shareSel.disabled = true;
@@ -174,13 +175,13 @@
       hideStep3();
       fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/' + rid + '/shares/')
         .then(r=>r.json())
-        .then(json=> setShares(json.shares || json.vacant_shares))
-        .catch(()=>{ shareSel.innerHTML = '<option value="">Failed to load shares</option>'; shareSel.disabled = true; });
+        .then(json=> setBeds(json.beds || json.shares || json.vacant_beds || json.vacant_shares))
+  .catch(()=>{ shareSel.innerHTML = '<option value="">Failed to load beds</option>'; shareSel.disabled = true; });
     });
 
     // Removed type-to-search UI for rooms
 
-    // Share selection hint + joining date rules
+  // Bed selection hint + joining date rules
     shareSel.addEventListener('change', function(){
       shareHint.textContent = '';
       const opt = shareSel.options[shareSel.selectedIndex];
@@ -219,5 +220,7 @@
       spinner.classList.remove('d-none');
     });
   });
+  window.showCameraPermissionModal = window.showCameraPermissionModal || function(){};
 </script>
+{% include 'includes/camera_permission_modal.html' %}
 {% endblock %}

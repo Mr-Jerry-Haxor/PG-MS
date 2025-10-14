@@ -1,36 +1,41 @@
 {% extends 'base.html' %}
 {% block title %}Bookings | Site Admin{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="mb-0">All Bookings</h3>
-  <a href="{% url 'sa_dashboard' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+<div class="d-flex flex-wrap gap-3 align-items-end mb-3">
+  <div>
+    <h3 class="mb-0">All Bookings</h3>
   </div>
+  <div class="ms-auto">
+    <label for="bookingSearch" class="form-label small text-uppercase text-secondary mb-1">Search</label>
+    <input id="bookingSearch" type="text" class="form-control form-control-sm" placeholder="Filter by user, room, status, or date">
+  </div>
+  <a href="{% url 'sa_dashboard' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+</div>
 <div class="card">
   <div class="table-responsive">
-    <table class="table table-hover mb-0 align-middle">
+    <table id="bookingTable" class="table table-hover mb-0 align-middle" data-data-table>
       <thead class="table-light">
         <tr>
-          <th>#</th>
-          <th>User</th>
-          <th>Room</th>
-          <th>Share</th>
-          <th>Status</th>
-          <th>Created</th>
+          <th scope="col" data-sortable="true" data-type="number">S.No</th>
+          <th scope="col" data-sortable="true">User</th>
+          <th scope="col" data-sortable="true">Room</th>
+          <th scope="col" data-sortable="true" data-type="number">Bed</th>
+          <th scope="col" data-sortable="true">Status</th>
+          <th scope="col" data-sortable="true">Created</th>
         </tr>
       </thead>
       <tbody>
         {% for b in items %}
-        <tr>
-          <td>{{ forloop.counter }}</td>
-          <td>{{ b.user.get_full_name|default:b.user.username }}</td>
-          <td>{{ b.room }}</td>
-          <td>{{ b.share_no }}</td>
-          <td>
+        {% with user_name=b.user.get_full_name|default:b.user.username %}
+        <tr data-search="{{ user_name }} {{ b.room }} {{ b.share_no }} {{ b.status }} {{ b.created_at|date:'Y-m-d H:i' }}" data-row>
+          <td data-col="index" data-value="{{ forloop.counter }}">{{ forloop.counter }}</td>
+          <td data-value="{{ user_name|lower }}">{{ user_name }}</td>
+          <td data-value="{{ b.room|stringformat:'s'|lower }}">{{ b.room }}</td>
+          <td data-value="{{ b.share_no }}">{{ b.share_no }}</td>
+          <td data-value="{{ b.status|default:''|lower }}">
             {% if b.application %}
-              <span class="badge text-bg-success">Application</span>
+              <span class="badge text-bg-success me-1">Application</span>
             {% endif %}
-          </td>
-          <td>
             {% if b.status == 'approved' %}
               <span class="badge bg-success">Approved</span>
             {% elif b.status == 'rejected' %}
@@ -39,13 +44,90 @@
               <span class="badge bg-secondary">Pending</span>
             {% endif %}
           </td>
-          <td>{{ b.created_at|date:"Y-m-d H:i" }}</td>
+          <td data-value="{{ b.created_at|date:'Y-m-d H:i' }}">{{ b.created_at|date:"Y-m-d H:i" }}</td>
         </tr>
+        {% endwith %}
         {% empty %}
-        <tr><td colspan="5" class="text-center text-muted py-4">No bookings found.</td></tr>
+        <tr class="table-empty"><td colspan="6" class="text-center text-muted py-4">No bookings found.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
  </div>
+{% if items %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const table = document.getElementById('bookingTable');
+  const search = document.getElementById('bookingSearch');
+  if(!table){return;}
+  const tbody = table.querySelector('tbody');
+  const headers = table.querySelectorAll('thead th[data-sortable="true"]');
+
+  const asNumber = raw => {
+    const num = parseFloat(String(raw).replace(/[^0-9.-]/g,''));
+    return isNaN(num) ? 0 : num;
+  };
+
+  const renumber = () => {
+    let idx = 0;
+    Array.from(tbody.querySelectorAll('tr[data-row]')).forEach(row => {
+      if(row.classList.contains('d-none')){return;}
+      idx += 1;
+      const cell = row.querySelector('[data-col="index"]');
+      if(cell){cell.textContent = idx.toString();}
+    });
+  };
+
+  headers.forEach(th => {
+    th.addEventListener('click', () => {
+      const columnIndex = Array.from(th.parentNode.children).indexOf(th);
+      const type = th.dataset.type || 'string';
+      const nextDir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+
+      headers.forEach(other => {
+        if(other !== th){
+          other.removeAttribute('data-sort-dir');
+          other.classList.remove('sorted-asc','sorted-desc');
+        }
+      });
+
+      th.dataset.sortDir = nextDir;
+      th.classList.toggle('sorted-asc', nextDir === 'asc');
+      th.classList.toggle('sorted-desc', nextDir === 'desc');
+
+      const rows = Array.from(tbody.querySelectorAll('tr[data-row]'));
+      rows.sort((a, b) => {
+        const aCell = a.children[columnIndex];
+        const bCell = b.children[columnIndex];
+        const aValue = aCell ? (aCell.dataset.value || aCell.textContent).trim() : '';
+        const bValue = bCell ? (bCell.dataset.value || bCell.textContent).trim() : '';
+        if(type === 'number'){
+          return asNumber(aValue) - asNumber(bValue);
+        }
+        return aValue.localeCompare(bValue, undefined, {numeric: true, sensitivity: 'base'});
+      });
+      if(nextDir === 'desc'){rows.reverse();}
+      rows.forEach(row => tbody.appendChild(row));
+      renumber();
+    });
+  });
+
+  if(search){
+    const rows = Array.from(tbody.querySelectorAll('tr[data-row]')).map(row => ({
+      element: row,
+      text: (row.dataset.search || row.textContent).toLowerCase(),
+    }));
+    search.addEventListener('input', () => {
+      const term = search.value.trim().toLowerCase();
+      rows.forEach(({element, text}) => {
+        element.classList.toggle('d-none', term && !text.includes(term));
+      });
+      renumber();
+    });
+  }
+
+  renumber();
+});
+</script>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+{% block title %}Vehicle Search • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .vehicle-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:1rem;margin-bottom:1.25rem}
+  .vehicle-toolbar h1{margin:0;font-size:1.15rem;font-weight:600}
+  .vehicle-results table{min-width:640px}
+  .vehicle-results thead th{font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0;cursor:pointer;user-select:none}
+  .vehicle-results thead th[data-sortable="true"]::after{content:"";display:inline-block;margin-left:.35rem;border:4px solid transparent;border-top-color:transparent;border-bottom-color:transparent;transition:transform .2s ease,opacity .2s ease;opacity:.35}
+  .vehicle-results thead th.sorted-asc::after{content:"▲";opacity:1;font-size:.6rem;transform:translateY(-1px)}
+  .vehicle-results thead th.sorted-desc::after{content:"▼";opacity:1;font-size:.6rem;transform:translateY(1px)}
+  .vehicle-results tbody td{vertical-align:middle}
+  .vehicle-card{border:1px solid #e2e8f0;border-radius:1rem;padding:1.25rem;background:#fff;box-shadow:0 2px 8px -4px rgba(15,23,42,.18)}
+  @media (max-width:576px){
+    .vehicle-toolbar{align-items:flex-start}
+    .vehicle-toolbar h1{font-size:1.05rem}
+  }
+</style>
+<div class="vehicle-toolbar">
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <h1 class="mb-0">Vehicle Search</h1>
+    {% if pgs and pgs|length > 1 %}
+    <form method="get" class="m-0">
+      <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+  {% if pg %}
+  <div class="ms-auto" style="min-width:200px;max-width:320px">
+    <label for="vehicleSearchInput" class="form-label small text-uppercase text-secondary">Search</label>
+    <input id="vehicleSearchInput" type="text" class="form-control" placeholder="Type to filter vehicles">
+  </div>
+  {% endif %}
+</div>
+
+<div class="vehicle-card mb-4">
+  {% if pg %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <div class="text-secondary small text-uppercase fw-semibold">Vehicles Recorded</div>
+        <div class="display-6 mb-0">{{ total_results }}</div>
+      </div>
+      <div class="text-secondary small">Click column headers to sort. Use the search box for instant filtering.</div>
+    </div>
+  {% else %}
+    <div class="text-secondary">Select a PG to view vehicle records.</div>
+  {% endif %}
+</div>
+
+{% if pg %}
+  {% if total_results %}
+    <div class="vehicle-results table-responsive">
+      <table id="vehicleTable" class="table align-middle">
+        <thead>
+          <tr>
+            <th scope="col" data-sortable="true" data-type="number">S.No</th>
+            <th scope="col" data-sortable="true">Resident Name</th>
+            <th scope="col" data-sortable="true">Room No</th>
+            <th scope="col" data-sortable="true">Phone</th>
+            <th scope="col" data-sortable="true">Vehicle No</th>
+            <th scope="col" data-sortable="true">Vehicle Model</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in compiled_results %}
+          <tr data-search="{{ entry.search_blob|default:''|escape }}">
+            <td data-col="index" data-value="{{ forloop.counter }}">{{ forloop.counter }}</td>
+            <td data-value="{{ entry.resident_name|default:''|lower|escape }}">{{ entry.resident_name|default:"—" }}</td>
+            <td data-value="{{ entry.room_no|default:''|lower|escape }}">{{ entry.room_no|default:"—" }}</td>
+            <td data-value="{{ entry.contact_phone|default:''|lower|escape }}">{{ entry.contact_phone|default:"—" }}</td>
+            <td data-value="{{ entry.vehicle_number|default:''|lower|escape }}" class="fw-semibold">{{ entry.vehicle_number|default:"—" }}</td>
+            <td data-value="{{ entry.vehicle_model|default:''|lower|escape }}">{{ entry.vehicle_model|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info">No vehicles recorded for this PG yet.</div>
+  {% endif %}
+{% endif %}
+
+{% if pg and total_results %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const table = document.getElementById('vehicleTable');
+  const searchInput = document.getElementById('vehicleSearchInput');
+  if(!table){return;}
+  const tbody = table.querySelector('tbody');
+  const headers = table.querySelectorAll('thead th[data-sortable="true"]');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  const renumber = () => {
+    let counter = 0;
+    Array.from(tbody.querySelectorAll('tr')).forEach(row => {
+      if(row.classList.contains('d-none')){return;}
+      counter += 1;
+      const cell = row.querySelector('[data-col="index"]');
+      if(cell){cell.textContent = counter.toString();}
+    });
+  };
+
+  headers.forEach(th => {
+    th.addEventListener('click', () => {
+      const index = Array.from(th.parentNode.children).indexOf(th);
+      const type = th.dataset.type || 'string';
+      const currentDir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+
+      headers.forEach(other => {
+        if(other !== th){
+          other.removeAttribute('data-sort-dir');
+          other.classList.remove('sorted-asc','sorted-desc');
+        }
+      });
+
+      th.dataset.sortDir = currentDir;
+      th.classList.toggle('sorted-asc', currentDir === 'asc');
+      th.classList.toggle('sorted-desc', currentDir === 'desc');
+
+      const visibleRows = Array.from(tbody.querySelectorAll('tr'));
+      visibleRows.sort((a,b) => {
+        const aCell = a.children[index];
+        const bCell = b.children[index];
+        const aRaw = aCell ? (aCell.dataset.value ?? aCell.textContent).trim() : '';
+        const bRaw = bCell ? (bCell.dataset.value ?? bCell.textContent).trim() : '';
+        const aVal = type === 'number' ? parseFloat(aRaw) || 0 : aRaw.toLowerCase();
+        const bVal = type === 'number' ? parseFloat(bRaw) || 0 : bRaw.toLowerCase();
+        if(aVal < bVal){return -1;}
+        if(aVal > bVal){return 1;}
+        return 0;
+      });
+      if(currentDir === 'desc'){visibleRows.reverse();}
+      visibleRows.forEach(row => tbody.appendChild(row));
+      renumber();
+    });
+  });
+
+  if(searchInput){
+    const baseRows = rows.map(row => ({
+      element: row,
+      search: (row.dataset.search || row.textContent.toLowerCase())
+    }));
+
+    searchInput.addEventListener('input', () => {
+      const term = searchInput.value.trim().toLowerCase();
+      baseRows.forEach(({element, search}) => {
+        const match = !term || search.includes(term);
+        element.classList.toggle('d-none', !match);
+      });
+      renumber();
+    });
+  }
+
+  renumber();
+});
+</script>
+{% endif %}
+{% endblock %}

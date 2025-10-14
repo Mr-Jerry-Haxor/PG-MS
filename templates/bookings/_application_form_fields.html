@@ -133,7 +133,11 @@
         video.classList.remove('d-none');
         capBtn.disabled = false;
       } catch (e){
-        alert('Unable to access camera. You can upload a photo instead.');
+        if (typeof window.showCameraPermissionModal === 'function') {
+          window.showCameraPermissionModal('Quick booking selfie capture needs access to your camera.');
+        } else {
+          alert('Unable to access camera. You can upload a photo instead.');
+        }
       } finally {
         loading.classList.add('d-none');
       }

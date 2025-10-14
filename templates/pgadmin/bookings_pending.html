@@ -43,7 +43,7 @@
         <div class="user-line fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }} <span class="text-faded">({{ b.user.email }})</span></div>
         <div class="meta">
           <span class="badge-pill">Room {{ b.room.room_no }}</span>
-          <span class="badge-pill">Share {{ b.share_no }}</span>
+          <span class="badge-pill">Bed {{ b.share_no }}</span>
           <span class="badge-pill {% if b.has_application %}success{% else %}warn{% endif %}">{% if b.has_application %}Application Submitted{% else %}Application Pending{% endif %}</span>
           <span class="badge-pill">Joining {{ b.joining_date|default:"—" }}</span>
         </div>

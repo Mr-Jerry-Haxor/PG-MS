@@ -1,5 +1,28 @@
+from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
+from django.core.mail import send_mail
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Exists, Min, OuterRef, Prefetch, Q
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
+from django.urls import reverse
+from django.utils import timezone
 from django.utils.dateparse import parse_date
+
+try:
+    from allauth.account.models import EmailAddress
+except Exception:  # allauth not strictly required at import time
+    EmailAddress = None
+
+from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus
+from core.audit import log
+from core.drive import drive_delete
+from core.models import Notification
+from finance.models import Fees
+from .forms import PGForm, RoomForm, ShareStatusForm
+from .models import PG, PGAdmin
 
 @login_required
 def booking_joining_update(request, booking_id):
@@ -28,33 +51,213 @@ def booking_joining_update(request, booking_id):
     except Exception as e:
         messages.error(request, f'Could not update joining date: {e}')
     return redirect(request.META.get('HTTP_REFERER') or 'pg_resident_applications')
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
-from django.contrib.auth import get_user_model
-from django.db import transaction
-from django.utils import timezone
-from django.core.mail import send_mail
-from django.utils.dateparse import parse_date
-from django.db import IntegrityError
-from django.db.models import Count, Q, Min, Prefetch
-try:
-    from allauth.account.models import EmailAddress
-except Exception:  # allauth not strictly required at import time
-    EmailAddress = None
-
-from .models import PG, PGAdmin
-from finance.models import Fees
-from bookings.models import Room, RoomShareStatus, Booking
-from bookings.models import ResidentApplication
-from .forms import PGForm, RoomForm, ShareStatusForm
-from core.models import Notification
-from core.audit import log
-from django.db.models import Exists, OuterRef
-from django.http import HttpResponse, JsonResponse
-from django.urls import reverse
 
 
+@login_required
+@transaction.atomic
+def booking_leave_direct(request, booking_id: int) -> JsonResponse:
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'Invalid request method.'}, status=405)
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required.'}, status=403)
+    booking = get_object_or_404(Booking.objects.select_for_update(), pk=booking_id, status=Booking.APPROVED)
+    pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
+    if not _admin_pgs(request.user).filter(id=pg_id).exists():
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required for this PG.'}, status=403)
+    date_str = (request.POST.get('leaving_date') or '').strip()
+    if not date_str:
+        return JsonResponse({'ok': False, 'error': 'Leaving date is required.'}, status=400)
+    leaving_date = parse_date(date_str)
+    if not leaving_date:
+        return JsonResponse({'ok': False, 'error': 'Invalid leaving date.'}, status=400)
+    min_allowed = booking.joining_date or booking.start_date
+    if min_allowed and leaving_date < min_allowed:
+        return JsonResponse({'ok': False, 'error': f'Leaving date must be on or after {min_allowed}.'}, status=400)
+
+    share = get_object_or_404(
+        RoomShareStatus.objects.select_for_update(),
+        room=booking.room,
+        share_no=booking.share_no,
+    )
+
+    previous_status = share.status
+
+    update_fields = ['leaving_date']
+    booking.leaving_date = leaving_date
+    if booking.leaving_confirmed_date:
+        booking.leaving_confirmed_date = None
+        update_fields.append('leaving_confirmed_date')
+    booking.save(update_fields=update_fields)
+
+    share.status = RoomShareStatus.VACANT_FROM
+    share.vacant_from = leaving_date
+    share.save(update_fields=['status', 'vacant_from'])
+
+    room_counts = _room_share_counts(booking.room)
+
+    log(
+        request.user,
+        'booking_leave_requested',
+        'Booking',
+        booking.id,
+        f"Leave requested for room {booking.room.room_no} bed {booking.share_no} on {leaving_date}",
+    )
+
+    return JsonResponse({
+        'ok': True,
+        'action': 'booking_leave_requested',
+        'booking_id': booking.id,
+        'room_id': booking.room_id,
+        'leaving_date': leaving_date.isoformat(),
+        'share_status': share.status,
+        'vacant_from': share.vacant_from.isoformat() if share.vacant_from else '',
+        'previous_status': previous_status,
+        'room_counts': room_counts,
+        'message': 'Leave request recorded and pending confirmation.',
+        'leave_message': f'Leave requested for {leaving_date.isoformat()} (awaiting confirmation).',
+    })
+
+
+@login_required
+@transaction.atomic
+def booking_swap_room(request, booking_id: int) -> JsonResponse:
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'Invalid request method.'}, status=405)
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required.'}, status=403)
+    booking = get_object_or_404(Booking.objects.select_for_update(), pk=booking_id, status=Booking.APPROVED)
+    pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
+    if not _admin_pgs(request.user).filter(id=pg_id).exists():
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required for this PG.'}, status=403)
+
+    try:
+        room_id = int(request.POST.get('room_id'))
+        share_no = int(request.POST.get('share_no'))
+    except (TypeError, ValueError):
+        return JsonResponse({'ok': False, 'error': 'Room and bed selections are required.'}, status=400)
+
+    if room_id == booking.room_id and share_no == booking.share_no:
+        return JsonResponse({'ok': False, 'error': 'Select a different room or bed to swap.'}, status=400)
+
+    new_room = get_object_or_404(Room.objects.select_for_update(), pk=room_id, pg_id=pg_id)
+    new_share = get_object_or_404(RoomShareStatus.objects.select_for_update(), room=new_room, share_no=share_no)
+    if new_share.status != RoomShareStatus.VACANT:
+        return JsonResponse({'ok': False, 'error': 'Selected bed is no longer vacant.'}, status=400)
+
+    old_room = booking.room
+    old_share = get_object_or_404(RoomShareStatus.objects.select_for_update(), room=old_room, share_no=booking.share_no)
+
+    # Free old share
+    old_share.status = RoomShareStatus.VACANT
+    old_share.vacant_from = None
+    old_share.save(update_fields=['status', 'vacant_from'])
+
+    # Occupy new share
+    new_share.status = RoomShareStatus.OCCUPIED
+    new_share.vacant_from = None
+    new_share.save(update_fields=['status', 'vacant_from'])
+
+    # Update booking
+    booking.room = new_room
+    booking.share_no = share_no
+    booking.save(update_fields=['room', 'pg', 'share_no'])
+
+    app = getattr(booking, 'application', None)
+    if app and app.room_id != new_room.id:
+        app.room = new_room
+        app.save(update_fields=['room'])
+
+    log(request.user, 'booking_swap', 'Booking', booking.id, f"Swapped to room {new_room.room_no} bed {share_no}")
+
+    old_share.refresh_from_db()
+    new_share.refresh_from_db()
+    today = timezone.now().date()
+
+    old_card_html = render_to_string(
+        'pgadmin/_tenant_share_card.html',
+        {'sd': _build_share_detail(old_room, old_share), 'today': today},
+        request=request,
+    )
+    new_card_html = render_to_string(
+        'pgadmin/_tenant_share_card.html',
+        {'sd': _build_share_detail(new_room, new_share), 'today': today},
+        request=request,
+    )
+
+    return JsonResponse({
+        'ok': True,
+        'action': 'booking_swap',
+        'booking_id': booking.id,
+        'old_room_id': old_room.id,
+        'new_room_id': new_room.id,
+        'old_share_no': old_share.share_no,
+        'new_share_no': share_no,
+        'old_card_html': old_card_html,
+        'new_card_html': new_card_html,
+        'old_room_counts': _room_share_counts(old_room),
+        'new_room_counts': _room_share_counts(new_room),
+    })
+
+
+@login_required
+def booking_swap_rooms_api(request, booking_id: int) -> JsonResponse:
+    if request.method != 'GET':
+        return JsonResponse({'ok': False, 'error': 'Invalid request method.'}, status=405)
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required.'}, status=403)
+    booking = get_object_or_404(Booking, pk=booking_id, status=Booking.APPROVED)
+    pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
+    if not _admin_pgs(request.user).filter(id=pg_id).exists():
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required for this PG.'}, status=403)
+
+    rooms = (
+        Room.objects.filter(pg_id=pg_id)
+        .annotate(vacant_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT)))
+        .order_by('room_no')
+    )
+
+    room_data = [
+        {
+            'id': room.id,
+            'room_no': room.room_no,
+            'vacant_count': room.vacant_count,
+            'total_beds': room.total_shares,
+        }
+        for room in rooms
+        if room.vacant_count > 0
+    ]
+
+    return JsonResponse({
+        'ok': True,
+        'rooms': room_data,
+        'current_room_id': booking.room_id,
+        'current_share_no': booking.share_no,
+    })
+
+
+@login_required
+def booking_swap_shares_api(request, booking_id: int, room_id: int) -> JsonResponse:
+    if request.method != 'GET':
+        return JsonResponse({'ok': False, 'error': 'Invalid request method.'}, status=405)
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required.'}, status=403)
+    booking = get_object_or_404(Booking, pk=booking_id, status=Booking.APPROVED)
+    pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
+    if not _admin_pgs(request.user).filter(id=pg_id).exists():
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required for this PG.'}, status=403)
+
+    room = get_object_or_404(Room, pk=room_id, pg_id=pg_id)
+    shares = RoomShareStatus.objects.filter(room=room, status=RoomShareStatus.VACANT).order_by('share_no')
+
+    data = [
+        {
+            'share_no': share.share_no,
+            'status': share.status,
+        }
+        for share in shares
+    ]
+
+    return JsonResponse({'ok': True, 'room_id': room.id, 'shares': data})
 def _require_pg_admin(user):
     # Superusers and website admins can access PG-admin area
     if getattr(user, 'is_superuser', False):
@@ -90,6 +293,238 @@ def _active_pg(request):
     if pg:
         request.session['active_pg_id'] = pg.id
     return pg
+
+
+def _booking_drive_urls(booking: Booking) -> set[str]:
+    urls: set[str] = set()
+    app = getattr(booking, 'application', None)
+    if app:
+        urls.update([u for u in [getattr(app, 'selfie_url', ''), getattr(app, 'aadhaar_file_url', ''), getattr(app, 'aadhaar_file_url_2', '')] if u])
+    profile = getattr(getattr(booking, 'user', None), 'profile', None)
+    if profile:
+        urls.update([u for u in [getattr(profile, 'selfie_url', ''), getattr(profile, 'aadhaar_file_url', '')] if u])
+    return urls
+
+
+def _build_share_detail(room: Room, share: RoomShareStatus) -> dict:
+    booking = None
+    occupant = None
+    application = None
+    if share.status in [RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM]:
+        booking = (
+            Booking.objects.filter(room=room, share_no=share.share_no, status=Booking.APPROVED)
+            .select_related('user', 'user__profile')
+            .order_by('-created_at')
+            .first()
+        )
+    elif share.status == RoomShareStatus.RESERVED:
+        booking = (
+            Booking.objects.filter(room=room, share_no=share.share_no, status=Booking.PENDING)
+            .select_related('user', 'user__profile')
+            .order_by('-created_at')
+            .first()
+        )
+    if booking is not None:
+        occupant = getattr(booking, 'user', None)
+        try:
+            application = booking.application
+        except Exception:
+            application = None
+    return {
+        'share': share,
+        'booking': booking,
+        'occupant': occupant,
+        'application': application,
+        'is_pending': bool(booking and booking.status == Booking.PENDING),
+    }
+
+
+def _room_share_counts(room: Room) -> dict:
+    counts = {
+        'total': 0,
+        'vacant': 0,
+        'occupied': 0,
+        'reserved': 0,
+        'leaving': 0,
+    }
+    for status in RoomShareStatus.objects.filter(room=room).values_list('status', flat=True):
+        counts['total'] += 1
+        if status == RoomShareStatus.VACANT:
+            counts['vacant'] += 1
+        elif status == RoomShareStatus.OCCUPIED:
+            counts['occupied'] += 1
+        elif status == RoomShareStatus.RESERVED:
+            counts['reserved'] += 1
+        elif status == RoomShareStatus.VACANT_FROM:
+            counts['leaving'] += 1
+            counts['occupied'] += 1
+    return counts
+
+
+def _room_share_breakdown(room: Room) -> dict:
+    counts = {
+        'total': room.total_shares,
+        'vacant': 0,
+        'occupied': 0,
+        'reserved': 0,
+        'leaving': 0,
+    }
+    for status in room.shares.values_list('status', flat=True):
+        if status == RoomShareStatus.VACANT:
+            counts['vacant'] += 1
+        elif status == RoomShareStatus.OCCUPIED:
+            counts['occupied'] += 1
+        elif status == RoomShareStatus.RESERVED:
+            counts['reserved'] += 1
+        elif status == RoomShareStatus.VACANT_FROM:
+            counts['leaving'] += 1
+            counts['occupied'] += 1
+    counts['non_vacant'] = counts['occupied'] + counts['reserved']
+    return counts
+
+
+def _shrink_room_shares(room: Room, new_total: int) -> tuple[bool, dict | str]:
+    shares = list(RoomShareStatus.objects.select_for_update().filter(room=room).order_by('share_no'))
+    old_total = len(shares)
+    remove_needed = old_total - new_total
+    if remove_needed <= 0:
+        return True, {'removed_numbers': [], 'reassignments': []}
+
+    vacants = [s for s in shares if s.status == RoomShareStatus.VACANT]
+    non_vacant = [s for s in shares if s.status != RoomShareStatus.VACANT]
+
+    if remove_needed > len(vacants):
+        shortfall = remove_needed - len(vacants)
+        return False, (
+            f"Need {remove_needed} vacant bed(s) to shrink, but only {len(vacants)} vacant now. "
+            f"Free up {shortfall} more bed(s) or move residents before reducing."
+        )
+
+    if len(non_vacant) > new_total:
+        overload = len(non_vacant) - new_total
+        return False, (
+            f"Cannot reduce to {new_total} bed(s) while {len(non_vacant)} bed(s) are occupied/reserved. "
+            f"Vacate or relocate {overload} bed(s) first."
+        )
+
+    ordered = non_vacant + vacants
+    keepers = ordered[:new_total]
+    removals = ordered[new_total:]
+
+    # Defensive: removals should be vacant and booking-free
+    for share in removals:
+        if share.status != RoomShareStatus.VACANT:
+            return False, "Unexpected occupied bed selected for removal. Please refresh and retry."
+        if Booking.objects.filter(
+            room=room,
+            share_no=share.share_no,
+            status__in=[Booking.PENDING, Booking.APPROVED],
+        ).exists():
+            return False, "A pending or approved booking is still linked to a bed slated for removal."
+
+    removed_numbers: list[int] = [share.share_no for share in removals]
+    for share in removals:
+        share.delete()
+
+    target_map = {share.pk: idx + 1 for idx, share in enumerate(keepers)}
+    original_numbers = {share.pk: share.share_no for share in keepers}
+    change_plan = [
+        (share, original_numbers[share.pk], target_map[share.pk])
+        for share in keepers
+        if original_numbers[share.pk] != target_map[share.pk]
+    ]
+
+    temp_base = old_total + 10
+    for offset, (share, _original, _target) in enumerate(change_plan, start=1):
+        share.share_no = temp_base + offset
+        share.save(update_fields=['share_no'])
+
+    for _share, original, target in change_plan:
+        Booking.objects.filter(room=room, share_no=original).update(share_no=target)
+
+    for share, _original, target in change_plan:
+        share.share_no = target
+        share.save(update_fields=['share_no'])
+
+    reassigned = [
+        {'from': original, 'to': target, 'status': share.status}
+        for share, original, target in change_plan
+    ]
+
+    return True, {'removed_numbers': removed_numbers, 'reassignments': reassigned}
+
+
+def _cleanup_booking_after_leave(booking: Booking, actor=None, origin: str = 'manual') -> dict:
+    """Delete booking/application artifacts once a resident has left."""
+    share = RoomShareStatus.objects.filter(room=booking.room, share_no=booking.share_no).first()
+    share_updated = False
+    if share:
+        share.status = RoomShareStatus.VACANT
+        share.vacant_from = None
+        share.save(update_fields=['status', 'vacant_from'])
+        share_updated = True
+
+    profile = getattr(booking.user, 'profile', None)
+    profile_updates: list[str] = []
+    if profile and getattr(profile, 'is_pg_user', True):
+        profile.is_pg_user = False
+        profile_updates.append('is_pg_user')
+
+    drive_urls = _booking_drive_urls(booking)
+    deleted_urls: list[str] = []
+    failed_urls: list[str] = []
+    for url in drive_urls:
+        success = drive_delete(url)
+        if success:
+            deleted_urls.append(url)
+        else:
+            failed_urls.append(url)
+
+    if profile:
+        if profile.selfie_url and profile.selfie_url in drive_urls:
+            profile.selfie_url = ''
+            profile_updates.append('selfie_url')
+        if profile.aadhaar_file_url and profile.aadhaar_file_url in drive_urls:
+            profile.aadhaar_file_url = ''
+            profile_updates.append('aadhaar_file_url')
+        if profile_updates:
+            # Remove duplicates while preserving order
+            seen = set()
+            ordered_updates = []
+            for field in profile_updates:
+                if field not in seen:
+                    ordered_updates.append(field)
+                    seen.add(field)
+            profile.save(update_fields=ordered_updates)
+            profile_updates = ordered_updates
+
+    app = getattr(booking, 'application', None)
+    app_id = getattr(app, 'id', None)
+    booking_id = booking.id
+    user_id = booking.user_id
+    room_no = getattr(getattr(booking, 'room', None), 'room_no', '')
+    share_no = booking.share_no
+
+    booking.delete()
+
+    meta = {
+        'origin': origin,
+        'files_attempted': len(drive_urls),
+        'files_deleted': len(deleted_urls),
+        'files_failed': len(failed_urls),
+        'application_id': app_id,
+        'user_id': user_id,
+        'share_updated': share_updated,
+    }
+    log(actor, 'leave_cleanup_deleted', 'Booking', booking_id, message=f"Leave cleanup ({origin}) for room {room_no} bed {share_no}", meta=meta)
+
+    return {
+        'share_updated': share_updated,
+        'deleted_files': len(deleted_urls),
+        'failed_files': len(failed_urls),
+        'profile_updates': profile_updates,
+        'files_attempted': len(drive_urls),
+    }
 
 
 @login_required
@@ -137,7 +572,7 @@ def my_pg(request):
 
 @login_required
 def tenants(request):
-    """My PG Tenants view: shows rooms in ascending order and per-share occupancy details.
+    """My PG Tenants view: shows rooms in ascending order and per-bed occupancy details.
     If admin has multiple PGs, shows a PG selector; otherwise directly shows the active PG.
     """
     if not _require_pg_admin(request.user):
@@ -152,50 +587,17 @@ def tenants(request):
             .prefetch_related('shares', 'bookings__user', 'bookings__user__profile')
             .order_by('room_no')
         )
-    # Build a derived structure for template: per room -> counts and share details
+    # Build a derived structure for template: per room -> counts and bed details
     data = []
     for room in rooms:
         shares = list(room.shares.all())
         # Counts
         vac = sum(1 for s in shares if s.status == RoomShareStatus.VACANT)
-        occ = sum(1 for s in shares if s.status == RoomShareStatus.OCCUPIED)
+        occ = sum(1 for s in shares if s.status in [RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM])
         res = sum(1 for s in shares if s.status == RoomShareStatus.RESERVED)
         leaving = sum(1 for s in shares if s.status == RoomShareStatus.VACANT_FROM)
         # For each share, find latest approved booking for occupant details
-        share_details = []
-        for s in sorted(shares, key=lambda x: x.share_no):
-            occupant = None
-            booking = None
-            if s.status == RoomShareStatus.OCCUPIED:
-                booking = (
-                    Booking.objects.filter(room=room, share_no=s.share_no, status=Booking.APPROVED)
-                    .select_related('user', 'user__profile')
-                    .order_by('-created_at')
-                    .first()
-                )
-                occupant = getattr(booking, 'user', None)
-            elif s.status == RoomShareStatus.RESERVED:
-                booking = (
-                    Booking.objects.filter(room=room, share_no=s.share_no, status=Booking.PENDING)
-                    .select_related('user', 'user__profile')
-                    .order_by('-created_at')
-                    .first()
-                )
-                occupant = getattr(booking, 'user', None)
-            # Determine if application exists for this booking
-            app = None
-            if booking is not None:
-                try:
-                    app = booking.application  # one-to-one
-                except Exception:
-                    app = None
-            share_details.append({
-                'share': s,
-                'booking': booking,
-                'occupant': occupant,
-                'application': app,
-                'is_pending': bool(booking and booking.status == Booking.PENDING),
-            })
+        share_details = [_build_share_detail(room, s) for s in sorted(shares, key=lambda x: x.share_no)]
         data.append({
             'room': room,
             'counts': {
@@ -211,6 +613,7 @@ def tenants(request):
         'pg': pg,
         'pgs': list(_admin_pgs(request.user)),
         'rooms': data,
+        'today': timezone.now().date(),
     }
     return render(request, 'pgadmin/tenants.html', ctx)
 
@@ -304,7 +707,7 @@ def rooms_list(request):
         rooms = (
             Room.objects.filter(pg=pg)
             .annotate(
-                occupied_count=Count('shares', filter=Q(shares__status=RoomShareStatus.OCCUPIED)),
+                occupied_count=Count('shares', filter=Q(shares__status__in=[RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM])),
                 reserved_count=Count('shares', filter=Q(shares__status=RoomShareStatus.RESERVED)),
                 vacant_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT)),
                 leaving_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT_FROM)),
@@ -319,7 +722,7 @@ def rooms_list(request):
             )
             .order_by('room_no')
         )
-        # Apply optional filter by room share status
+    # Apply optional filter by room bed status
         only = (request.GET.get('filter') or '').strip().lower()
         if only == 'vacant':
             rooms = rooms.filter(vacant_count__gt=0)
@@ -335,6 +738,63 @@ def rooms_list(request):
 
 
 @login_required
+def vehicle_search(request):
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    pg = _active_pg(request)
+    compiled_results: list[dict] = []
+    total_results = 0
+    if pg:
+        today = timezone.localdate()
+        qs = (
+            ResidentApplication.objects.filter(pg=pg, has_vehicle=True)
+            .filter(booking__isnull=False)
+            .filter(Q(booking__leaving_date__isnull=True) | Q(booking__leaving_date__gt=today))
+            .select_related('booking', 'booking__room', 'booking__user', 'booking__user__profile')
+            .order_by('name', 'vehicle_number')
+        )
+        for app in qs:
+            booking = getattr(app, 'booking', None)
+            user = getattr(booking, 'user', None) if booking else None
+            profile = getattr(user, 'profile', None) if user else None
+            if app.name:
+                resident_name = app.name
+            elif user:
+                full_name = getattr(user, 'get_full_name', lambda: '')()
+                resident_name = (full_name or '').strip() or getattr(user, 'email', '')
+            else:
+                resident_name = ''
+            room = getattr(booking, 'room', None) if booking else None
+            contact_phone = app.phone or (getattr(profile, 'phone', '') if profile else '')
+            compiled_results.append({
+                'app': app,
+                'resident_name': resident_name,
+                'room_no': getattr(room, 'room_no', ''),
+                'contact_phone': contact_phone,
+                'vehicle_number': app.vehicle_number or '',
+                'vehicle_model': app.vehicle_model or '',
+                'search_blob': ' '.join(filter(None, [
+                    resident_name,
+                    getattr(user, 'email', '') if user else '',
+                    contact_phone,
+                    getattr(room, 'room_no', '') if room else '',
+                    str(getattr(booking, 'share_no', '')) if booking else '',
+                    app.vehicle_number or '',
+                    app.vehicle_model or '',
+                ])).lower(),
+            })
+        total_results = len(compiled_results)
+    ctx = {
+        'pg': pg,
+        'pgs': list(_admin_pgs(request.user)),
+        'compiled_results': compiled_results,
+        'total_results': total_results,
+    }
+    return render(request, 'pgadmin/vehicle_search.html', ctx)
+
+
+@login_required
 @transaction.atomic
 def room_create(request):
     if not _require_pg_admin(request.user):
@@ -347,7 +807,7 @@ def room_create(request):
             room = form.save(commit=False)
             room.pg = pg
             room.save()
-            # Ensure share rows exist
+            # Ensure bed rows exist
             for i in range(1, room.total_shares + 1):
                 RoomShareStatus.objects.get_or_create(room=room, share_no=i)
             messages.success(request, "Room created.")
@@ -367,19 +827,54 @@ def room_edit(request, pk):
     if not _admin_pgs(request.user).filter(id=room.pg_id).exists():
         messages.error(request, "PG Admin access required for this PG.")
         return redirect('dashboard')
+    share_stats = _room_share_breakdown(room)
     if request.method == 'POST':
+        old_total = room.total_shares
         form = RoomForm(request.POST, instance=room)
         if form.is_valid():
-            room = form.save()
-            # Sync shares count by adding missing ones (no deletion for safety)
-            existing = room.shares.count()
-            for i in range(existing + 1, room.total_shares + 1):
-                RoomShareStatus.objects.get_or_create(room=room, share_no=i)
-            messages.success(request, "Room updated.")
-            return redirect('pg_rooms')
+            new_total = form.cleaned_data['total_shares']
+            room_obj = form.save(commit=False)
+
+            if new_total == old_total:
+                room_obj.save()
+                messages.success(request, "Room details updated.")
+                return redirect('pg_rooms')
+
+            if new_total > old_total:
+                room_obj.save()
+                for share_no in range(old_total + 1, new_total + 1):
+                    RoomShareStatus.objects.get_or_create(
+                        room=room_obj,
+                        share_no=share_no,
+                        defaults={'status': RoomShareStatus.VACANT},
+                    )
+                added = new_total - old_total
+                log(request.user, 'room_size_increase', 'Room', room_obj.id, f'Beds increased by {added}.')
+                messages.success(request, f"Room updated. Added {added} new vacant bed{'s' if added != 1 else ''}.")
+                return redirect('pg_rooms')
+
+            success, payload = _shrink_room_shares(room, new_total)
+            if success:
+                room_obj.save()
+                removed = payload.get('removed_numbers', [])
+                reassigned = payload.get('reassignments', [])
+                log_msg = f"Beds reduced to {new_total}. Removed {len(removed)} bed(s)."
+                if reassigned:
+                    moves = ', '.join(f"{item['from']}→{item['to']}" for item in reassigned)
+                    log_msg += f" Reassigned beds: {moves}."
+                log(request.user, 'room_size_decrease', 'Room', room_obj.id, log_msg)
+                message = f"Room updated. Removed {len(removed)} vacant bed{'s' if len(removed) != 1 else ''}."
+                if reassigned:
+                    message += " Occupied beds renumbered automatically."
+                messages.success(request, message)
+                return redirect('pg_rooms')
+
+            form.add_error('total_shares', payload)
+            room.refresh_from_db()
+            share_stats = _room_share_breakdown(room)
     else:
         form = RoomForm(instance=room)
-    return render(request, 'pgadmin/room_form.html', {"form": form, "room": room})
+    return render(request, 'pgadmin/room_form.html', {"form": form, "room": room, "share_stats": share_stats})
 
 
 @login_required
@@ -671,7 +1166,7 @@ def room_shares(request, pk):
                     joining_date = parse_date(joining_raw) if joining_raw else None
 
                     if not email:
-                        messages.error(request, f"Share {rs.share_no}: Email is required to set {new_status}.")
+                        messages.error(request, f"Bed {rs.share_no}: Email is required to set {new_status}.")
                         continue
 
                     User = get_user_model()
@@ -737,20 +1232,20 @@ def room_shares(request, pk):
                             booking.start_date = joining_date or timezone.now().date()
                         booking.save()
                     except IntegrityError:
-                        messages.error(request, f"Share {rs.share_no}: Could not create booking. User may already have an active booking in this PG.")
+                        messages.error(request, f"Bed {rs.share_no}: Could not create booking. User may already have an active booking in this PG.")
                         # Skip saving status change for this share
                         continue
 
-                    # Save the share status change after booking created and clear vacant_from if set
+                    # Save the bed status change after booking created and clear vacant_from if set
                     saved_rs = form.save()
                     if getattr(saved_rs, 'vacant_from', None):
                         saved_rs.vacant_from = None
                         saved_rs.save(update_fields=['vacant_from'])
                     # Feedback
                     if created_user:
-                        messages.success(request, f"Share {rs.share_no}: User created: {user.email}, booking: {booking.get_status_display()}.")
+                        messages.success(request, f"Bed {rs.share_no}: User created: {user.email}, booking: {booking.get_status_display()}.")
                     else:
-                        messages.success(request, f"Share {rs.share_no}: User linked: {user.email}, booking: {booking.get_status_display()}.")
+                        messages.success(request, f"Bed {rs.share_no}: User linked: {user.email}, booking: {booking.get_status_display()}.")
                 else:
                     # Normal save and inline occupant updates when already occupied
                     saved_rs = form.save()
@@ -786,7 +1281,7 @@ def room_shares(request, pk):
     rs_forms = []
     for rs, form in zip(shares, forms):
         occupant = None
-        if rs.status == RoomShareStatus.OCCUPIED:
+        if rs.status in [RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM]:
             occupant = (
                 Booking.objects.filter(room=room, share_no=rs.share_no, status=Booking.APPROVED)
                 .select_related('user', 'room', 'user__profile')
@@ -837,15 +1332,15 @@ def booking_approve(request, booking_id):
     booking.save()
     share.status = RoomShareStatus.OCCUPIED
     share.save(update_fields=['status'])
-    log(request.user, 'booking_approved', 'Booking', booking.id, f"Approved for room {booking.room.room_no} share {booking.share_no}")
+    log(request.user, 'booking_approved', 'Booking', booking.id, f"Approved for room {booking.room.room_no} bed {booking.share_no}")
     # Notify user
-    Notification.objects.create(user=booking.user, title="Booking approved", message=f"Your booking for {booking.room} share {booking.share_no} was approved.")
+    Notification.objects.create(user=booking.user, title="Booking approved", message=f"Your booking for {booking.room} bed {booking.share_no} was approved.")
     try:
         from django.urls import reverse
         link = request.build_absolute_uri(reverse('application_fill', args=[booking.id]))
         send_mail(
             subject="PG-MS: Booking Approved",
-            message=f"Your booking for {booking.room} share {booking.share_no} was approved.\nPlease complete your resident application here: {link}",
+            message=f"Your booking for {booking.room} bed {booking.share_no} was approved.\nPlease complete your resident application here: {link}",
             from_email=None,
             recipient_list=[booking.user.email],
             fail_silently=True,
@@ -879,7 +1374,7 @@ def booking_reject(request, booking_id):
     share = get_object_or_404(RoomShareStatus, room=booking.room, share_no=booking.share_no)
     booking.status = Booking.REJECTED
     booking.save(update_fields=['status'])
-    # On rejection, revert share to appropriate availability state.
+    # On rejection, revert bed to appropriate availability state.
     # Rule: if share.vacant_from is in the future -> keep VACANT_FROM (future scheduled vacancy)
     # else (date is past or today OR no date) -> mark as VACANT now.
     today = timezone.now().date()
@@ -894,12 +1389,12 @@ def booking_reject(request, booking_id):
             share.vacant_from = None
             update_fields.append('vacant_from')
     share.save(update_fields=update_fields)
-    log(request.user, 'booking_rejected', 'Booking', booking.id, f"Rejected for room {booking.room.room_no} share {booking.share_no}")
-    Notification.objects.create(user=booking.user, title="Booking rejected", message=f"Your booking for {booking.room} share {booking.share_no} was rejected.")
+    log(request.user, 'booking_rejected', 'Booking', booking.id, f"Rejected for room {booking.room.room_no} bed {booking.share_no}")
+    Notification.objects.create(user=booking.user, title="Booking rejected", message=f"Your booking for {booking.room} bed {booking.share_no} was rejected.")
     try:
         send_mail(
             subject="PG-MS: Booking Rejected",
-            message=f"Your booking for {booking.room} share {booking.share_no} was rejected.",
+            message=f"Your booking for {booking.room} bed {booking.share_no} was rejected.",
             from_email=None,
             recipient_list=[booking.user.email],
             fail_silently=True,
@@ -926,7 +1421,12 @@ def leaving_requests(request):
         messages.error(request, "PG Admin access required.")
         return redirect('dashboard')
     pg = _active_pg(request)
-    requests_qs = Booking.objects.filter(room__pg=pg, leaving_date__isnull=False, status=Booking.APPROVED).select_related('user', 'room') if pg else []
+    requests_qs = (
+        Booking.objects
+        .filter(room__pg=pg, leaving_date__isnull=False, status=Booking.APPROVED)
+        .select_related('user', 'room', 'application')
+        if pg else []
+    )
     today = timezone.now().date() if pg else None
     return render(request, 'pgadmin/leaving_requests.html', {"pg": pg, "bookings": requests_qs, "pgs": list(_admin_pgs(request.user)), "today": today})
 
@@ -973,20 +1473,20 @@ def leaving_confirm(request, booking_id):
         messages.error(request, "PG Admin access required for this PG.")
         return redirect('dashboard')
     share = get_object_or_404(RoomShareStatus, room=booking.room, share_no=booking.share_no)
-    # Mark leaving as confirmed (store timestamp/date)
     today = timezone.now().date()
     updated_fields = []
     if not booking.leaving_confirmed_date:
         booking.leaving_confirmed_date = today
         updated_fields.append('leaving_confirmed_date')
-    # If leaving date already reached or past, free immediately; else keep occupied until date
-    if booking.leaving_date:
+    if booking.leaving_date and booking.leaving_date <= today:
+        share.status = RoomShareStatus.VACANT
+        share.vacant_from = None
+    else:
         share.status = RoomShareStatus.VACANT_FROM
         share.vacant_from = booking.leaving_date
-        share.save(update_fields=['status','vacant_from'])
+    share.save(update_fields=['status', 'vacant_from'])
     if updated_fields:
         booking.save(update_fields=updated_fields)
-    # Do not deactivate user profile; adjust flags if needed
     try:
         if hasattr(booking.user, 'profile'):
             if getattr(booking.user.profile, 'is_pg_user', True):
@@ -994,11 +1494,74 @@ def leaving_confirm(request, booking_id):
                 booking.user.profile.save(update_fields=['is_pg_user'])
     except Exception:
         pass
-    log(request.user, 'leaving_confirmed', 'Booking', booking.id, f"Leaving confirmed; booking closed for room {booking.room.room_no} share {booking.share_no}")
+    log(request.user, 'leaving_confirmed', 'Booking', booking.id, f"Leaving confirmed; booking closed for room {booking.room.room_no} bed {booking.share_no}")
     if share.status == RoomShareStatus.VACANT:
-        messages.success(request, f"Leaving confirmed and share freed for room {booking.room.room_no}.")
+        messages.success(request, f"Leaving confirmed and bed freed for room {booking.room.room_no}.")
     else:
-        messages.success(request, f"Leaving confirmed for room {booking.room.room_no}. Share will free on {booking.leaving_date}.")
+        messages.success(request, f"Leaving confirmed for room {booking.room.room_no}. Bed will free on {booking.leaving_date}.")
+    return redirect('pg_leaving_requests')
+
+
+@login_required
+@transaction.atomic
+def leaving_delete(request, booking_id):
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('pg_leaving_requests')
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    booking = get_object_or_404(Booking, pk=booking_id, status=Booking.APPROVED)
+    if not _admin_pgs(request.user).filter(id=(getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None))).exists():
+        messages.error(request, "PG Admin access required for this PG.")
+        return redirect('dashboard')
+    if not booking.leaving_confirmed_date:
+        messages.error(request, "Confirm the leaving request before deleting resident data.")
+        return redirect('pg_leaving_requests')
+    summary = _cleanup_booking_after_leave(booking, actor=request.user, origin='manual_button')
+    if summary.get('failed_files'):
+        messages.warning(
+            request,
+            (
+                f"Resident data deleted but {summary['failed_files']} file(s) could not be removed from Drive. "
+                "Please review manually."
+            ),
+        )
+    else:
+        extra = ''
+        if summary.get('deleted_files'):
+            extra = f" {summary['deleted_files']} file(s) deleted from Drive."
+        messages.success(request, f"Resident booking and application removed.{extra}")
+    return redirect('pg_leaving_requests')
+
+
+@login_required
+@transaction.atomic
+def leaving_reject(request, booking_id):
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('pg_leaving_requests')
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    booking = get_object_or_404(Booking, pk=booking_id, status=Booking.APPROVED)
+    if not _admin_pgs(request.user).filter(id=(getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None))).exists():
+        messages.error(request, "PG Admin access required for this PG.")
+        return redirect('dashboard')
+    if booking.leaving_confirmed_date:
+        messages.error(request, "Leaving request already confirmed. Use delete to remove resident data if needed.")
+        return redirect('pg_leaving_requests')
+    booking.leaving_date = None
+    booking.save(update_fields=['leaving_date'])
+    try:
+        share = RoomShareStatus.objects.get(room=booking.room, share_no=booking.share_no)
+        share.status = RoomShareStatus.OCCUPIED
+        share.vacant_from = None
+        share.save(update_fields=['status', 'vacant_from'])
+    except RoomShareStatus.DoesNotExist:
+        pass
+    log(request.user, 'booking_leave_rejected', 'Booking', booking.id, f"Leave request rejected for room {booking.room.room_no} bed {booking.share_no}")
+    messages.success(request, "Leave request rejected and cleared.")
     return redirect('pg_leaving_requests')
 from django.shortcuts import render
 

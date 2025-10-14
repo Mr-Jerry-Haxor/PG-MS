@@ -18,7 +18,7 @@ class RoomShareStatusAdmin(admin.ModelAdmin):
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
-	list_display = ("user", "room", "share_no", "status", "start_date", "leaving_date")
+	list_display = ("user", "room", "share_no", "status", "start_date", "joining_date", "payment_date", "leaving_date")
 	list_filter = ("status", "room__pg")
 	search_fields = ("user__email", "room__room_no")
 

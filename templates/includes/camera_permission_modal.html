@@ -1,0 +1,54 @@
+<div class="modal fade" id="cameraPermissionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Camera Access Needed</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">We could not access your camera. Please allow camera access to continue with the live photo capture.</p>
+        <ol class="mb-2 small">
+          <li>Click the lock icon next to the address bar.</li>
+          <li>Find the Camera permission and set it to <strong>Allow</strong>.</li>
+          <li>Reload this page and try again.</li>
+        </ol>
+        <div id="cameraPermissionModalContext" class="small text-secondary mt-2 d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Got it</button>
+        <button type="button" class="btn btn-outline-primary" id="cameraPermissionModalReloadBtn">Reload Page</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  (function(){
+    const modalEl = document.getElementById('cameraPermissionModal');
+    if (!modalEl) return;
+    const contextEl = document.getElementById('cameraPermissionModalContext');
+    const reloadBtn = document.getElementById('cameraPermissionModalReloadBtn');
+    if (reloadBtn){
+      reloadBtn.addEventListener('click', function(){ window.location.reload(); });
+    }
+    function showCameraPermissionModal(context){
+      if (contextEl){
+        if (context){
+          contextEl.textContent = context;
+          contextEl.classList.remove('d-none');
+        } else {
+          contextEl.textContent = '';
+          contextEl.classList.add('d-none');
+        }
+      }
+      if (window.bootstrap && typeof window.bootstrap.Modal === 'function'){
+        try {
+          const modal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+          return;
+        } catch (err) { /* fall through to alert */ }
+      }
+      alert('Please allow camera access in your browser settings and reload the page.');
+    }
+    window.showCameraPermissionModal = showCameraPermissionModal;
+  })();
+</script>

@@ -1,6 +1,7 @@
 from django.db import models
 from django.db.models import Q
 from django.conf import settings
+from django.utils import timezone
 from core.models import TimeStampedModel
 from pgadmin.models import PG
 from django.conf import settings
@@ -62,6 +63,7 @@ class Booking(TimeStampedModel):
 	advance_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 	start_date = models.DateField(null=True, blank=True)
 	joining_date = models.DateField(null=True, blank=True)
+	payment_date = models.DateField(null=True, blank=True, help_text="Monthly rent due date; defaults to joining date.")
 	leaving_date = models.DateField(null=True, blank=True)
 	leaving_confirmed_date = models.DateField(null=True, blank=True)
 
@@ -90,6 +92,17 @@ class Booking(TimeStampedModel):
 			room_pg_id = getattr(self.room, 'pg_id', None)
 			if room_pg_id and self.pg_id != room_pg_id:
 				self.pg_id = room_pg_id
+		# Default payment date to joining/start date when missing
+		if not self.payment_date:
+			anchor = self.joining_date or self.start_date
+			if not anchor and getattr(self, 'created_at', None):
+				created = self.created_at
+				if created:
+					if timezone.is_aware(created):
+						created = timezone.localtime(created)
+					anchor = created.date()
+			if anchor:
+				self.payment_date = anchor
 		super().save(*args, **kwargs)
 
 

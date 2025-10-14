@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
-{% block title %}Room Shares • PG-MS{% endblock %}
+{% block title %}Room Beds • PG-MS{% endblock %}
 {% block content %}
-<h1 class="h4 mb-3">Room {{ room.room_no }} • Shares</h1>
+<h1 class="h4 mb-3">Room {{ room.room_no }} • Beds</h1>
 <form method="post" class="" id="shares-form">
   {% csrf_token %}
   <div class="row g-3">
@@ -10,7 +10,7 @@
   <div class="card border-0 shadow-sm h-100" data-initial-status="{{ rs.status }}" data-vacant-from="{{ rs.vacant_from|date:'Y-m-d' }}">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-2">
-              <div class="fw-semibold">Share {{ rs.share_no }}</div>
+              <div class="fw-semibold">Bed {{ rs.share_no }}</div>
               <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleEdit(this)">Edit</button>
             </div>
             <div class="mb-2">

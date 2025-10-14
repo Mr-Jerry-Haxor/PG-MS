@@ -339,7 +339,11 @@
       overlayEl.classList.remove('d-none');
       captureBtn.disabled = false;
     } catch (e) {
-      alert('Unable to access camera. Allow permission or use Upload Photo.');
+      if (typeof window.showCameraPermissionModal === 'function') {
+        window.showCameraPermissionModal('Resident application selfie capture needs camera access.');
+      } else {
+        alert('Unable to access camera. Allow permission or use Upload Photo.');
+      }
     }
   });
 
@@ -634,4 +638,5 @@
   // Preview logic removed per request
   }); // DOMContentLoaded end
 </script>
+{% include 'includes/camera_permission_modal.html' %}
 {% endblock %}

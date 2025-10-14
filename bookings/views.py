@@ -7,26 +7,24 @@ from django.db import transaction
 from django.conf import settings
 from django.utils import timezone
 
-from pgadmin.models import PG, PGAdmin
 from accounts.models import Profile
-from .models import Room, RoomShareStatus, Booking
-from core.models import Notification
 from core.audit import log
-from django.core.mail import send_mail
-from .forms import AadhaarForm, BookingRequestForm
-from .application_forms import ResidentApplicationForm
-from django.conf import settings
 from core.drive import drive_upload
+from core.models import Notification
+from django.core.mail import send_mail
 from django.db import IntegrityError
 from django.urls import reverse
 from django.utils.dateparse import parse_date
 from django.http import JsonResponse, HttpResponseBadRequest
+from pgadmin.models import PG, PGAdmin
 
+from .application_forms import ResidentApplicationForm
+from .forms import AadhaarForm, BookingRequestForm
+from .models import Room, RoomShareStatus, Booking
 
 def _pg_by_slug_or_404(slug: str):
     from django.shortcuts import get_object_or_404
     return get_object_or_404(PG, slug=slug)
-
 
 @login_required
 def pg_quick_booking(request, pgslug):
@@ -153,6 +151,7 @@ def pg_quick_booking(request, pgslug):
                 share_no=share_no,
                 status=Booking.PENDING,
                 joining_date=joining_date,
+                payment_date=joining_date,
             )
             # Reserve share when applicable
             if rs.status in [RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]:
@@ -295,7 +294,15 @@ def pg_quick_rooms(request, pgslug):
         available_shares = [s.share_no for s in r.shares.all() if share_is_available(s)]
         if available_shares:
             total_shares = r.shares.count()
-            data.append({'id': r.id, 'room_no': r.room_no, 'vacant_shares': available_shares, 'share_count': total_shares})
+            data.append({
+                'id': r.id,
+                'room_no': r.room_no,
+                'vacant_beds': available_shares,
+                'bed_count': total_shares,
+                # Legacy aliases retained for clients still using share terminology
+                'vacant_shares': available_shares,
+                'share_count': total_shares,
+            })
     return JsonResponse({'rooms': data})
 
 
@@ -314,13 +321,21 @@ def pg_quick_shares(request, pgslug, room_id):
             )
         )
         result.append({
+            'bed_no': s.share_no,
             'share_no': s.share_no,
             'available_from': s.vacant_from.isoformat() if s.vacant_from else None,
             'status': s.status,
             'selectable': selectable,
         })
-    # Keep legacy vacant_shares for backward compatibility
-    return JsonResponse({'room_id': room.id, 'vacant_shares': [x['share_no'] for x in result if x['selectable']], 'shares': result})
+    selectable_beds = [x['share_no'] for x in result if x['selectable']]
+    return JsonResponse({
+        'room_id': room.id,
+        'vacant_beds': selectable_beds,
+        'beds': result,
+        # Legacy aliases for backward compatibility
+        'vacant_shares': selectable_beds,
+        'shares': result,
+    })
 
 
 def _user_pg(user):

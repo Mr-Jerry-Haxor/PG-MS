@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}Request Booking • PG-MS{% endblock %}
 {% block content %}
-<h1 class="h4 mb-3">Request Booking — Room {{ room.room_no }}, Share {{ share.share_no }}</h1>
+<h1 class="h4 mb-3">Request Booking — Room {{ room.room_no }}, Bed {{ share.share_no }}</h1>
 {% if available_from %}
-  <div class="alert alert-info">This share will be available from <strong>{{ available_from }}</strong>. Please pick a joining date after this date.</div>
+  <div class="alert alert-info">This bed will be available from <strong>{{ available_from }}</strong>. Please pick a joining date after this date.</div>
 {% endif %}
 {% if awaiting_confirmation %}
   <div class="alert alert-warning">Leaving not yet confirmed by PG Admin; if their plans change your request may be rejected.</div>

@@ -1,7 +1,9 @@
 from __future__ import annotations
 import os
 from django.conf import settings
+import re
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
@@ -70,3 +72,40 @@ def drive_upload(file_obj, filename: str, parent_folder_id: str | None = None) -
             pass
     preview = f"https://drive.google.com/file/d/{fid}/preview"
     return fid, preview
+
+
+def extract_drive_file_id(url_or_id: str | None) -> str | None:
+    """Best-effort extraction of a Google Drive file id from a URL or raw id string."""
+    if not url_or_id:
+        return None
+    value = (url_or_id or '').strip()
+    if not value:
+        return None
+    match = re.search(r"/d/([A-Za-z0-9_-]+)", value)
+    if match:
+        return match.group(1)
+    match = re.search(r"[?&]id=([A-Za-z0-9_-]+)", value)
+    if match:
+        return match.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{10,}", value):
+        return value
+    return None
+
+
+def drive_delete(file_id_or_url: str | None) -> bool:
+    """Delete the specified Drive file by id or URL. Returns True when deletion succeeds."""
+    fid = extract_drive_file_id(file_id_or_url)
+    if not fid:
+        return False
+    svc = _drive_service()
+    if not svc:
+        return False
+    try:
+        svc.files().delete(fileId=fid, supportsAllDrives=True).execute()
+        return True
+    except HttpError as exc:
+        if getattr(getattr(exc, 'resp', None), 'status', None) == 404:
+            return True
+        return False
+    except Exception:
+        return False

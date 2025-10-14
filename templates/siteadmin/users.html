@@ -1,40 +1,124 @@
 {% extends 'base.html' %}
 {% block title %}Users | Site Admin{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="mb-0">All Users</h3>
-  <a href="{% url 'sa_dashboard' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+<div class="d-flex flex-wrap gap-3 align-items-end mb-3">
+  <div>
+    <h3 class="mb-0">All Users</h3>
   </div>
+  <div class="ms-auto">
+    <label for="userSearch" class="form-label small text-uppercase text-secondary mb-1">Search</label>
+    <input id="userSearch" type="text" class="form-control form-control-sm" placeholder="Filter by name, email, role, or joined date">
+  </div>
+  <a href="{% url 'sa_dashboard' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+</div>
 <div class="card">
   <div class="table-responsive">
-    <table class="table table-hover mb-0 align-middle">
+    <table id="userTable" class="table table-hover mb-0 align-middle" data-data-table>
       <thead class="table-light">
         <tr>
-          <th>#</th>
-          <th>Name</th>
-          <th>Email</th>
-          <th>Joined</th>
-          <th>Roles</th>
+          <th scope="col" data-sortable="true" data-type="number">S.No</th>
+          <th scope="col" data-sortable="true">Name</th>
+          <th scope="col" data-sortable="true">Email</th>
+          <th scope="col" data-sortable="true">Joined</th>
+          <th scope="col" data-sortable="true">Roles</th>
         </tr>
       </thead>
       <tbody>
         {% for u in items %}
-        <tr>
-          <td>{{ forloop.counter }}</td>
-          <td>{{ u.get_full_name|default:u.username }}</td>
-          <td>{{ u.email }}</td>
-          <td>{{ u.date_joined|date:"Y-m-d H:i" }}</td>
-          <td>
+        {% with display_name=u.get_full_name|default:u.username %}
+        <tr data-search="{{ display_name }} {{ u.email }} {% if u.profile.is_website_admin %}site admin{% endif %} {% if u.profile.is_pg_admin %}pg admin{% endif %} {% if u.profile.is_pg_user %}pg user{% endif %} {{ u.date_joined|date:'Y-m-d H:i' }}" data-row>
+          <td data-col="index" data-value="{{ forloop.counter }}">{{ forloop.counter }}</td>
+          <td data-value="{{ display_name|lower }}">{{ display_name }}</td>
+          <td data-value="{{ u.email|default:''|lower }}">{{ u.email }}</td>
+          <td data-value="{{ u.date_joined|date:'Y-m-d H:i' }}">{{ u.date_joined|date:"Y-m-d H:i" }}</td>
+          <td data-value="{% if u.profile.is_website_admin %}a{% endif %}{% if u.profile.is_pg_admin %}b{% endif %}{% if u.profile.is_pg_user %}c{% endif %}">
             {% if u.profile.is_website_admin %}<span class="badge bg-primary me-1">Site Admin</span>{% endif %}
             {% if u.profile.is_pg_admin %}<span class="badge bg-warning text-dark me-1">PG Admin</span>{% endif %}
             {% if u.profile.is_pg_user %}<span class="badge bg-success">PG User</span>{% endif %}
           </td>
         </tr>
+        {% endwith %}
         {% empty %}
-        <tr><td colspan="5" class="text-center text-muted py-4">No users found.</td></tr>
+        <tr class="table-empty"><td colspan="5" class="text-center text-muted py-4">No users found.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
  </div>
+{% if items %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const table = document.getElementById('userTable');
+  const search = document.getElementById('userSearch');
+  if(!table){return;}
+  const tbody = table.querySelector('tbody');
+  const headers = table.querySelectorAll('thead th[data-sortable="true"]');
+
+  const asNumber = raw => {
+    const num = parseFloat(String(raw).replace(/[^0-9.-]/g,''));
+    return isNaN(num) ? 0 : num;
+  };
+
+  const renumber = () => {
+    let idx = 0;
+    Array.from(tbody.querySelectorAll('tr[data-row]')).forEach(row => {
+      if(row.classList.contains('d-none')){return;}
+      idx += 1;
+      const cell = row.querySelector('[data-col="index"]');
+      if(cell){cell.textContent = idx.toString();}
+    });
+  };
+
+  headers.forEach(th => {
+    th.addEventListener('click', () => {
+      const columnIndex = Array.from(th.parentNode.children).indexOf(th);
+      const type = th.dataset.type || 'string';
+      const nextDir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+
+      headers.forEach(other => {
+        if(other !== th){
+          other.removeAttribute('data-sort-dir');
+          other.classList.remove('sorted-asc','sorted-desc');
+        }
+      });
+
+      th.dataset.sortDir = nextDir;
+      th.classList.toggle('sorted-asc', nextDir === 'asc');
+      th.classList.toggle('sorted-desc', nextDir === 'desc');
+
+      const rows = Array.from(tbody.querySelectorAll('tr[data-row]'));
+      rows.sort((a, b) => {
+        const aCell = a.children[columnIndex];
+        const bCell = b.children[columnIndex];
+        const aValue = aCell ? (aCell.dataset.value || aCell.textContent).trim() : '';
+        const bValue = bCell ? (bCell.dataset.value || bCell.textContent).trim() : '';
+        if(type === 'number'){
+          return asNumber(aValue) - asNumber(bValue);
+        }
+        return aValue.localeCompare(bValue, undefined, {numeric: true, sensitivity: 'base'});
+      });
+      if(nextDir === 'desc'){rows.reverse();}
+      rows.forEach(row => tbody.appendChild(row));
+      renumber();
+    });
+  });
+
+  if(search){
+    const rows = Array.from(tbody.querySelectorAll('tr[data-row]')).map(row => ({
+      element: row,
+      text: (row.dataset.search || row.textContent).toLowerCase(),
+    }));
+    search.addEventListener('input', () => {
+      const term = search.value.trim().toLowerCase();
+      rows.forEach(({element, text}) => {
+        element.classList.toggle('d-none', term && !text.includes(term));
+      });
+      renumber();
+    });
+  }
+
+  renumber();
+});
+</script>
+{% endif %}
 {% endblock %}

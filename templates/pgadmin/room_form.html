@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="d-flex align-items-center gap-2">
-    <h1 class="h4 mb-0">New Room</h1>
+  <h1 class="h4 mb-0">{% if room %}Edit Room{% else %}New Room{% endif %}</h1>
     {% if pgs and pgs|length > 1 %}
     <form method="get">
       <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -26,8 +26,19 @@
       {{ form.room_no }}
     </div>
     <div class="mb-3">
-      <label class="form-label">Total Shares</label>
+      <label class="form-label">Total Beds</label>
       {{ form.total_shares }}
+      {% if share_stats %}
+        <div id="bedChangeHint"
+             class="form-text text-secondary"
+             data-current-total="{{ share_stats.total }}"
+             data-vacant="{{ share_stats.vacant }}"
+             data-nonvacant="{{ share_stats.non_vacant }}">
+          Current distribution: {{ share_stats.non_vacant }} active (occupied/reserved/leaving), {{ share_stats.vacant }} vacant.
+        </div>
+      {% else %}
+        <div class="form-text text-secondary">New beds start as vacant slots.</div>
+      {% endif %}
     </div>
     <div class="d-flex gap-2">
       <button class="btn btn-primary" type="submit">Save</button>
@@ -35,4 +46,53 @@
     </div>
   </div>
 </form>
+{% if share_stats %}
+<script>
+  (function(){
+    const input = document.getElementById('id_total_shares');
+    const hint = document.getElementById('bedChangeHint');
+    if (!input || !hint) return;
+    const current = parseInt(hint.dataset.currentTotal || '0', 10);
+    const vacant = parseInt(hint.dataset.vacant || '0', 10);
+    const nonVacant = parseInt(hint.dataset.nonvacant || '0', 10);
+    function updateHint(){
+      const next = parseInt(input.value || '0', 10);
+      if (!next || next < 1){
+        hint.textContent = 'Enter a valid bed count (must be at least 1).';
+        hint.className = 'form-text text-warning';
+        return;
+      }
+      if (next === current){
+        hint.textContent = `No change. ${nonVacant} active bed${nonVacant === 1 ? '' : 's'}, ${vacant} vacant.`;
+        hint.className = 'form-text text-secondary';
+        return;
+      }
+      if (next > current){
+        const added = next - current;
+        hint.textContent = `Increase by ${added} bed${added === 1 ? '' : 's'}. Added beds will be created as vacant.`;
+        hint.className = 'form-text text-success';
+        return;
+      }
+      const reduceBy = current - next;
+      if (nonVacant > next){
+        const over = nonVacant - next;
+        hint.textContent = `Too many active beds (${nonVacant}) for ${next}. Vacate or move ${over} bed${over === 1 ? '' : 's'} first.`;
+        hint.className = 'form-text text-danger';
+        return;
+      }
+      if (reduceBy > vacant){
+        const need = reduceBy - vacant;
+        hint.textContent = `Need ${reduceBy} vacant bed${reduceBy === 1 ? '' : 's'} to remove, but only ${vacant} vacant now. Free up ${need} more.`;
+        hint.className = 'form-text text-danger';
+        return;
+      }
+      hint.textContent = `Reduce by ${reduceBy} bed${reduceBy === 1 ? '' : 's'}. Vacant beds will be removed and active beds renumbered automatically.`;
+      hint.className = 'form-text text-success';
+    }
+    input.addEventListener('input', updateHint);
+    input.addEventListener('change', updateHint);
+    updateHint();
+  })();
+</script>
+{% endif %}
 {% endblock %}

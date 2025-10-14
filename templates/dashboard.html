@@ -145,6 +145,94 @@
     <h2 class="h6 text-secondary">PG Admin quick links</h2>
   </div>
   <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_tenants' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-people-fill fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">My PG Tenants</div>
+          <div class="small text-secondary">Rooms and occupants</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'finance_monthly' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-calendar3 fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">Monthly Overview</div>
+          <div class="small text-secondary">Expected vs collected</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_resident_applications' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-people fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">Applications</div>
+          <div class="small text-secondary">Resident applications</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_vehicle_search' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-car-front fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">Vehicle Search</div>
+          <div class="small text-secondary">Find resident vehicles</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_bookings_pending' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-hourglass-split fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">Pending Bookings</div>
+          <div class="small text-secondary">Approve bookings</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_leaving_requests' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-box-arrow-left fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">Leaving</div>
+          <div class="small text-secondary">Manage requests</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'expenditure_list' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-receipt fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">Expenditure</div>
+          <div class="small text-secondary">Track expenses</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'payments_list' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-wallet2 fs-3 text-primary"></i>
+        <div>
+          <div class="fw-semibold">Manage Payments</div>
+          <div class="small text-secondary">View and record payments</div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
     <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_my' %}">
       <div class="card-body d-flex align-items-center gap-3">
         <i class="bi bi-building-gear fs-3 text-primary"></i>
@@ -162,85 +250,6 @@
         <div>
           <div class="fw-semibold">Rooms</div>
           <div class="small text-secondary">Manage rooms</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_bookings_pending' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-hourglass-split fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Pending</div>
-          <div class="small text-secondary">Approve bookings</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_resident_applications' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-people fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Applications</div>
-          <div class="small text-secondary">Resident applications</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_tenants' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-people-fill fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">My PG Tenants</div>
-          <div class="small text-secondary">Rooms and occupants</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_leaving_requests' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-box-arrow-left fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Leaving</div>
-          <div class="small text-secondary">Manage requests</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'payments_list' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-wallet2 fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Manage Payments</div>
-          <div class="small text-secondary">View and record payments</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'finance_monthly' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-calendar3 fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Monthly Overview</div>
-          <div class="small text-secondary">Expected vs collected</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'expenditure_list' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-receipt fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Expenditure</div>
-          <div class="small text-secondary">Track expenses</div>
         </div>
       </div>
     </a>
@@ -483,9 +492,9 @@
 {% endif %}
 
 {% if user.is_authenticated and not my_approved_bookings and my_completed_bookings %}
-<div class="mt-4">
-  <div class="alert alert-success small mb-2">You have left your previous booking. You can request a new booking from Availability.</div>
-</div>
+<!-- <div class="mt-4"> -->
+  <!-- <div class="alert alert-success small mb-2">You have left your previous booking. You can request a new booking from Availability.</div> -->
+<!-- </div> -->
 {% endif %}
 
 {% if user.is_authenticated and my_completed_bookings %}

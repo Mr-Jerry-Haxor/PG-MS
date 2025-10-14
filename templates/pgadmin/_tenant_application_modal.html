@@ -1,0 +1,90 @@
+<style>
+  .section-title{font-size:.7rem;letter-spacing:.08em;font-weight:600;text-transform:uppercase;color:#64748b;margin:1rem 0 .35rem}
+  .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+  .field small{display:block;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:.15rem}
+  .doc-preview{display:flex;flex-wrap:wrap;gap:.5rem}
+  .doc-thumb{width:64px;height:64px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
+  .declarations-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;margin-top:.5rem}
+  .decl-item{display:flex;align-items:center;gap:.35rem;font-size:.75rem;padding:.4rem .55rem;border:1px solid #e2e8f0;border-radius:.5rem;background:#f8fafc}
+  .field-box{background:#f8fafc;padding:.55rem .6rem;border:1px solid #e2e8f0;border-radius:.6rem;min-height:72px}
+  .doc-embed{border:1px solid #e2e8f0;border-radius:.6rem;background:#f8fafc}
+  .selfie-embed{border:1px solid #e2e8f0;border-radius:.75rem;background:#f1f5f9;position:relative;overflow:hidden}
+  .selfie-embed iframe{width:100%;height:280px;border:0}
+  @media (min-width:768px){.selfie-embed iframe{height:320px}}
+</style>
+<div class="section-title mt-0">Personal</div>
+{% if sd.application.selfie_url %}
+  <div class="mb-3">
+    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#selfieWrap{{ sd.booking.id }}" aria-expanded="false" aria-controls="selfieWrap{{ sd.booking.id }}">
+      <i class="bi bi-person-bounding-box me-1"></i>Show Selfie
+    </button>
+    <div class="collapse mt-2" id="selfieWrap{{ sd.booking.id }}">
+      <div class="selfie-embed p-2">
+        <iframe src="{{ sd.application.selfie_url }}" title="Selfie" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups" onload="this.dataset.loaded=1"></iframe>
+        <div class="small text-secondary mt-2">If the selfie doesn't render, <a href="{{ sd.application.selfie_url }}" target="_blank">open in new tab</a>.</div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+<div class="field-grid">
+  <div class="field field-box"><small>Name</small><span class="fw-semibold d-block">{{ sd.application.name|default:sd.occupant.first_name }} {{ sd.occupant.last_name }}</span></div>
+  <div class="field field-box"><small>DOB</small><span>{{ sd.application.dob|default:"—" }}</span></div>
+  <div class="field field-box"><small>Age</small><span>{{ sd.application.age|default:"—" }}</span></div>
+  <div class="field field-box"><small>Phone</small><span>{{ sd.application.phone|default:sd.occupant.profile.phone|default:"—" }}</span></div>
+  <div class="field field-box"><small>Email</small><span class="text-break">{{ sd.application.email|default:sd.occupant.email }}</span></div>
+  <div class="field field-box"><small>Food Pref</small><span>{{ sd.application.food_pref|default:"—" }}</span></div>
+  <div class="field field-box"><small>Marital</small><span>{{ sd.application.marital_status|default:"—" }}</span></div>
+  <div class="field field-box"><small>Date of Admission</small><span>{{ sd.application.date_of_admission|default:"—" }}</span></div>
+  <div class="field field-box"><small>Joining Date</small><span>{% if sd.booking.joining_date %}{{ sd.booking.joining_date|date:"Y-m-d" }}{% elif sd.booking.start_date %}{{ sd.booking.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
+</div>
+<div class="field mt-2 field-box"><small>Address</small><div>{{ sd.application.address|default:"—" }}</div></div>
+<div class="section-title">Family</div>
+<div class="field-grid">
+  <div class="field field-box"><small>Father Name</small><span>{{ sd.application.father_name|default:"—" }}</span></div>
+  <div class="field field-box"><small>Father Phone or Emergency Contact 1</small><span>{{ sd.application.father_phone|default:"—" }}</span></div>
+  <div class="field field-box"><small>Mother Name</small><span>{{ sd.application.mother_name|default:"—" }}</span></div>
+  <div class="field field-box"><small>Mother Phone or Emergency Contact 2</small><span>{{ sd.application.mother_phone|default:"—" }}</span></div>
+</div>
+<div class="section-title">Education / Work</div>
+<div class="field-grid">
+  <div class="field field-box"><small>Occupation</small><span>{{ sd.application.occupation|default:"—" }}</span></div>
+  <div class="field field-box"><small>Education</small><span>{{ sd.application.education|default:"—" }}</span></div>
+  <div class="field field-box"><small>Organisation</small><span>{{ sd.application.org_name|default:"—" }}</span></div>
+</div>
+<div class="field mt-2 field-box"><small>Organisation Address</small><div>{{ sd.application.org_address|default:"—" }}</div></div>
+<div class="section-title">Documents</div>
+<div class="field-grid">
+  <div class="field field-box"><small>Aadhaar Number</small><span>{{ sd.application.aadhaar_number|default:"—" }}</span></div>
+</div>
+<div class="doc-preview mt-2">
+  {% if sd.application.selfie_url %}
+    <a href="{{ sd.application.selfie_url }}" target="_blank" class="text-decoration-none" title="Open Selfie">
+      <img src="{{ sd.application.selfie_url }}" alt="Selfie" class="doc-thumb" onerror="this.style.display='none'" />
+    </a>
+  {% endif %}
+  {% if sd.application.aadhaar_file_url %}
+    <a class="btn btn-outline-secondary btn-sm" href="{{ sd.application.aadhaar_file_url }}" target="_blank">Open Aadhaar/Document</a>
+    {% if sd.application.aadhaar_file_url_2 %}
+      <a class="btn btn-outline-secondary btn-sm" href="{{ sd.application.aadhaar_file_url_2 }}" target="_blank">Open Back Side</a>
+    {% endif %}
+  {% endif %}
+</div>
+{% if sd.application.aadhaar_file_url %}
+  <div class="mt-2">
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#aadhaarPreview{{ sd.booking.id }}" aria-expanded="false" aria-controls="aadhaarPreview{{ sd.booking.id }}">
+      <i class="bi bi-file-earmark-text me-1"></i>Preview Document
+    </button>
+    <div class="collapse mt-2" id="aadhaarPreview{{ sd.booking.id }}">
+      <div class="doc-embed p-2">
+        <iframe src="{{ sd.application.aadhaar_file_url }}" title="Aadhaar/Document" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer"></iframe>
+      </div>
+    </div>
+  </div>
+{% endif %}
+<div class="section-title">Declarations</div>
+<div class="declarations-grid">
+  <div class="decl-item">Valuables: <strong class="ms-1">{% if sd.application.decl_valuables %}Agreed{% else %}Not agreed{% endif %}</strong></div>
+  <div class="decl-item">Notice: <strong class="ms-1">{% if sd.application.decl_notice %}Agreed{% else %}Not agreed{% endif %}</strong></div>
+  <div class="decl-item">Deposit: <strong class="ms-1">{% if sd.application.decl_deposit %}Agreed{% else %}Not agreed{% endif %}</strong></div>
+  <div class="decl-item">Truth: <strong class="ms-1">{% if sd.application.decl_truth %}Agreed{% else %}Not agreed{% endif %}</strong></div>
+</div>

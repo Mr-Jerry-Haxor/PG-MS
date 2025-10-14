@@ -5,6 +5,7 @@
   .status-paid{background:#ecfdf5;color:#047857;border-color:#a7f3d0}
   .status-unpaid{background:#fee2e2;color:#b91c1c;border-color:#fecaca}
   .status-partial{background:#fef9c3;color:#854d0e;border-color:#fde68a}
+  .status-upcoming{background:#e0e7ff;color:#3730a3;border-color:#c7d2fe}
   .chip{display:inline-block;padding:.2rem .5rem;border-radius:1rem;border:1px solid #e2e8f0;font-weight:600;font-size:.7rem}
   /* Mobile tweaks */
   @media (max-width: 576px) {
@@ -40,10 +41,10 @@
       </form>
     {% endif %}
   </div>
-  <div class="d-flex gap-2 flex-wrap w-100 w-md-auto justify-content-start justify-content-md-end mt-2 mt-md-0">
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_pdf' %}?year={{ summary.year }}&month={{ summary.month }}{% if current_sort %}&sort={{ current_sort }}{% endif %}{% if current_dir %}&dir={{ current_dir }}{% endif %}">Export PDF</a>
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_excel' %}?year={{ summary.year }}&month={{ summary.month }}{% if current_sort %}&sort={{ current_sort }}{% endif %}{% if current_dir %}&dir={{ current_dir }}{% endif %}">Export Excel</a>
-  <a class="btn btn-outline-secondary btn-sm" href="{% url 'finance_monthly_export_csv' %}?year={{ summary.year }}&month={{ summary.month }}{% if current_sort %}&sort={{ current_sort }}{% endif %}{% if current_dir %}&dir={{ current_dir }}{% endif %}">Export CSV</a>
+  <div class="d-flex gap-2 flex-wrap w-100 w-md-auto justify-content-start justify-content-md-end mt-2 mt-md-0" id="monthlyExportButtons">
+  <a class="btn btn-outline-secondary btn-sm" href="#" data-export-url="{% url 'finance_monthly_export_pdf' %}" data-export-label="PDF" data-year="{{ summary.year }}" data-month="{{ summary.month }}" data-sort="{{ current_sort }}" data-dir="{{ current_dir }}" data-only="{{ request.GET.only|default:'' }}" data-pg="{% if pg %}{{ pg.id }}{% endif %}">Export PDF</a>
+  <a class="btn btn-outline-secondary btn-sm" href="#" data-export-url="{% url 'finance_monthly_export_excel' %}" data-export-label="Excel" data-year="{{ summary.year }}" data-month="{{ summary.month }}" data-sort="{{ current_sort }}" data-dir="{{ current_dir }}" data-only="{{ request.GET.only|default:'' }}" data-pg="{% if pg %}{{ pg.id }}{% endif %}">Export Excel</a>
+  <a class="btn btn-outline-secondary btn-sm" href="#" data-export-url="{% url 'finance_monthly_export_csv' %}" data-export-label="CSV" data-year="{{ summary.year }}" data-month="{{ summary.month }}" data-sort="{{ current_sort }}" data-dir="{{ current_dir }}" data-only="{{ request.GET.only|default:'' }}" data-pg="{% if pg %}{{ pg.id }}{% endif %}">Export CSV</a>
     <button class="btn btn-outline-secondary btn-sm" type="button" id="btnToggleAll" data-state="collapsed">Expand All Stays</button>
   </div>
 </div>
@@ -67,6 +68,7 @@
         <option value="paid" {% if request.GET.only == 'paid' %}selected{% endif %}>Paid</option>
         <option value="unpaid" {% if request.GET.only == 'unpaid' %}selected{% endif %}>Unpaid</option>
         <option value="partial" {% if request.GET.only == 'partial' %}selected{% endif %}>Partial</option>
+          <option value="upcoming" {% if request.GET.only == 'upcoming' %}selected{% endif %}>Not due</option>
       </select>
     </div>
     <div>
@@ -138,6 +140,7 @@
             <th>Resident</th>
             <th class="col-room">Room</th>
             <th>Joining</th>
+            <th class="col-payment-date">Payment Date</th>
             <th>Leaving</th>
             <th class="col-advance">Advance</th>
             <th>Expected</th>
@@ -154,6 +157,9 @@
             <td>
               <a href="{% url 'finance_ledger' r.user.id %}">{{ r.user.first_name }} {{ r.user.last_name }}</a>
               <div class="small text-secondary">{{ r.user.email }}</div>
+              {% if r.room_no %}
+                <div class="small text-secondary">Room {{ r.room_no }}</div>
+              {% endif %}
               {% if r.segments and r.segments|length > 1 %}
                 <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#stays-{{ r.user.id }}" aria-expanded="false" aria-controls="stays-{{ r.user.id }}">
                   View stays ({{ r.segments|length }})
@@ -162,6 +168,31 @@
             </td>
             <td class="col-room">{{ r.room_no }}</td>
             <td>{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% else %}—{% endif %}</td>
+            <td class="col-payment-date">
+              {% if r.payment_due_date %}
+                <span class="payment-date-display">{{ r.payment_due_date|date:'Y-m-d' }}</span>
+              {% elif r.payment_anchor %}
+                <span class="payment-date-display">{{ r.payment_anchor|date:'Y-m-d' }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+              {% if r.primary_booking_id %}
+                <button type="button" class="btn btn-link btn-sm p-0 align-baseline ms-1 edit-payment-date"
+                        data-booking-id="{{ r.primary_booking_id }}"
+                        data-default-date="{% if r.payment_date_iso %}{{ r.payment_date_iso }}{% elif r.payment_anchor_iso %}{{ r.payment_anchor_iso }}{% endif %}"
+                        data-anchor="{{ r.payment_anchor_iso }}"
+                        data-resident="{{ r.user.first_name }} {{ r.user.last_name }}"
+                        data-year="{{ summary.year }}"
+                        data-month="{{ summary.month }}"
+                        data-sort="{{ current_sort|default:'room' }}"
+                        data-dir="{{ current_dir|default:'asc' }}"
+                        data-only="{{ request.GET.only|default:'' }}"
+                        data-pg="{% if pg %}{{ pg.id }}{% endif %}">
+                  <span aria-hidden="true">&#9998;</span>
+                  <span class="visually-hidden">Edit payment date</span>
+                </button>
+              {% endif %}
+            </td>
             <td>{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% else %}—{% endif %}</td>
             <td class="col-advance nowrap" title="One-time advance (not monthly)">₹ {{ r.advance|default:'0.00' }}</td>
             <td>
@@ -173,24 +204,14 @@
             <td class="nowrap td-collected">₹ {{ r.collected }}</td>
             <td class="nowrap td-pending">₹ {{ r.pending }}</td>
             <td>
-              {% if r.status == 'paid' %}<span class="chip status-paid quick-pay-chip"
+              <span class="chip {{ r.status_css }} quick-pay-chip"
+                data-status="{{ r.status }}"
+                data-status-label="{{ r.status_label }}"
                 data-user-id="{{ r.user.id }}" data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
                 data-user-email="{{ r.user.email }}" data-expected="{{ r.expected }}"
                 data-collected="{{ r.collected }}" data-pending="{{ r.pending }}"
                 data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
-                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">Paid</span>{% endif %}
-              {% if r.status == 'unpaid' %}<span class="chip status-unpaid quick-pay-chip"
-                data-user-id="{{ r.user.id }}" data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
-                data-user-email="{{ r.user.email }}" data-expected="{{ r.expected }}"
-                data-collected="{{ r.collected }}" data-pending="{{ r.pending }}"
-                data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
-                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">Unpaid</span>{% endif %}
-              {% if r.status == 'partial' %}<span class="chip status-partial quick-pay-chip"
-                data-user-id="{{ r.user.id }}" data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
-                data-user-email="{{ r.user.email }}" data-expected="{{ r.expected }}"
-                data-collected="{{ r.collected }}" data-pending="{{ r.pending }}"
-                data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
-                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">Partial</span>{% endif %}
+                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">{{ r.status_label }}</span>
             </td>
             <td>
               <a class="btn btn-sm btn-outline-secondary" href="{% url 'finance_monthly_remind' r.user.id %}?year={{ summary.year }}&month={{ summary.month }}">Send Reminder</a>
@@ -202,7 +223,7 @@
           </tr>
           {% if r.segments and r.segments|length > 1 %}
           <tr class="collapse" id="stays-{{ r.user.id }}">
-            <td colspan="11">
+            <td colspan="12">
               <div class="border rounded p-2 bg-light">
                 <div class="small text-secondary mb-1">Stays in {{ summary.month }}/{{ summary.year }} ({{ r.month_days }} days in month)</div>
                 <ul class="mb-0">
@@ -210,6 +231,7 @@
                     <li class="small">
                       Room {{ s.room_no }} — {{ s.joining|date:'Y-m-d' }} to {% if s.leaving %}{{ s.leaving|date:'Y-m-d' }}{% else %}—{% endif %}
                       · Base ₹ {{ s.base }} ({{ s.source }}) · Days {{ s.stayed }}/{{ r.month_days }} · Expected ₹ {{ s.expected }}
+                      {% if s.payment_due %}· Payment date {{ s.payment_due|date:'Y-m-d' }}{% endif %}
                     </li>
                   {% endfor %}
                 </ul>
@@ -223,7 +245,7 @@
         </tbody>
         <tfoot>
           <tr class="fw-semibold">
-            <td colspan="5" class="text-end">Totals</td>
+            <td colspan="6" class="text-end">Totals</td>
             <td title="One-time advance (not monthly)">₹ {{ footer_totals.advance|default:'0.00' }}</td>
             <td>₹ {{ footer_totals.expected|default:'0.00' }}</td>
             <td>₹ {{ footer_totals.collected|default:'0.00' }}</td>
@@ -249,6 +271,65 @@
     </div>
   </div>
 </form>
+  <!-- Export Filters Modal -->
+  <div class="modal fade" id="exportFiltersModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="exportModalLabel">Export</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="exportStatus" class="form-label small text-uppercase text-secondary">Status Filter</label>
+            <select id="exportStatus" class="form-select">
+              <option value="">All residents</option>
+              <option value="paid">Paid only</option>
+              <option value="partial">Partial only</option>
+                <option value="upcoming">Not due only</option>
+              <option value="unpaid">Unpaid only</option>
+            </select>
+          </div>
+          <p class="small text-secondary mb-0">Filters apply only to the exported file; on-screen data stays as is.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="exportFiltersApply">Download</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Payment Date Modal -->
+  <div class="modal fade" id="paymentDateModal" tabindex="-1" aria-labelledby="paymentDateModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form method="post" action="{% url 'finance_monthly_update_payment_date' %}" id="paymentDateForm">
+          {% csrf_token %}
+          <input type="hidden" name="booking_id" id="pd_booking_id">
+          <input type="hidden" name="year" id="pd_year" value="{{ summary.year }}">
+          <input type="hidden" name="month" id="pd_month" value="{{ summary.month }}">
+          <input type="hidden" name="sort" id="pd_sort" value="{{ current_sort|default:'room' }}">
+          <input type="hidden" name="dir" id="pd_dir" value="{{ current_dir|default:'asc' }}">
+          <input type="hidden" name="only" id="pd_only" value="{{ request.GET.only|default:'' }}">
+          <input type="hidden" name="pg" id="pd_pg" value="{% if pg %}{{ pg.id }}{% endif %}">
+          <div class="modal-header">
+            <h5 class="modal-title" id="paymentDateModalLabel">Edit Payment Date</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-2 small text-secondary" id="pd_resident_label"></div>
+            <label class="form-label small" for="pd_date">Payment Date</label>
+            <input type="date" class="form-control" name="payment_date" id="pd_date" required>
+            <div class="form-text">This date controls when the month's rent becomes due.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Update</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 <!-- Quick Payment Modal -->
 <div class="modal fade" id="quickPayModal" tabindex="-1" aria-labelledby="quickPayModalLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -369,6 +450,45 @@
       });
     }
 
+    // Payment date editing modal
+    var paymentModalEl = document.getElementById('paymentDateModal');
+    if (paymentModalEl) {
+      var paymentModalInstance;
+      var pdBookingInput = document.getElementById('pd_booking_id');
+      var pdDateInput = document.getElementById('pd_date');
+      var pdResidentLabel = document.getElementById('pd_resident_label');
+      var pdYearInput = document.getElementById('pd_year');
+      var pdMonthInput = document.getElementById('pd_month');
+      var pdSortInput = document.getElementById('pd_sort');
+      var pdDirInput = document.getElementById('pd_dir');
+      var pdOnlyInput = document.getElementById('pd_only');
+      var pdPgInput = document.getElementById('pd_pg');
+
+      document.querySelectorAll('.edit-payment-date').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          if (!paymentModalInstance) {
+            paymentModalInstance = new bootstrap.Modal(paymentModalEl);
+          }
+          if (pdBookingInput) pdBookingInput.value = this.dataset.bookingId || '';
+          if (pdDateInput) {
+            var defaultDate = this.dataset.defaultDate || this.dataset.anchor || '';
+            pdDateInput.value = defaultDate;
+          }
+          if (pdResidentLabel) {
+            var label = this.dataset.resident ? ('Resident: ' + this.dataset.resident) : '';
+            pdResidentLabel.textContent = label;
+          }
+          if (pdYearInput) pdYearInput.value = this.dataset.year || pdYearInput.value;
+          if (pdMonthInput) pdMonthInput.value = this.dataset.month || pdMonthInput.value;
+          if (pdSortInput) pdSortInput.value = this.dataset.sort || pdSortInput.value;
+          if (pdDirInput) pdDirInput.value = this.dataset.dir || pdDirInput.value;
+          if (pdOnlyInput) pdOnlyInput.value = (this.dataset.only !== undefined ? this.dataset.only : pdOnlyInput.value);
+          if (pdPgInput) pdPgInput.value = this.dataset.pg || pdPgInput.value;
+          paymentModalInstance.show();
+        });
+      });
+    }
+
     // Keep toggle label in sync when users open/close individual stays via Bootstrap collapse
     document.querySelectorAll('tr.collapse[id^="stays-"]').forEach(function(el){
       el.addEventListener('shown.bs.collapse', updateToggleLabel);
@@ -377,6 +497,72 @@
 
     // Initialize toggle label once on load
     updateToggleLabel();
+
+    // Export filters modal logic
+    const exportButtons = document.querySelectorAll('#monthlyExportButtons [data-export-url]');
+    const exportModalEl = document.getElementById('exportFiltersModal');
+    const exportStatusSelect = document.getElementById('exportStatus');
+    const exportApplyBtn = document.getElementById('exportFiltersApply');
+    let exportModalInstance = null;
+    let pendingExport = null;
+    if (exportModalEl && typeof bootstrap !== 'undefined') {
+      exportModalInstance = new bootstrap.Modal(exportModalEl);
+    }
+    exportButtons.forEach(btn => {
+      btn.addEventListener('click', evt => {
+        evt.preventDefault();
+        if (!exportModalInstance) {
+          const baseUrl = btn.dataset.exportUrl;
+          if (!baseUrl) { return; }
+          const quickParams = new URLSearchParams();
+          if (btn.dataset.year) { quickParams.set('year', btn.dataset.year); }
+          if (btn.dataset.month) { quickParams.set('month', btn.dataset.month); }
+          if (btn.dataset.sort) { quickParams.set('sort', btn.dataset.sort); }
+          if (btn.dataset.dir) { quickParams.set('dir', btn.dataset.dir); }
+          if (btn.dataset.pg) { quickParams.set('pg', btn.dataset.pg); }
+          if (btn.dataset.only) { quickParams.set('only', btn.dataset.only); }
+          window.location.href = `${baseUrl}?${quickParams.toString()}`;
+          return;
+        }
+        pendingExport = {
+          url: btn.dataset.exportUrl,
+          label: btn.dataset.exportLabel || btn.textContent.trim(),
+          year: btn.dataset.year,
+          month: btn.dataset.month,
+          sort: btn.dataset.sort,
+          dir: btn.dataset.dir,
+          pg: btn.dataset.pg,
+          only: btn.dataset.only || ''
+        };
+        const titleEl = document.getElementById('exportModalLabel');
+        if (titleEl) {
+          titleEl.textContent = `Export ${pendingExport.label}`;
+        }
+        if (exportStatusSelect) {
+          exportStatusSelect.value = pendingExport.only || '';
+        }
+        exportModalInstance.show();
+      });
+    });
+    if (exportApplyBtn && exportStatusSelect) {
+      exportApplyBtn.addEventListener('click', () => {
+        if (!pendingExport || !pendingExport.url) {
+          return;
+        }
+        const params = new URLSearchParams();
+        if (pendingExport.year) { params.set('year', pendingExport.year); }
+        if (pendingExport.month) { params.set('month', pendingExport.month); }
+        if (pendingExport.sort) { params.set('sort', pendingExport.sort); }
+        if (pendingExport.dir) { params.set('dir', pendingExport.dir); }
+        if (pendingExport.pg) { params.set('pg', pendingExport.pg); }
+        const statusVal = exportStatusSelect.value || '';
+        if (statusVal) {
+          params.set('only', statusVal);
+        }
+        exportModalInstance.hide();
+        window.location.href = `${pendingExport.url}?${params.toString()}`;
+      });
+    }
 
     // Month picker sync and quick action
     var monthPicker = document.getElementById('monthPicker');
@@ -556,14 +742,21 @@
               row.dataset.status = res.status;
               var chip = row.querySelector('.quick-pay-chip');
               if (chip) {
-                chip.textContent = (res.status || '').charAt(0).toUpperCase() + (res.status || '').slice(1);
-                chip.classList.remove('status-paid', 'status-unpaid', 'status-partial');
-                if (res.status === 'paid') chip.classList.add('status-paid');
-                else if (res.status === 'unpaid') chip.classList.add('status-unpaid');
-                else chip.classList.add('status-partial');
+                chip.textContent = res.status_label || (res.status || '').charAt(0).toUpperCase() + (res.status || '').slice(1);
+                chip.classList.remove('status-paid', 'status-unpaid', 'status-partial', 'status-upcoming');
+                if (res.status_css) {
+                  chip.classList.add(res.status_css);
+                } else {
+                  if (res.status === 'paid') chip.classList.add('status-paid');
+                  else if (res.status === 'unpaid') chip.classList.add('status-unpaid');
+                  else if (res.status === 'partial') chip.classList.add('status-partial');
+                  else chip.classList.add('status-upcoming');
+                }
                 // Update datasets for future clicks
                 chip.dataset.collected = res.collected;
                 chip.dataset.pending = res.pending;
+                chip.dataset.status = res.status;
+                chip.dataset.statusLabel = res.status_label || '';
               }
               // Checkbox enable/disable depending on paid
               var chk = row.querySelector('input.rowchk');

@@ -1,3 +1,6 @@
 
 Todo:
-  ☐ Item
+  - [x] Design leave-confirmation cleanup helpers (booking/application cascade + Drive assets)
+  - [x] Add manual delete button on leaving requests page
+  - [ ] Backfill tests covering delete helpers and Drive interactions
+  - [ ] Document manual cleanup flow for PG admins

@@ -5,7 +5,7 @@
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-body">
     <div><strong>User:</strong> {{ booking.user.email }}</div>
-    <div><strong>Room:</strong> {{ booking.room.room_no }} • Share {{ booking.share_no }}</div>
+  <div><strong>Room:</strong> {{ booking.room.room_no }} • Bed {{ booking.share_no }}</div>
     <div><strong>Status:</strong> {{ booking.status|title }}</div>
     <div><strong>Start:</strong> {{ booking.start_date|default:"—" }}</div>
     <div><strong>Leaving:</strong> {{ booking.leaving_date|default:"—" }}</div>

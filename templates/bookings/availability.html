@@ -58,38 +58,38 @@
       <div class="room-head">
         <div>
           <div class="fw-semibold">Room {{ room.room_no }}</div>
-          <div class="text-secondary small">Total Shares: {{ room.total_shares }}</div>
+          <div class="text-secondary small">Total Beds: {{ room.total_shares }}</div>
         </div>
         <div class="d-flex flex-wrap gap-2">
           {% for s in room.shares.all|dictsort:'share_no' %}
             {% with data=s.leaving_data %}
               {% if s.status == 'vacant' %}
-                <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant text-decoration-none">S{{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
+                <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant text-decoration-none">Bed {{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
               {% elif s.status == 'reserved' %}
-                <span class="share-chip chip-reserved chip-disabled">S{{ s.share_no }} <span class="badge bg-warning-subtle text-warning-emphasis">Reserved</span></span>
+                <span class="share-chip chip-reserved chip-disabled">Bed {{ s.share_no }} <span class="badge bg-warning-subtle text-warning-emphasis">Reserved</span></span>
               {% elif s.status == 'vacant_from' %}
                 {% if data %}
                   {% if data.available_from and data.available_from <= today %}
-                    <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant" title="Vacated; join any date after {{ data.leaving_date }}">S{{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
+                    <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant" title="Vacated; join any date after {{ data.leaving_date }}">Bed {{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
                   {% else %}
-                    <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-upcoming" title="Pre-book; joining date must be after {{ data.leaving_date }}">S{{ s.share_no }} <span class="badge bg-primary-subtle text-primary">From {{ data.available_from|date:"Y-m-d" }}</span></a>
+                    <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-upcoming" title="Pre-book; joining date must be after {{ data.leaving_date }}">Bed {{ s.share_no }} <span class="badge bg-primary-subtle text-primary">From {{ data.available_from|date:"Y-m-d" }}</span></a>
                   {% endif %}
                 {% else %}
-                  <span class="share-chip chip-occupied chip-disabled" title="Scheduled to be vacant soon">S{{ s.share_no }} <span class="badge bg-secondary">Scheduled</span></span>
+                  <span class="share-chip chip-occupied chip-disabled" title="Scheduled to be vacant soon">Bed {{ s.share_no }} <span class="badge bg-secondary">Scheduled</span></span>
                 {% endif %}
               {% else %}
                 {% if data %}
                   {% if not data.confirmed %}
-                    <span class="share-chip chip-occupied chip-disabled" title="Leaving not yet confirmed by PG Admin">S{{ s.share_no }} <span class="badge bg-secondary">Leaving {{ data.leaving_date }}</span></span>
+                    <span class="share-chip chip-occupied chip-disabled" title="Leaving not yet confirmed by PG Admin">Bed {{ s.share_no }} <span class="badge bg-secondary">Leaving {{ data.leaving_date }}</span></span>
                   {% else %}
                     {% if data.available_from and data.available_from <= today %}
-                      <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant" title="Vacated; join any date after {{ data.leaving_date }}">S{{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
+                      <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant" title="Vacated; join any date after {{ data.leaving_date }}">Bed {{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
                     {% else %}
-                      <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-upcoming" title="Available from {{ data.available_from|date:'Y-m-d' }}; joining date must be after {{ data.leaving_date }}">S{{ s.share_no }} <span class="badge bg-primary-subtle text-primary">From {{ data.available_from|date:"Y-m-d" }}</span></a>
+                      <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-upcoming" title="Available from {{ data.available_from|date:'Y-m-d' }}; joining date must be after {{ data.leaving_date }}">Bed {{ s.share_no }} <span class="badge bg-primary-subtle text-primary">From {{ data.available_from|date:"Y-m-d" }}</span></a>
                     {% endif %}
                   {% endif %}
                 {% else %}
-                  <span class="share-chip chip-occupied chip-disabled">S{{ s.share_no }} <span class="badge bg-secondary">Occupied</span></span>
+                  <span class="share-chip chip-occupied chip-disabled">Bed {{ s.share_no }} <span class="badge bg-secondary">Occupied</span></span>
                 {% endif %}
               {% endif %}
             {% endwith %}

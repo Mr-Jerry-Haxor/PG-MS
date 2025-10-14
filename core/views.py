@@ -65,7 +65,7 @@ def dashboard(request):
 			next_month_start = month_start.replace(month=month_start.month + 1, day=1)
 		if pg:
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg=pg).count()
-			occupied = RoomShareStatus.objects.filter(status=RoomShareStatus.OCCUPIED, room__pg=pg).count()
+			occupied = RoomShareStatus.objects.filter(status__in=[RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM], room__pg=pg).count()
 			pending = Booking.objects.filter(status=Booking.PENDING, room__pg=pg).count()
 			# Leaving stats (approved bookings with a leaving_date)
 			leaving_qs = Booking.objects.filter(room__pg=pg, status=Booking.APPROVED, leaving_date__isnull=False)
@@ -79,7 +79,7 @@ def dashboard(request):
 			)
 		else:
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg__admins__user=request.user).count()
-			occupied = RoomShareStatus.objects.filter(status=RoomShareStatus.OCCUPIED, room__pg__admins__user=request.user).count()
+			occupied = RoomShareStatus.objects.filter(status__in=[RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM], room__pg__admins__user=request.user).count()
 			pending = Booking.objects.filter(status=Booking.PENDING, room__pg__admins__user=request.user).count()
 			leaving_qs = Booking.objects.filter(room__pg__admins__user=request.user, status=Booking.APPROVED, leaving_date__isnull=False)
 			leaving_pending = leaving_qs.filter(leaving_confirmed_date__isnull=True).count()
@@ -91,8 +91,8 @@ def dashboard(request):
 				Expenditure.objects.filter(pg__admins__user=request.user, date__gte=month_start, date__lt=next_month_start).aggregate(total=Sum('amount')).get('total') or 0
 			)
 		ctx.update({
-			"vacant_shares": vacant,
-			"occupied_shares": occupied,
+			"vacant_beds": vacant,
+			"occupied_beds": occupied,
 			"pending_bookings": pending,
 			"leaving_pending": leaving_pending,
 			"leaving_confirmed": leaving_confirmed,
@@ -100,6 +100,9 @@ def dashboard(request):
 			"month_expense": expense,
 			"pg": pg,
 			"pgs": list(pgs_qs),
+			# Legacy aliases maintained until template migration completes everywhere
+			"vacant_shares": vacant,
+			"occupied_shares": occupied,
 		})
 	return render(request, 'dashboard.html', ctx)
 

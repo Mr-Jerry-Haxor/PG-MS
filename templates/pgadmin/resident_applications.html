@@ -41,7 +41,7 @@
   <div class="d-flex align-items-center gap-2">
     <div class="input-group search-box">
       <span class="input-group-text"><i class="bi bi-search"></i></span>
-      <input id="appSearch" type="search" class="form-control" placeholder="Search room, share, name, email, phone" />
+  <input id="appSearch" type="search" class="form-control" placeholder="Search room, bed, name, email, phone" />
     </div>
     <select id="statusFilter" class="form-select form-select-sm" style="min-width: 180px;">
       <option value="all" selected>All statuses</option>
@@ -60,7 +60,7 @@
     <div class="app-card" data-status="{% if b.application %}{{ b.application.status }}{% else %}pending{% endif %}" data-search="{{ b.room.room_no }} {{ b.share_no }} {{ b.user.first_name }} {{ b.user.last_name }} {{ b.user.email }} {{ b.user.profile.phone }}">
       <div class="app-card-header">
         <div>
-          <div class="fw-semibold">Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
+          <div class="fw-semibold">Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
           <div class="text-secondary small">Joining: {% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}
             <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Edit joining date" data-bs-toggle="modal" data-bs-target="#joinDateModal{{ b.id }}">
               <i class="bi bi-pencil-square"></i>

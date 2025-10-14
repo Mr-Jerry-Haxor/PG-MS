@@ -21,6 +21,8 @@ from io import StringIO
 import csv
 from .models import ResidentRate, ReminderLog, Adjustment
 import importlib
+from django.urls import reverse
+from urllib.parse import urlencode
 
 
 def _require_pg_admin(user):
@@ -427,7 +429,52 @@ def _overlap_days(start: date, end: date | None, m_first: date, m_last: date) ->
     return (stay_end - stay_start).days + 1
 
 
-def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last) -> float:
+def _payment_anchor_for_booking(booking) -> date | None:
+    payment_anchor = getattr(booking, 'payment_date', None) or booking.joining_date or booking.start_date
+    if not payment_anchor and getattr(booking, 'created_at', None):
+        created = booking.created_at
+        if created:
+            if timezone.is_aware(created):
+                created = timezone.localtime(created)
+            payment_anchor = created.date()
+    return payment_anchor
+
+
+def _payment_due_for_month(booking, m_first: date, m_days: int) -> date | None:
+    anchor = _payment_anchor_for_booking(booking)
+    if not anchor:
+        return None
+    due_day = min(anchor.day, m_days)
+    return date(m_first.year, m_first.month, due_day)
+
+
+def _resolve_status(expected: float, collected: float, m_first: date, due_date: date | None, today: date | None = None):
+    if today is None:
+        today = timezone.now().date()
+    month_marker = (m_first.year, m_first.month)
+    today_marker = (today.year, today.month)
+
+    if month_marker > today_marker:
+        due_passed = False
+    elif month_marker < today_marker:
+        due_passed = True
+    else:
+        if due_date:
+            due_passed = today >= due_date
+        else:
+            due_passed = True
+
+    if due_passed:
+        if collected >= expected - 0.5:
+            return 'paid', 'Paid', 'status-paid'
+        if collected > 0:
+            return 'partial', 'Partial', 'status-partial'
+        return 'unpaid', 'Unpaid', 'status-unpaid'
+
+    return 'upcoming', 'Not due', 'status-upcoming'
+
+
+def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None) -> float:
     # Custom rate override
     rr = ResidentRate.objects.filter(user=u, pg=pg, active=True).first()
     if rr:
@@ -445,7 +492,28 @@ def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last) -> float:
     stayed = _overlap_days(start, end, m_first, m_last)
     if stayed <= 0 or monthly <= 0:
         return 0.0
-    return round((monthly * stayed) / days_in_month, 2)
+    expected = round((monthly * stayed) / days_in_month, 2)
+
+    if today is None:
+        today = timezone.now().date()
+
+    payment_anchor = _payment_anchor_for_booking(booking)
+
+    month_marker = (m_first.year, m_first.month)
+    today_marker = (today.year, today.month)
+
+    # Future months are not yet due regardless of anchor
+    if month_marker > today_marker:
+        return 0.0
+
+    if payment_anchor:
+        due_day = payment_anchor.day
+        due_day = min(due_day, days_in_month)
+        due_date = date(m_first.year, m_first.month, due_day)
+        if month_marker == today_marker and today < due_date:
+            return 0.0
+
+    return expected
 
 
 @login_required
@@ -641,6 +709,7 @@ def monthly_dashboard(request):
     for user_id, bookings in by_user.items():
         # Sort segments by start date for deterministic output
         segs = []
+        primary_seg = None
         for b in bookings:
             s = b.joining_date or b.start_date or b.created_at.date()
             e = b.leaving_date
@@ -655,11 +724,18 @@ def monthly_dashboard(request):
                 base_source = f"{share_type}-Sharing fee" if share_type else 'Default fee'
             exp_part = _expected_rent_for_user_pg_month(b.user, pg, b, m_first, m_last)
             stayed = _overlap_days(s, e, m_first, m_last)
+            payment_anchor = _payment_anchor_for_booking(b)
+            due_date = _payment_due_for_month(b, m_first, m_days)
             segs.append({
                 'b': b, 'start': s, 'end': e, 'base': base_monthly, 'source': base_source,
                 'expected': exp_part, 'stayed': stayed,
-                'room_no': getattr(b.room, 'room_no', '—')
+                'room_no': getattr(b.room, 'room_no', '—'),
+                'payment_anchor': payment_anchor,
+                'payment_due': due_date,
+                'booking_id': b.id,
             })
+            if (primary_seg is None) or (stayed > primary_seg.get('stayed', 0)):
+                primary_seg = segs[-1]
         segs.sort(key=lambda x: (x['start'] or m_first, x['end'] or m_last))
 
         expected_total = round(sum((seg['expected'] or 0.0) for seg in segs), 2)
@@ -667,13 +743,8 @@ def monthly_dashboard(request):
         u = segs[0]['b'].user
         collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
         pending = round(expected_total - collected, 2)
-        # Status classification
-        if collected >= expected_total - 0.5:
-            status = 'paid'
-        elif collected > 0:
-            status = 'partial'
-        else:
-            status = 'unpaid'
+        primary_due = primary_seg.get('payment_due') if primary_seg else None
+        status, status_label, status_css = _resolve_status(expected_total, float(collected), m_first, primary_due, today)
         # Phone sanitize
         try:
             import re
@@ -693,6 +764,8 @@ def monthly_dashboard(request):
                 f"Days: {seg['stayed']}/{m_days} in {calendar.month_abbr[month]} {year}. "
                 f"Expected = ₹{seg['expected']:.2f}"
             )
+            if seg.get('payment_due'):
+                exp_tip += f" Payment date: {seg['payment_due'].strftime('%Y-%m-%d')}"
         else:
             parts = []
             for seg in segs:
@@ -703,6 +776,8 @@ def monthly_dashboard(request):
             exp_tip = (
                 f"Multiple stays: " + "; ".join(parts) + f". Total expected = ₹{expected_total:.2f}"
             )
+            if primary_seg and primary_seg.get('payment_due'):
+                exp_tip += f" Primary payment date: {primary_seg['payment_due'].strftime('%Y-%m-%d')}"
         # Pick joining as earliest start in month; leaving as latest end if present
         earliest_start = min((seg['start'] or m_first) for seg in segs)
         latest_end = None
@@ -711,6 +786,10 @@ def monthly_dashboard(request):
             latest_end = max(ends)
         # Choose a representative room_no (latest segment's room)
         last_seg = sorted(segs, key=lambda x: (x['start'] or m_first, x['end'] or m_last))[-1]
+        payment_due = primary_seg.get('payment_due') if primary_seg else None
+        payment_anchor = primary_seg.get('payment_anchor') if primary_seg else None
+        payment_due_day = payment_anchor.day if payment_anchor else None
+        primary_booking_id = primary_seg.get('booking_id') if primary_seg else None
         rows.append({
             'user': u,
             'room_no': getattr(last_seg['b'].room, 'room_no', '—'),
@@ -719,10 +798,18 @@ def monthly_dashboard(request):
             'collected': round(float(collected), 2),
             'pending': max(0.0, pending),
             'status': status,
+            'status_label': status_label,
+            'status_css': status_css,
             'joining': earliest_start,
             'leaving': latest_end,
             'whatsapp_phone': digits,
             'advance': round(_advance_paid_for_user_pg(u, pg), 2),
+            'payment_due_date': payment_due,
+            'payment_anchor': payment_anchor,
+            'payment_due_day': payment_due_day,
+            'payment_anchor_iso': payment_anchor.isoformat() if payment_anchor else '',
+            'payment_date_iso': payment_due.isoformat() if payment_due else '',
+            'primary_booking_id': primary_booking_id,
             'segments': [
                 {
                     'room_no': seg['room_no'],
@@ -732,6 +819,7 @@ def monthly_dashboard(request):
                     'source': seg['source'],
                     'stayed': seg['stayed'],
                     'expected': seg['expected'],
+                    'payment_due': seg.get('payment_due'),
                 }
                 for seg in segs
             ],
@@ -744,7 +832,7 @@ def monthly_dashboard(request):
     # Compute total advance across all rows before applying status filter
     total_advance_all = round(sum((r.get('advance') or 0.0) for r in rows), 2)
     only = request.GET.get('only')
-    if only in ('paid', 'unpaid', 'partial'):
+    if only in ('paid', 'unpaid', 'partial', 'upcoming'):
         rows = [r for r in rows if r['status'] == only]
 
     # Apply sorting
@@ -764,7 +852,7 @@ def monthly_dashboard(request):
         name = f"{(getattr(u, 'first_name', '') or '').strip()} {(getattr(u, 'last_name', '') or '').strip()}".strip()
         return (name or getattr(u, 'email', '') or '').strip().lower()
 
-    status_order = {'unpaid': 0, 'partial': 1, 'paid': 2}
+    status_order = {'upcoming': -1, 'unpaid': 0, 'partial': 1, 'paid': 2}
 
     def _key(row):
         if sort_key == 'room':
@@ -809,6 +897,7 @@ def monthly_dashboard(request):
             'paid': sum(1 for r in rows if r['status'] == 'paid'),
             'partial': sum(1 for r in rows if r['status'] == 'partial'),
             'unpaid': sum(1 for r in rows if r['status'] == 'unpaid'),
+            'upcoming': sum(1 for r in rows if r['status'] == 'upcoming'),
         },
         'nav': {
             'prev_year': prev_year, 'prev_month': prev_month,
@@ -829,6 +918,43 @@ def monthly_dashboard(request):
 
 
 @login_required
+def monthly_update_payment_date(request):
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('finance_monthly')
+
+    booking_id = request.POST.get('booking_id')
+    payment_raw = (request.POST.get('payment_date') or '').strip()
+    payment_date = parse_date(payment_raw) if payment_raw else None
+    if not booking_id or not payment_date:
+        messages.error(request, "Select a valid payment date.")
+        return redirect('finance_monthly')
+
+    booking = get_object_or_404(Booking, pk=booking_id)
+    if not _is_authorized_pg(request.user, booking.pg_id):
+        messages.error(request, "You do not have access to the requested PG.")
+        return redirect('finance_monthly')
+
+    booking.payment_date = payment_date
+    booking.save(update_fields=['payment_date'])
+    log(request.user, 'booking_payment_date_updated', 'Booking', booking.id)
+    messages.success(request, "Payment date updated.")
+
+    params = {}
+    for key in ('year', 'month', 'sort', 'dir', 'only', 'pg'):
+        val = request.POST.get(key)
+        if val not in (None, ''):
+            params[key] = val
+    redirect_url = reverse('finance_monthly')
+    if params:
+        redirect_url = f"{redirect_url}?{urlencode(params)}"
+    return redirect(redirect_url)
+
+
+@login_required
 def monthly_export_csv(request):
     if not _require_pg_admin(request.user):
         messages.error(request, "PG Admin access required.")
@@ -840,7 +966,7 @@ def monthly_export_csv(request):
     today = timezone.now().date()
     year = int(request.GET.get('year') or today.year)
     month = int(request.GET.get('month') or today.month)
-    m_first, m_last, _ = _month_range(year, month)
+    m_first, m_last, m_days = _month_range(year, month)
 
     # Sorting params (default to dashboard defaults)
     sort_key = (request.GET.get('sort') or 'room').strip().lower()
@@ -849,7 +975,10 @@ def monthly_export_csv(request):
         sort_dir = 'asc'
 
     # Build rows like dashboard by summing all overlapping stays per user
-    active_bks = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg).select_related('user', 'room')
+    active_bks = (
+        Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg)
+        .select_related('user', 'room', 'user__profile')
+    )
     by_user = {}
     for b in active_bks:
         start = b.joining_date or b.start_date or b.created_at.date()
@@ -860,12 +989,15 @@ def monthly_export_csv(request):
         by_user.setdefault(b.user_id, []).append(b)
     # Build data rows for sorting
     data_rows = []
+    only_filter = (request.GET.get('only') or '').strip().lower()
     for user_id, bookings in by_user.items():
         bookings.sort(key=lambda b: (b.joining_date or b.start_date or b.created_at.date()))
         u = bookings[0].user
         expected = 0.0
         earliest_start = None
         latest_end = None
+        due_date = None
+        best_overlap = -1
         for b in bookings:
             expected += _expected_rent_for_user_pg_month(u, pg, b, m_first, m_last)
             s = b.joining_date or b.start_date or b.created_at.date()
@@ -873,20 +1005,25 @@ def monthly_export_csv(request):
             earliest_start = min(earliest_start, s) if earliest_start else s
             if e:
                 latest_end = max(latest_end, e) if latest_end else e
+            overlap = _overlap_days(s, e, m_first, m_last)
+            if overlap > 0:
+                due_candidate = _payment_due_for_month(b, m_first, m_days)
+                if due_candidate and overlap > best_overlap:
+                    due_date = due_candidate
+                    best_overlap = overlap
         expected = round(expected, 2)
         collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
         pending = round(expected - collected, 2)
-        if collected >= expected - 0.5:
-            status = 'paid'
-        elif collected > 0:
-            status = 'partial'
-        else:
-            status = 'unpaid'
+        status, status_label, status_css = _resolve_status(expected, float(collected), m_first, due_date, today)
         advance = _advance_paid_for_user_pg(u, pg)
+        if only_filter in ('paid', 'partial', 'unpaid', 'upcoming') and status != only_filter:
+            continue
+        phone_raw = getattr(getattr(u, 'profile', None), 'phone', '') or ''
         data_rows.append({
             'user': u,
             'user_name': (f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email),
             'email': u.email,
+            'phone': phone_raw,
             'room_no': getattr(bookings[-1].room, 'room_no', ''),
             'joining': earliest_start,
             'advance': float(advance),
@@ -894,11 +1031,13 @@ def monthly_export_csv(request):
             'collected': float(collected),
             'pending': float(max(0.0, pending)),
             'status': status,
+            'status_label': status_label,
+            'status_css': status_css,
         })
 
     # Sort rows like dashboard
     import re
-    status_order = {'unpaid': 0, 'partial': 1, 'paid': 2}
+    status_order = {'upcoming': -1, 'unpaid': 0, 'partial': 1, 'paid': 2}
     def _room_sort_val(room_no):
         s = str(room_no or '')
         m = re.search(r"\d+", s)
@@ -932,12 +1071,13 @@ def monthly_export_csv(request):
 
     sio = StringIO()
     w = csv.writer(sio)
-    w.writerow(['User', 'Email', 'Room', 'Joining', 'Advance', 'Expected', 'Collected', 'Pending', 'Status'])
+    w.writerow(['User', 'Email', 'Phone', 'Room', 'Joining', 'Advance', 'Expected', 'Collected', 'Pending', 'Status'])
     for r in data_rows:
         w.writerow([
-            r['user_name'], r['email'], r['room_no'],
+            r['user_name'], r['email'], r['phone'], r['room_no'],
             (r['joining'].strftime('%Y-%m-%d') if r['joining'] else ''),
-            f"{r['advance']:.2f}", f"{r['expected']:.2f}", f"{r['collected']:.2f}", f"{r['pending']:.2f}", r['status']
+            f"{r['advance']:.2f}", f"{r['expected']:.2f}", f"{r['collected']:.2f}", f"{r['pending']:.2f}",
+            r['status_label'] if r.get('status_label') else r['status']
         ])
     resp = HttpResponse(sio.getvalue(), content_type='text/csv')
     resp['Content-Disposition'] = f'attachment; filename="monthly-{year}-{month:02d}.csv"'
@@ -958,7 +1098,10 @@ def monthly_export_segments_csv(request):
     month = int(request.GET.get('month') or today.month)
     m_first, m_last, m_days = _month_range(year, month)
     # Collect overlapping bookings
-    active_bks = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg).select_related('user', 'room')
+    active_bks = (
+        Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg)
+        .select_related('user', 'room', 'user__profile')
+    )
     rows = []
     for b in active_bks:
         s = b.joining_date or b.start_date or b.created_at.date()
@@ -977,10 +1120,12 @@ def monthly_export_segments_csv(request):
             base = float(getattr(fees, 'monthly_fee', 0) or 0)
             source = f"{share_type}-Sharing fee" if share_type else 'Default fee'
         expected = _expected_rent_for_user_pg_month(b.user, pg, b, m_first, m_last)
+        phone_raw = getattr(getattr(b.user, 'profile', None), 'phone', '') or ''
         rows.append([
             b.user.id,
             f"{b.user.first_name} {b.user.last_name}".strip() or b.user.email,
             b.user.email,
+            phone_raw,
             getattr(b.room, 'room_no', ''),
             s.strftime('%Y-%m-%d') if s else '',
             e.strftime('%Y-%m-%d') if e else '',
@@ -988,7 +1133,7 @@ def monthly_export_segments_csv(request):
         ])
     sio = StringIO()
     w = csv.writer(sio)
-    w.writerow(['User ID', 'User', 'Email', 'Room', 'Joining', 'Leaving', 'Base', 'Source', 'DaysStayed/DaysInMonth', 'Expected'])
+    w.writerow(['User ID', 'User', 'Email', 'Phone', 'Room', 'Joining', 'Leaving', 'Base', 'Source', 'DaysStayed/DaysInMonth', 'Expected'])
     for r in rows:
         w.writerow(r)
     resp = HttpResponse(sio.getvalue(), content_type='text/csv')
@@ -1015,7 +1160,10 @@ def monthly_export_segments_user_csv(request, user_id):
     year = int(request.GET.get('year') or today.year)
     month = int(request.GET.get('month') or today.month)
     m_first, m_last, m_days = _month_range(year, month)
-    qs = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg, user=u).select_related('room')
+    qs = (
+        Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg, user=u)
+        .select_related('room', 'user__profile')
+    )
     rows = []
     for b in qs:
         s = b.joining_date or b.start_date or b.created_at.date()
@@ -1033,15 +1181,17 @@ def monthly_export_segments_user_csv(request, user_id):
             base = float(getattr(fees, 'monthly_fee', 0) or 0)
             source = f"{share_type}-Sharing fee" if share_type else 'Default fee'
         expected = _expected_rent_for_user_pg_month(u, pg, b, m_first, m_last)
+        phone_raw = getattr(getattr(b.user, 'profile', None), 'phone', '') or ''
         rows.append([
             getattr(b.room, 'room_no', ''),
             s.strftime('%Y-%m-%d') if s else '',
             e.strftime('%Y-%m-%d') if e else '',
+            phone_raw,
             f"{base:.2f}", source, f"{ov}/{m_days}", f"{expected:.2f}",
         ])
     sio = StringIO()
     w = csv.writer(sio)
-    w.writerow(['Room', 'Joining', 'Leaving', 'Base', 'Source', 'DaysStayed/DaysInMonth', 'Expected'])
+    w.writerow(['Room', 'Joining', 'Leaving', 'Phone', 'Base', 'Source', 'DaysStayed/DaysInMonth', 'Expected'])
     for r in rows:
         w.writerow(r)
     resp = HttpResponse(sio.getvalue(), content_type='text/csv')
@@ -1068,7 +1218,10 @@ def monthly_export_user_pdf(request, user_id):
     month = int(request.GET.get('month') or today.month)
     m_first, m_last, m_days = _month_range(year, month)
     # Gather segments like dashboard
-    qs = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg, user=u).select_related('room')
+    qs = (
+        Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg, user=u)
+        .select_related('room', 'user__profile')
+    )
     segs = []
     for b in qs:
         s = b.joining_date or b.start_date or b.created_at.date()
@@ -1125,10 +1278,16 @@ def monthly_export_user_pdf(request, user_id):
     p.setFont("Helvetica", 11)
     p.drawString(x_margin, y, f"PG: {pg.name if pg else ''}")
     y -= 6 * mm
-    p.drawString(x_margin, y, f"Resident: {(u.first_name + ' ' + u.last_name).strip() or u.email}")
+    resident_name = f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email
+    phone_raw = getattr(getattr(u, 'profile', None), 'phone', '') or ''
+    p.drawString(x_margin, y, f"Resident: {resident_name}")
     y -= 6 * mm
     p.drawString(x_margin, y, f"Email: {u.email}")
-    y -= 10 * mm
+    y -= 6 * mm
+    if phone_raw:
+        p.drawString(x_margin, y, f"Phone: {phone_raw}")
+        y -= 6 * mm
+    y -= 4 * mm
 
     # Summary cards
     for label, val in [("Expected", expected_total), ("Collected", float(collected)), ("Pending", pending)]:
@@ -1221,6 +1380,7 @@ def monthly_export_pdf(request):
     data = []
     total_expected = 0.0
     total_collected = 0.0
+    only_filter = (request.GET.get('only') or '').strip().lower()
     from django.contrib.auth import get_user_model
     User = get_user_model()
     for user_id, bookings in by_user.items():
@@ -1230,6 +1390,8 @@ def monthly_export_pdf(request):
         expected_total = 0.0
         earliest = None
         latest = None
+        due_date = None
+        best_overlap = -1
         for b in bookings:
             s = b.joining_date or b.start_date or b.created_at.date()
             e = b.leaving_date
@@ -1251,14 +1413,31 @@ def monthly_export_pdf(request):
             if e:
                 latest = max(latest, e) if latest else e
             segs.append({'room': getattr(b.room, 'room_no', '—'), 'start': s, 'end': e, 'base': base, 'source': source, 'days': ov, 'expected': exp})
+            due_candidate = _payment_due_for_month(b, m_first, m_days)
+            if due_candidate and ov > best_overlap:
+                due_date = due_candidate
+                best_overlap = ov
         collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
-        data.append({'user': u, 'segments': segs, 'expected': round(expected_total, 2), 'collected': round(float(collected), 2), 'pending': round(max(0.0, expected_total - collected), 2)})
+        status, status_label, status_css = _resolve_status(expected_total, float(collected), m_first, due_date, today)
+        if only_filter in ('paid', 'partial', 'unpaid', 'upcoming') and status != only_filter:
+            continue
+        phone_raw = getattr(getattr(u, 'profile', None), 'phone', '') or ''
+        data.append({
+            'user': u,
+            'segments': segs,
+            'expected': round(expected_total, 2),
+            'collected': round(float(collected), 2),
+            'pending': round(max(0.0, expected_total - collected), 2),
+            'status': status,
+            'status_label': status_label,
+            'phone': phone_raw,
+        })
         total_expected += expected_total
         total_collected += float(collected)
 
     # Sort tenant data like dashboard
     import re
-    status_order = {'unpaid': 0, 'partial': 1, 'paid': 2}
+    status_order = {'upcoming': -1, 'unpaid': 0, 'partial': 1, 'paid': 2}
     def _room_sort_val(room_no):
         s = str(room_no or '')
         m = re.search(r"\d+", s)
@@ -1382,63 +1561,70 @@ def monthly_export_pdf(request):
     p.setFont("Helvetica-Bold", 12)
     p.drawString(x_margin, y, "Tenant-wise Details Table")
     y -= 6 * mm
-    # Header: Tenant Name | Room | Joining Date | Leaving Date | Base Rent | Days Stayed | Expected | Collected | Pending
-    p.setFont("Helvetica-Bold", 9)
-    p.drawString(x_margin, y, "Tenant Name")
-    p.drawString(x_margin + 45 * mm, y, "Room")
-    p.drawString(x_margin + 60 * mm, y, "Joining Date")
-    p.drawString(x_margin + 90 * mm, y, "Leaving Date")
-    p.drawString(x_margin + 120 * mm, y, "Base Rent")
-    p.drawString(x_margin + 145 * mm, y, "Days Stayed")
-    # right-aligned monetary columns
-    # Left-align headers for monetary columns like other columns
-    p.drawString(width - 80 * mm, y, "Expected")
-    p.drawString(width - 55 * mm, y, "Collected")
-    p.drawString(width - x_margin - 25 * mm, y, "Pending")
-    y -= 4 * mm
-    p.setStrokeColor(colors.lightgrey)
-    p.line(x_margin, y, width - x_margin, y)
-    y -= 5 * mm
-    p.setFont("Helvetica", 9)
+    tenant_col_width = 70 * mm
+    phone_col_width = 32 * mm
+    phone_col_x = x_margin + tenant_col_width
+    room_col_x = phone_col_x + phone_col_width
+    joining_col_x = room_col_x + 25 * mm
+    leaving_col_x = joining_col_x + 30 * mm
+    days_col_x =  leaving_col_x + 30 * mm
+    expected_col_x = days_col_x + 20 * mm
+    collected_col_x = expected_col_x + 20 * mm
+    pending_col_x = collected_col_x + 20 * mm
+    tenant_name_max_chars = 55
+
+    def _draw_tenant_table_header():
+        nonlocal y
+        p.setFont("Helvetica-Bold", 9)
+        p.drawString(x_margin, y, "Tenant Name")
+        p.drawString(phone_col_x, y, "Phone")
+        p.drawString(room_col_x, y, "Room")
+        p.drawString(joining_col_x, y, "Joining Date")
+        p.drawString(leaving_col_x, y, "Leaving Date")
+        p.drawString(days_col_x, y, "Days Stayed")
+        p.drawString(expected_col_x, y, "Expected")
+        p.drawString(collected_col_x, y, "Collected")
+        p.drawString(pending_col_x, y, "Pending")
+        y -= 4 * mm
+        p.setStrokeColor(colors.lightgrey)
+        p.line(x_margin, y, width - x_margin, y)
+        y -= 5 * mm
+        p.setFont("Helvetica", 9)
+
+    _draw_tenant_table_header()
+    base_row_font = 9
+    min_row_font = 6
     # Flatten segments into rows
-    def _tenant_display(u):
+    def _tenant_display(u, phone):
         name = f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip()
         return name or u.email
     for row in data:
         u = row['user']
-        tenant_name = _tenant_display(u)
+        tenant_name = _tenant_display(u, row.get('phone'))
         if not row['segments']:
             continue
         for s in row['segments']:
             if y < 25 * mm:
                 p.showPage(); p.setPageSize(pagesize); y = height - 18 * mm
-                p.setFont("Helvetica-Bold", 12); p.drawString(x_margin, y, "Tenant-wise Details Table"); y -= 6 * mm
-                p.setFont("Helvetica-Bold", 9)
-                p.drawString(x_margin, y, "Tenant Name")
-                p.drawString(x_margin + 45 * mm, y, "Room")
-                p.drawString(x_margin + 60 * mm, y, "Joining Date")
-                p.drawString(x_margin + 90 * mm, y, "Leaving Date")
-                p.drawString(x_margin + 120 * mm, y, "Base Rent")
-                p.drawString(x_margin + 140 * mm, y, "Days Stayed")
-                # Left-align headers for monetary columns like other columns
-                p.drawString(width - 80 * mm, y, "Expected")
-                p.drawString(width - 55 * mm, y, "Collected")
-                p.drawString(width - x_margin - 25 * mm, y, "Pending")
-                y -= 4 * mm
-                p.setStrokeColor(colors.lightgrey)
-                p.line(x_margin, y, width - x_margin, y)
-                y -= 5 * mm
-                p.setFont("Helvetica", 9)
-            p.drawString(x_margin, y, tenant_name[:38])
-            p.drawString(x_margin + 45 * mm, y, str(s['room']))
-            p.drawString(x_margin + 60 * mm, y, (s['start'] or m_first).strftime('%Y-%m-%d'))
-            p.drawString(x_margin + 90 * mm, y, (s['end'].strftime('%Y-%m-%d') if s['end'] else '—'))
-            p.drawRightString(x_margin + 140 * mm, y, f"Rs. {float(s['base']):.2f}")
-            p.drawString(x_margin + 145 * mm, y, f"{int(s['days'])}/{m_days}")
-            # Left-align values to match header alignment
-            p.drawString(width - 80 * mm, y, f"Rs. {float(s['expected']):.2f}")
-            p.drawString(width - 55 * mm, y, f"Rs. {float(row['collected']):.2f}")
-            p.drawString(width - x_margin - 25 * mm, y, f"Rs. {float(row['pending']):.2f}")
+                p.setFont("Helvetica-Bold", 8); p.drawString(x_margin, y, "Tenant-wise Details Table"); y -= 6 * mm
+                _draw_tenant_table_header()
+            # Adjust tenant name font size if it exceeds available width
+            avail_width = tenant_col_width - 4 * mm
+            font_size = base_row_font
+            p.setFont("Helvetica", font_size)
+            while font_size > min_row_font and p.stringWidth(tenant_name[:tenant_name_max_chars], "Helvetica", font_size) > avail_width:
+                font_size -= 1
+                p.setFont("Helvetica", font_size)
+            p.drawString(x_margin, y, tenant_name[:tenant_name_max_chars])
+            p.setFont("Helvetica", base_row_font)
+            p.drawString(phone_col_x, y, (row.get('phone') or ''))
+            p.drawString(room_col_x, y, str(s['room']))
+            p.drawString(joining_col_x, y, (s['start'] or m_first).strftime('%Y-%m-%d'))
+            p.drawString(leaving_col_x, y, (s['end'].strftime('%Y-%m-%d') if s['end'] else '—'))
+            p.drawString(days_col_x, y, f"{int(s['days'])}/{m_days}")
+            p.drawString(expected_col_x, y, f"Rs. {float(s['expected']):.2f}")
+            p.drawString(collected_col_x, y, f"Rs. {float(row['collected']):.2f}")
+            p.drawString(pending_col_x, y, f"Rs. {float(row['pending']):.2f}")
             # Row separator line
             p.setStrokeColor(colors.lightgrey)
             p.line(x_margin, y - 2 * mm, width - x_margin, y - 2 * mm)
@@ -1480,7 +1666,10 @@ def monthly_export_excel(request):
         sort_dir = 'asc'
 
     # Group by user
-    active_bks = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg).select_related('user', 'room')
+    active_bks = (
+        Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg)
+        .select_related('user', 'room', 'user__profile')
+    )
     by_user = {}
     for b in active_bks:
         s = b.joining_date or b.start_date or b.created_at.date()
@@ -1495,84 +1684,20 @@ def monthly_export_excel(request):
     ws_overall.title = 'Overall Summary'
     ws_tenants = wb.create_sheet('Tenant-wise Details')
 
-    # Prepare sorted user order like dashboard
-    import re
-    def _room_sort_val(room_no):
-        s = str(room_no or '')
-        m = re.search(r"\d+", s)
-        if m:
-            try:
-                return (0, int(m.group()))
-            except Exception:
-                pass
-        return (1, s.strip().lower())
-    status_order = {'unpaid': 0, 'partial': 1, 'paid': 2}
-    def _resident_name(u):
-        name = f"{(getattr(u, 'first_name', '') or '').strip()} {(getattr(u, 'last_name', '') or '').strip()}".strip()
-        return (name or getattr(u, 'email', '') or '').strip().lower()
-    def _user_sort_key(item):
-        user_id, bookings = item
-        bookings = sorted(bookings, key=lambda b: (b.joining_date or b.start_date or b.created_at.date(), b.id))
-        u = bookings[0].user
-        # Representative fields
-        room_no = getattr(bookings[-1].room, 'room_no', '') if bookings else ''
-        # expected/collected for status/pending based sorts
+    only_filter = (request.GET.get('only') or '').strip().lower()
+
+    # Build per-user entries with aggregates and segments
+    entries = []
+    for user_id, bookings in by_user.items():
+        bookings_sorted = sorted(bookings, key=lambda b: (b.joining_date or b.start_date or b.created_at.date(), b.id))
+        if not bookings_sorted:
+            continue
+        u = bookings_sorted[0].user
+        segments = []
         expected_total = 0.0
-        for b in bookings:
-            expected_total += _expected_rent_for_user_pg_month(u, pg, b, m_first, m_last)
-        collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
-        pending = max(0.0, expected_total - collected)
-        if sort_key == 'room':
-            return _room_sort_val(room_no)
-        if sort_key in ('resident', 'user'):
-            return _resident_name(u)
-        if sort_key == 'expected':
-            return float(expected_total)
-        if sort_key == 'collected':
-            return float(collected)
-        if sort_key == 'pending':
-            return float(pending)
-        if sort_key == 'status':
-            st = 'paid' if collected >= expected_total - 0.5 else ('partial' if collected > 0 else 'unpaid')
-            return status_order.get(st, 99)
-        if sort_key == 'joining':
-            j = min((b.joining_date or b.start_date or b.created_at.date()) for b in bookings)
-            return (j is None, j or m_first)
-        if sort_key == 'leaving':
-            leaves = [b.leaving_date for b in bookings if b.leaving_date]
-            l = max(leaves) if leaves else None
-            return (l is None, l or m_first)
-        return _room_sort_val(room_no)
-
-    sorted_users = sorted(by_user.items(), key=_user_sort_key, reverse=(sort_dir == 'desc'))
-
-    # Overall Summary (Metric | Amount (Rs.))
-    total_expected = 0.0
-    total_collected = 0.0
-    for user_id, bookings in sorted_users:
-        bookings.sort(key=lambda b: (b.joining_date or b.start_date or b.created_at.date()))
-        u = bookings[0].user
-        expected_total = 0.0
-        for b in bookings:
-            expected_total += _expected_rent_for_user_pg_month(u, pg, b, m_first, m_last)
-        collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
-        total_expected += expected_total
-        total_collected += float(collected)
-    ws_overall.append(['Metric', 'Amount (Rs.)'])
-    ws_overall.append(['Expected', round(total_expected, 2)])
-    ws_overall.append(['Collected', round(total_collected, 2)])
-    ws_overall.append(['Pending', round(max(0.0, total_expected - total_collected), 2)])
-
-    # Tenant-wise Details (Tenant Name, Room, Joining Date, Leaving Date, Base Rent, Days Stayed, Expected, Collected, Pending)
-    ws_tenants.append(['Tenant Name', 'Room', 'Joining Date', 'Leaving Date', 'Base Rent', 'Days Stayed', 'Expected', 'Collected', 'Pending'])
-    from django.contrib.auth import get_user_model
-    User = get_user_model()
-    for user_id, bookings in sorted_users:
-        u = bookings[0].user
-        # Compute collected/pending once per tenant for this month
-        collected_u = _collected_for_user_pg_month(u, pg, m_first, m_last)
-        expected_total_u = 0.0
-        for b in bookings:
+        due_date = None
+        best_overlap = -1
+        for b in bookings_sorted:
             s = b.joining_date or b.start_date or b.created_at.date()
             e = b.leaving_date
             ov = _overlap_days(s, e, m_first, m_last)
@@ -1586,18 +1711,112 @@ def monthly_export_excel(request):
                 fees = Fees.objects.filter(pg=pg, share_type=share_type).first()
                 base = float(getattr(fees, 'monthly_fee', 0) or 0)
             expected_seg = _expected_rent_for_user_pg_month(u, pg, b, m_first, m_last)
-            expected_total_u += expected_seg
-            tenant_name = (f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email)
+            segments.append({
+                'room': getattr(b.room, 'room_no', ''),
+                'start': s,
+                'end': e,
+                'base': base,
+                'days': ov,
+                'expected': expected_seg,
+            })
+            expected_total += expected_seg
+            due_candidate = _payment_due_for_month(b, m_first, m_days)
+            if due_candidate and ov > best_overlap:
+                due_date = due_candidate
+                best_overlap = ov
+        if not segments:
+            continue
+        collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
+        status, status_label, status_css = _resolve_status(expected_total, float(collected), m_first, due_date, today)
+        if only_filter in ('paid', 'partial', 'unpaid', 'upcoming') and status != only_filter:
+            continue
+        phone_raw = getattr(getattr(u, 'profile', None), 'phone', '') or ''
+        segments.sort(key=lambda seg: (seg['start'] or m_first, seg['end'] or m_last))
+        entries.append({
+            'user': u,
+            'bookings': bookings_sorted,
+            'segments': segments,
+            'expected': round(expected_total, 2),
+            'collected': round(float(collected), 2),
+            'pending': round(max(0.0, expected_total - collected), 2),
+            'status': status,
+            'status_label': status_label,
+            'status_css': status_css,
+            'phone': phone_raw,
+        })
+
+    import re
+    def _room_sort_val(room_no):
+        s = str(room_no or '')
+        m = re.search(r"\d+", s)
+        if m:
+            try:
+                return (0, int(m.group()))
+            except Exception:
+                pass
+        return (1, s.strip().lower())
+
+    status_order = {'upcoming': -1, 'unpaid': 0, 'partial': 1, 'paid': 2}
+    def _resident_name(entry):
+        u = entry['user']
+        name = f"{(getattr(u, 'first_name', '') or '').strip()} {(getattr(u, 'last_name', '') or '').strip()}".strip()
+        return (name or getattr(u, 'email', '') or '').strip().lower()
+
+    def _entry_sort_key(entry):
+        segments = entry['segments']
+        rep_room = segments[-1]['room'] if segments else ''
+        if sort_key == 'room':
+            return _room_sort_val(rep_room)
+        if sort_key in ('resident', 'user'):
+            return _resident_name(entry)
+        if sort_key == 'expected':
+            return float(entry.get('expected') or 0.0)
+        if sort_key == 'collected':
+            return float(entry.get('collected') or 0.0)
+        if sort_key == 'pending':
+            return float(entry.get('pending') or 0.0)
+        if sort_key == 'status':
+            return status_order.get(entry.get('status'), 99)
+        if sort_key == 'joining':
+            joins = [seg['start'] for seg in segments if seg.get('start')]
+            j = min(joins) if joins else None
+            return (j is None, j or m_first)
+        if sort_key == 'leaving':
+            leaves = [seg['end'] for seg in segments if seg.get('end')]
+            l = max(leaves) if leaves else None
+            return (l is None, l or m_first)
+        return _room_sort_val(rep_room)
+
+    entries.sort(key=_entry_sort_key, reverse=(sort_dir == 'desc'))
+
+    # Overall Summary (Metric | Amount (Rs.))
+    total_expected = sum(entry['expected'] for entry in entries)
+    total_collected = sum(entry['collected'] for entry in entries)
+    ws_overall.append(['Metric', 'Amount (Rs.)'])
+    ws_overall.append(['Expected', round(total_expected, 2)])
+    ws_overall.append(['Collected', round(total_collected, 2)])
+    ws_overall.append(['Pending', round(max(0.0, total_expected - total_collected), 2)])
+
+    # Tenant-wise Details (Tenant Name, Room, Joining Date, Leaving Date, Base Rent, Days Stayed, Expected, Collected, Pending)
+    ws_tenants.append(['Tenant Name', 'Phone', 'Room', 'Joining Date', 'Leaving Date', 'Base Rent', 'Days Stayed', 'Expected', 'Collected', 'Pending'])
+    for entry in entries:
+        u = entry['user']
+        tenant_name = (f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email)
+        phone_val = entry.get('phone') or ''
+        for seg in entry['segments']:
+            start = seg['start']
+            end = seg['end']
             ws_tenants.append([
                 tenant_name,
-                getattr(b.room, 'room_no', ''),
-                s.strftime('%Y-%m-%d') if s else '',
-                e.strftime('%Y-%m-%d') if e else '',
-                round(base, 2),
-                f"{int(ov)}/{m_days}",
-                round(expected_seg, 2),
-                round(float(collected_u), 2),
-                round(max(0.0, expected_total_u - collected_u), 2),
+                phone_val,
+                seg['room'],
+                start.strftime('%Y-%m-%d') if start else '',
+                end.strftime('%Y-%m-%d') if end else '',
+                round(seg['base'], 2),
+                f"{int(seg['days'])}/{m_days}",
+                round(seg['expected'], 2),
+                entry['collected'],
+                round(max(0.0, entry['expected'] - entry['collected']), 2),
             ])
 
     # Auto-width a bit
@@ -1610,7 +1829,8 @@ def monthly_export_excel(request):
                     max_len = max(max_len, len(str(cell.value)))
                 except Exception:
                     pass
-            ws.column_dimensions[col_letter].width = min(40, max(12, max_len + 2))
+            limit = 60 if (ws.title == 'Tenant-wise Details' and col_letter == 'A') else 40
+            ws.column_dimensions[col_letter].width = min(limit, max(12, max_len + 2))
 
     from io import BytesIO
     output = BytesIO()
@@ -2190,16 +2410,20 @@ def monthly_quick_payment(request):
             pass
         # Phone numbers
         pg_phone = getattr(pg, 'phone', '') or ''
-        # WhatsApp phone from resident profile, normalized with country prefix 91 if 10 digits
-        import re
-        raw_phone = getattr(getattr(u, 'profile', None), 'phone', '') or ''
-        digits = re.sub(r"\D", "", raw_phone)
-        if digits.startswith('0') and len(digits) > 1:
-            digits = digits.lstrip('0')
-        if len(digits) == 10:
-            whatsapp_phone = '91' + digits
-        else:
-            whatsapp_phone = digits or ''
+
+        # Sanitize WhatsApp phone: digits only, include country code (default to +91 if 10 digits)
+        try:
+            import re
+            raw = pg_phone
+            digits = re.sub(r"\D", "", raw or "")
+            # handle common India patterns: leading 0, 10-digit local
+            if digits.startswith('0') and len(digits) > 1:
+                digits = digits.lstrip('0')
+            if len(digits) == 10:
+                digits = '91' + digits
+            whatsapp_phone = digits
+        except Exception:
+            whatsapp_phone = ''
         # Address short (first line)
         addr = getattr(pg, 'address', '') or ''
         pg_address_short = (addr.splitlines()[0] if addr else '')
@@ -2239,26 +2463,27 @@ def monthly_quick_payment(request):
         m = int(month) if month else pay_date.month
     except Exception:
         m = pay_date.month
-    m_first, m_last, _ = _month_range(y, m)
+    m_first, m_last, m_days = _month_range(y, m)
 
     # Expected across overlapping bookings in the month
     expected_total = 0.0
+    primary_due = None
+    primary_overlap = -1
     user_bookings = Booking.objects.filter(status__in=[Booking.APPROVED, Booking.COMPLETED], room__pg=pg, user=u).select_related('room')
     for b in user_bookings:
         s = b.joining_date or b.start_date or b.created_at.date()
         e = b.leaving_date
-        if _overlap_days(s, e, m_first, m_last) > 0:
+        overlap = _overlap_days(s, e, m_first, m_last)
+        if overlap > 0:
             expected_total += _expected_rent_for_user_pg_month(u, pg, b, m_first, m_last)
+            due_candidate = _payment_due_for_month(b, m_first, m_days)
+            if due_candidate and overlap > primary_overlap:
+                primary_due = due_candidate
+                primary_overlap = overlap
     expected_total = float(round(expected_total, 2))
     collected_total = float(round(_collected_for_user_pg_month(u, pg, m_first, m_last), 2))
     pending_total = float(round(max(0.0, expected_total - collected_total), 2))
-    # Status classification
-    if collected_total >= expected_total - 0.5:
-        new_status = 'paid'
-    elif collected_total > 0:
-        new_status = 'partial'
-    else:
-        new_status = 'unpaid'
+    new_status, new_status_label, new_status_css = _resolve_status(expected_total, collected_total, m_first, primary_due, timezone.now().date())
 
     # Recompute overall summary totals for the selected PG and month (respecting filter 'only' if provided)
     # Build resident rows data similar to monthly_dashboard but only gathering totals
@@ -2284,14 +2509,21 @@ def monthly_quick_payment(request):
     for user_id, bookings in by_user.items():
         u2 = bookings[0].user
         exp_u = 0.0
+        due_u = None
+        best_overlap = -1
         for b in bookings:
             s = b.joining_date or b.start_date or b.created_at.date()
             e = b.leaving_date
-            if _overlap_days(s, e, m_first, m_last) > 0:
+            overlap = _overlap_days(s, e, m_first, m_last)
+            if overlap > 0:
                 exp_u += _expected_rent_for_user_pg_month(u2, pg, b, m_first, m_last)
+                due_candidate = _payment_due_for_month(b, m_first, m_days)
+                if due_candidate and overlap > best_overlap:
+                    due_u = due_candidate
+                    best_overlap = overlap
         col_u = _collected_for_user_pg_month(u2, pg, m_first, m_last)
-        status_u = 'paid' if col_u >= exp_u - 0.5 else ('partial' if col_u > 0 else 'unpaid')
-        if only_filter in ('paid', 'partial', 'unpaid') and status_u != only_filter:
+        status_u, _, _ = _resolve_status(float(exp_u), float(col_u), m_first, due_u, timezone.now().date())
+        if only_filter in ('paid', 'partial', 'unpaid', 'upcoming') and status_u != only_filter:
             continue
         totals_expected += exp_u
         totals_collected += float(col_u)
@@ -2309,6 +2541,8 @@ def monthly_quick_payment(request):
             'collected_display': f"{collected_total:.2f}",
             'pending_display': f"{pending_total:.2f}",
             'status': new_status,
+            'status_label': new_status_label,
+            'status_css': new_status_css,
             # Overall cards
             'sum_expected': f"{totals_expected:.2f}",
             'sum_collected': f"{totals_collected:.2f}",

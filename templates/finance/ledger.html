@@ -53,7 +53,7 @@
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0 table-mobile-sm">
             <thead>
-              <tr><th>Room</th><th>Start</th><th>End</th><th>Status</th><th>Sharing</th></tr>
+              <tr><th>Room</th><th>Start</th><th>End</th><th>Status</th><th>Beds</th></tr>
             </thead>
             <tbody>
               {% for b in bookings.current %}
@@ -126,7 +126,7 @@
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0 table-mobile-sm">
         <thead>
-          <tr><th>Room</th><th>Start</th><th>End</th><th>Status</th><th>Sharing</th></tr>
+          <tr><th>Room</th><th>Start</th><th>End</th><th>Status</th><th>Beds</th></tr>
         </thead>
         <tbody>
           {% for b in bookings.past %}
@@ -160,7 +160,7 @@
           {% if b.application %}
           <div class="mb-4 pb-3 border-bottom">
             <div class="d-flex justify-content-between align-items-start mb-2">
-              <div class="fw-semibold">Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
+              <div class="fw-semibold">Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
               <span class="badge rounded-pill text-bg-light">{{ b.application.get_status_display|default:b.application.status }}</span>
             </div>
             <div class="row g-2 small">
