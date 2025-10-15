@@ -230,6 +230,23 @@ def booking_swap_rooms_api(request, booking_id: int) -> JsonResponse:
         .order_by('room_no')
     )
 
+    room_data = [
+        {
+            'id': room.id,
+            'room_no': room.room_no,
+            'vacant_count': room.vacant_count,
+            'total_beds': room.total_shares,
+        }
+        for room in rooms
+    ]
+
+    return JsonResponse({
+        'ok': True,
+        'rooms': room_data,
+        'current_room_id': booking.room_id,
+        'current_share_no': booking.share_no,
+    })
+
 @login_required
 def pg_referrals(request):
     """PG Admin view: list referral credits for PGs the user administers."""
