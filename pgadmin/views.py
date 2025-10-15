@@ -24,6 +24,17 @@ from core.audit import log
 from core.drive import drive_delete
 from core.models import Notification
 from finance.models import Fees
+from django.urls import reverse
+from django.http import HttpResponse
+import calendar
+from io import BytesIO
+
+try:
+    import openpyxl
+    from openpyxl.styles import Font, Alignment
+    from openpyxl.utils import get_column_letter
+except Exception:
+    openpyxl = None
 from .forms import PGForm, RoomForm, ShareStatusForm
 from .models import PG, PGAdmin
 
@@ -669,6 +680,146 @@ def tenants(request):
         'today': timezone.now().date(),
     }
     return render(request, 'pgadmin/tenants.html', ctx)
+
+
+@login_required
+def tenants_export_excel(request):
+    """Export tenants in a formatted Excel workbook per PG and month layout described by the user.
+
+    Layout rules implemented:
+    - Leave two blank rows at top
+    - One merged title row containing Month name, PG name/address/phone in bold center
+    - Leave four blank rows after title
+    - For each room in ascending room_no: create a block where first column is Room header and
+      subsequent columns correspond to bed slots (room.total_shares). For each bed, write resident
+      details in a single row (columns: room, name, joining, leaving, phone, email, father name, father phone, mother name, mother phone, ledger link)
+    """
+    if not _require_pg_admin(request.user):
+        return HttpResponse('Forbidden', status=403)
+
+    pg = _active_pg(request)
+    if not pg:
+        return HttpResponse('No active PG selected', status=400)
+
+    if openpyxl is None:
+        return HttpResponse('openpyxl not installed on server', status=500)
+
+    # Determine month to show: current month
+    today = timezone.now().date()
+    month_name = calendar.month_name[today.month] + f' {today.year}'
+
+    # Build rooms list ordered by room_no
+    rooms = list(Room.objects.filter(pg=pg).order_by('room_no').prefetch_related('shares'))
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Tenants'
+
+    row = 1
+    # Leave two blank rows
+    row += 2
+
+    # Title: merge across some columns. We'll estimate max columns: for largest room, columns = 1 (room) + max_shares * 1 + ledger
+    max_shares = max((r.total_shares or 1) for r in rooms) if rooms else 1
+    cols_needed = 1 + max_shares * 1 + 10  # allocate extra for fields; final layout uses fixed columns per resident
+    last_col = get_column_letter(max(6, cols_needed))
+
+    title_cell = ws.cell(row=row, column=1)
+    title_cell.value = f"{month_name} — {pg.name} • {pg.address or ''} • {pg.phone or ''}"
+    title_cell.font = Font(bold=True, size=14)
+    title_cell.alignment = Alignment(horizontal='center')
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=max(8, max_shares + 4))
+
+    row += 1
+
+    # Leave four blank rows
+    row += 4
+
+    # Column header template for each resident row
+    headers = ['Room', 'Name', 'Joining', 'Leaving', 'Phone', 'Email', 'Father name', 'Father phone', 'Mother name', 'Mother phone', 'Ledger']
+
+    # For each room, create rows. For each bed in room.total_shares, create one resident row.
+    for room in rooms:
+        # Room block header: write room number in bold
+        ws.cell(row=row, column=1, value=f"Room {room.room_no}")
+        ws.cell(row=row, column=1).font = Font(bold=True)
+        row += 1
+
+        # Write header row
+        for ci, h in enumerate(headers, start=1):
+            c = ws.cell(row=row, column=ci, value=h)
+            c.font = Font(bold=True)
+        row += 1
+
+        # For each bed number, find occupant booking (approved) or pending occupant whose joining date <= today
+        shares = list(room.shares.order_by('share_no'))
+        # Ensure we iterate from 1..room.total_shares
+        total = room.total_shares or len(shares) or 1
+        for share_no in range(1, total + 1):
+            # default empty row: include room and bed number
+            values = [f"{room.room_no} - (BED {share_no})"] + [''] * (len(headers) - 1)
+
+            # find booking
+            booking = Booking.objects.filter(room=room, share_no=share_no, status__in=[Booking.APPROVED, Booking.PENDING]).select_related('user', 'user__profile').order_by('-created_at').first()
+            # If booking exists and not yet left (leaving_date is None or in future), include
+            include_person = False
+            if booking:
+                if not booking.leaving_date or booking.leaving_date >= today:
+                    include_person = True
+
+            if include_person and booking:
+                user = booking.user
+                app = getattr(booking, 'application', None)
+                # Populate fields
+                values[1] = f"{user.first_name} {user.last_name}".strip()
+                joining = booking.joining_date or booking.start_date
+                values[2] = joining.isoformat() if joining else ''
+                values[3] = booking.leaving_date.isoformat() if booking.leaving_date else ''
+                # phone/email preference: application.phone -> profile.phone -> user.email
+                phone = getattr(app, 'phone', None) or getattr(getattr(user, 'profile', None), 'phone', '')
+                values[4] = phone
+                values[5] = getattr(app, 'email', None) or user.email or ''
+                # parents info from application if present
+                values[6] = getattr(app, 'father_name', '') if app else ''
+                values[7] = getattr(app, 'father_phone', '') if app else ''
+                values[8] = getattr(app, 'mother_name', '') if app else ''
+                values[9] = getattr(app, 'mother_phone', '') if app else ''
+                # Ledger link: reverse finance_ledger
+                try:
+                    ledger_url = request.build_absolute_uri(reverse('finance_ledger', kwargs={'user_id': user.id}))
+                except Exception:
+                    ledger_url = ''
+                values[10] = ledger_url
+
+            # write the row
+            for ci, v in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=ci)
+                if ci == 11 and v:
+                    # Ledger hyperlink
+                    cell.value = 'Ledger'
+                    cell.hyperlink = v
+                    cell.font = Font(color='0000EE', underline='single')
+                    cell.alignment = Alignment(horizontal='left')
+                else:
+                    cell.value = v
+            row += 1
+
+        # leave two blank rows between rooms
+        row += 2
+
+    # Adjust column widths a bit
+    for i in range(1, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(i)].width = 18
+
+    # Prepare response
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_name = ''.join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in (pg.name or 'pg'))
+    filename = f"{safe_name.replace(' ', '_')}_tenants_{today.isoformat()}.xlsx"
+    resp = HttpResponse(buf.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
 
 @login_required
