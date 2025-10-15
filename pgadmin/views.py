@@ -1163,7 +1163,13 @@ def application_pdf(request, app_id):
     story.append(Paragraph(title, styles['Title']))
     story.append(Spacer(1, 6))
     story.append(Paragraph(f"PG: {app.pg.name}", styles['Normal']))
+    # Payment date: prefer booking.payment_date, fallback to booking.joining_date or start_date
+    booking = getattr(app, 'booking', None)
+    payment_date = None
+    if booking:
+        payment_date = getattr(booking, 'payment_date', None) or getattr(booking, 'joining_date', None) or getattr(booking, 'start_date', None)
     story.append(Paragraph(f"Room: {getattr(app.room, 'room_no', '—')} • Share: {getattr(getattr(app, 'booking', None), 'share_no', '—')}", styles['Normal']))
+    story.append(Paragraph(f"Payment date: {payment_date or '—'}", styles['Normal']))
     story.append(Spacer(1, 12))
 
     # Helpers for downloading
@@ -1250,7 +1256,7 @@ def application_pdf(request, app_id):
         ["Email", f"{app.email or app.user.email}"],
         ["Food Pref", f"{app.food_pref or '—'}"],
         ["Marital", f"{app.marital_status or '—'}"],
-        ["Date of Admission", f"{app.date_of_admission or '—'}"],
+        ["Date of Application", f"{app.date_of_admission or '—'}"],
         ["Joining Date", f"{getattr(app.booking, 'joining_date', None) or getattr(app.booking, 'start_date', None) or '—'}"],
         ["Address", f"{app.address or '—'}"],
     ]

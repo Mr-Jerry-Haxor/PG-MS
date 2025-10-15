@@ -227,6 +227,7 @@
             <div class="field field-box"><small>Marital</small><span>{{ b.application.marital_status|default:"—" }}</span></div>
             <div class="field field-box"><small>Date of application</small><span>{{ b.application.date_of_admission|default:"—" }}</span></div>
             <div class="field field-box"><small>Joining Date</small><span>{% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
+            <div class="field field-box"><small>Payment Date</small><span>{% if b.payment_date %}{{ b.payment_date|date:"Y-m-d" }}{% elif b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
           </div>
           <div class="field mt-2 field-box"><small>Address</small><div>{{ b.application.address|default:"—" }}</div></div>
           <div class="section-title">Family</div>
