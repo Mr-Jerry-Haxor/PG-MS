@@ -22,6 +22,7 @@ urlpatterns = [
     path('bookings/<int:booking_id>/swap/options/rooms/<int:room_id>/shares/', views.booking_swap_shares_api, name='pg_booking_swap_shares_api'),
     path('bookings/<int:booking_id>/application-email/', views.application_email_send, name='pg_application_email_send'),
     path('booking/<int:booking_id>/join-date/', views.booking_joining_update, name='pg_booking_joining_update'),
+    path('booking/<int:booking_id>/payment-date/', views.booking_payment_date_update, name='pg_booking_payment_date_update'),
     path('leaving/', views.leaving_requests, name='pg_leaving_requests'),
     path('leaving/<int:booking_id>/confirm/', views.leaving_confirm, name='pg_leaving_confirm'),
     path('leaving/<int:booking_id>/reject/', views.leaving_reject, name='pg_leaving_reject'),

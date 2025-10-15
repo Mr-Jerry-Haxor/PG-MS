@@ -5,18 +5,37 @@
 <form method="post" class="card border-0 shadow-sm">
   {% csrf_token %}
   <div class="card-body p-4">
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
     <div class="mb-3">
       <label class="form-label">Name</label>
       {{ form.name }}
+      {% if form.name.errors %}
+        <div class="text-danger small">{{ form.name.errors }}</div>
+      {% endif %}
     </div>
     <div class="mb-3">
       <label class="form-label">Address</label>
       {{ form.address }}
+      {% if form.address.errors %}
+        <div class="text-danger small">{{ form.address.errors }}</div>
+      {% endif %}
     </div>
     <div class="mb-3">
       <label class="form-label">Phone</label>
       {{ form.phone }}
+      {% if form.phone.errors %}
+        <div class="text-danger small">{{ form.phone.errors }}</div>
+      {% endif %}
       <div class="form-text">Optional. Include country code, e.g., +91 98765 43210.</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Default Referral Amount (₹)</label>
+      {{ form.referral_amount }}
+      {% if form.referral_amount.errors %}
+        <div class="text-danger small">{{ form.referral_amount.errors }}</div>
+      {% endif %}
     </div>
   <button class="btn btn-primary" type="submit">{% if pg %}Save{% else %}Create{% endif %}</button>
     <a href="{% url 'sa_pgs' %}" class="btn btn-outline-secondary">Cancel</a>

@@ -247,6 +247,37 @@ def booking_swap_rooms_api(request, booking_id: int) -> JsonResponse:
         'current_share_no': booking.share_no,
     })
 
+
+
+@login_required
+def booking_payment_date_update(request, booking_id: int):
+    """Allow PG admin to update the monthly payment_date for a booking from the PG admin UI.
+    Mirrors finance.monthly_update_payment_date but scoped to PG admin area and redirects back.
+    """
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request method.')
+        return redirect('pg_tenants')
+    if not _require_pg_admin(request.user):
+        messages.error(request, 'PG Admin access required.')
+        return redirect('pg_my')
+
+    payment_raw = (request.POST.get('payment_date') or '').strip()
+    payment_date = parse_date(payment_raw) if payment_raw else None
+    if not payment_date:
+        messages.error(request, 'Select a valid payment date.')
+        return redirect(request.META.get('HTTP_REFERER') or 'pg_tenants')
+
+    booking = get_object_or_404(Booking, pk=booking_id)
+    if not _admin_pgs(request.user).filter(id=getattr(booking, 'pg_id', None)).exists():
+        messages.error(request, 'You do not have access to the requested PG.')
+        return redirect(request.META.get('HTTP_REFERER') or 'pg_tenants')
+
+    booking.payment_date = payment_date
+    booking.save(update_fields=['payment_date'])
+    log(request.user, 'booking_payment_date_updated', 'Booking', booking.id)
+    messages.success(request, 'Payment date updated.')
+    return redirect(request.META.get('HTTP_REFERER') or 'pg_tenants')
+
 @login_required
 def pg_referrals(request):
     """PG Admin view: list referral credits for PGs the user administers."""
