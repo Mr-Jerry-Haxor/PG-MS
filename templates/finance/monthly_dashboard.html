@@ -11,10 +11,17 @@
   @media (max-width: 576px) {
     #monthPicker { width: 100% !important; }
     .table thead th.sticky-sm { position: sticky; top: 0; background: #fff; z-index: 1; }
-    /* Hide less-critical columns on XS to reduce horizontal scroll */
-    .col-room, .col-advance, .col-status, .col-actions { display: none; }
+  /* Hide less-critical columns on XS but keep room visible */
+  .col-advance, .col-status, .col-actions { display: none; }
+  /* Make room column compact on mobile */
+  .col-room { display: table-cell; min-width: 48px; width: 56px; }
+  .col-room { font-size: .75rem; }
     /* Tighten table spacing on mobile */
     table.table td, table.table th { padding: .35rem .5rem; }
+    /* Summary cards: display as 2x2 grid and reduce font sizes */
+    .row.g-3.mb-3 { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; }
+    .row.g-3.mb-3 .card-body .small { font-size: .65rem; }
+    .row.g-3.mb-3 .card-body .fs-5 { font-size: 1rem; }
   }
   /* Keep currency values on one line */
   .nowrap { white-space: nowrap; }
@@ -44,7 +51,6 @@
   <div class="d-flex gap-2 flex-wrap w-100 w-md-auto justify-content-start justify-content-md-end mt-2 mt-md-0" id="monthlyExportButtons">
   <a class="btn btn-outline-secondary btn-sm" href="#" data-export-url="{% url 'finance_monthly_export_pdf' %}" data-export-label="PDF" data-year="{{ summary.year }}" data-month="{{ summary.month }}" data-sort="{{ current_sort }}" data-dir="{{ current_dir }}" data-only="{{ request.GET.only|default:'' }}" data-pg="{% if pg %}{{ pg.id }}{% endif %}">Export PDF</a>
   <a class="btn btn-outline-secondary btn-sm" href="#" data-export-url="{% url 'finance_monthly_export_excel' %}" data-export-label="Excel" data-year="{{ summary.year }}" data-month="{{ summary.month }}" data-sort="{{ current_sort }}" data-dir="{{ current_dir }}" data-only="{{ request.GET.only|default:'' }}" data-pg="{% if pg %}{{ pg.id }}{% endif %}">Export Excel</a>
-  <a class="btn btn-outline-secondary btn-sm" href="#" data-export-url="{% url 'finance_monthly_export_csv' %}" data-export-label="CSV" data-year="{{ summary.year }}" data-month="{{ summary.month }}" data-sort="{{ current_sort }}" data-dir="{{ current_dir }}" data-only="{{ request.GET.only|default:'' }}" data-pg="{% if pg %}{{ pg.id }}{% endif %}">Export CSV</a>
     <button class="btn btn-outline-secondary btn-sm" type="button" id="btnToggleAll" data-state="collapsed">Expand All Stays</button>
   </div>
 </div>
@@ -68,28 +74,10 @@
         <option value="paid" {% if request.GET.only == 'paid' %}selected{% endif %}>Paid</option>
         <option value="unpaid" {% if request.GET.only == 'unpaid' %}selected{% endif %}>Unpaid</option>
         <option value="partial" {% if request.GET.only == 'partial' %}selected{% endif %}>Partial</option>
-          <option value="upcoming" {% if request.GET.only == 'upcoming' %}selected{% endif %}>Not due</option>
+          <option value="upcoming" {% if request.GET.only == 'upcoming' %}selected{% endif %}>No Due</option>
       </select>
     </div>
-    <div>
-      <label class="form-label small">Sort by</label>
-      <div class="d-flex gap-2">
-        <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
-          <option value="room" {% if current_sort == 'room' %}selected{% endif %}>Room</option>
-          <option value="resident" {% if current_sort == 'resident' %}selected{% endif %}>Resident</option>
-          <option value="expected" {% if current_sort == 'expected' %}selected{% endif %}>Expected</option>
-          <option value="collected" {% if current_sort == 'collected' %}selected{% endif %}>Collected</option>
-          <option value="pending" {% if current_sort == 'pending' %}selected{% endif %}>Pending</option>
-          <option value="status" {% if current_sort == 'status' %}selected{% endif %}>Status</option>
-          <option value="joining" {% if current_sort == 'joining' %}selected{% endif %}>Joining</option>
-          <option value="leaving" {% if current_sort == 'leaving' %}selected{% endif %}>Leaving</option>
-        </select>
-        <select name="dir" class="form-select form-select-sm" onchange="this.form.submit()" style="max-width:110px;">
-          <option value="asc" {% if current_dir == 'asc' %}selected{% endif %}>Asc</option>
-          <option value="desc" {% if current_dir == 'desc' %}selected{% endif %}>Desc</option>
-        </select>
-      </div>
-    </div>
+    <!-- Sort controls removed: column headers are clickable for sorting -->
     <button class="btn btn-primary btn-sm" type="submit">Apply</button>
   </div>
 </form>
@@ -137,16 +125,16 @@
         <thead>
           <tr class="position-sticky top-0 bg-white" style="z-index:1">
             <th style="width:32px"><input type="checkbox" id="chkAll" onclick="document.querySelectorAll('.rowchk').forEach(c=>c.checked=this.checked)"></th>
-            <th>Resident</th>
-            <th class="col-room">Room</th>
-            <th>Joining</th>
-            <th class="col-payment-date">Payment Date</th>
-            <th>Leaving</th>
-            <th class="col-advance">Advance</th>
-            <th>Expected</th>
-            <th>Collected</th>
-            <th>Pending</th>
-            <th class="col-status">Status</th>
+            <th class="sortable" data-sort-key="resident">Resident <span class="sort-indicator">{% if current_sort == 'resident' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="col-room sortable" data-sort-key="room">Room <span class="sort-indicator">{% if current_sort == 'room' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="sortable" data-sort-key="joining">Joining <span class="sort-indicator">{% if current_sort == 'joining' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="col-payment-date sortable" data-sort-key="payment_date">Payment Date <span class="sort-indicator">{% if current_sort == 'payment_date' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="sortable" data-sort-key="leaving">Leaving <span class="sort-indicator">{% if current_sort == 'leaving' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="col-advance sortable" data-sort-key="advance">Advance <span class="sort-indicator">{% if current_sort == 'advance' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="sortable" data-sort-key="expected">Expected <span class="sort-indicator">{% if current_sort == 'expected' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="sortable" data-sort-key="collected">Collected <span class="sort-indicator">{% if current_sort == 'collected' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="sortable" data-sort-key="pending">Pending <span class="sort-indicator">{% if current_sort == 'pending' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
+            <th class="col-status sortable" data-sort-key="status">Status <span class="sort-indicator">{% if current_sort == 'status' %}{% if current_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</span></th>
             <th class="col-actions">Actions</th>
           </tr>
         </thead>
@@ -343,7 +331,7 @@
               <option value="">All residents</option>
               <option value="paid">Paid only</option>
               <option value="partial">Partial only</option>
-                <option value="upcoming">Not due only</option>
+                <option value="upcoming">No Due only</option>
               <option value="unpaid">Unpaid only</option>
             </select>
           </div>
@@ -745,6 +733,38 @@
         });
       });
     }
+
+    // Column header sorting: clickable headers toggle sort & dir, default sort is room asc
+    function getCurrentQueryParams() {
+      var params = new URLSearchParams(window.location.search);
+      return params;
+    }
+    function navigateWithSort(sortKey, dir) {
+      var params = getCurrentQueryParams();
+      // set provided sort and dir
+      if (sortKey) params.set('sort', sortKey);
+      if (dir) params.set('dir', dir);
+      // ensure year/month remain present (if missing, keep existing)
+      var base = window.location.pathname;
+      window.location.href = base + '?' + params.toString();
+    }
+    document.querySelectorAll('th.sortable').forEach(function(th){
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', function(){
+        var key = this.dataset.sortKey;
+        if (!key) return;
+        var params = getCurrentQueryParams();
+        var currentSort = params.get('sort') || 'room';
+        var currentDir = params.get('dir') || 'asc';
+        var newDir = 'asc';
+        if (currentSort === key) {
+          newDir = (currentDir === 'asc') ? 'desc' : 'asc';
+        } else {
+          newDir = 'asc';
+        }
+        navigateWithSort(key, newDir);
+      });
+    });
 
     // Quick select unpaid
     var btnSelectUnpaid = document.getElementById('btnSelectUnpaid');

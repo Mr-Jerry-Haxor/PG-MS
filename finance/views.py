@@ -473,7 +473,7 @@ def _resolve_status(expected: float, collected: float, m_first: date, due_date: 
             return 'partial', 'Partial', 'status-partial'
         return 'unpaid', 'Unpaid', 'status-unpaid'
 
-    return 'upcoming', 'Not due', 'status-upcoming'
+    return 'upcoming', 'No Due', 'status-upcoming'
 
 
 def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None) -> float:
