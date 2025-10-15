@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, Min, OuterRef, Prefetch, Q
+from django.db.models import Count, Exists, Min, OuterRef, Prefetch, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -219,6 +219,56 @@ def booking_swap_rooms_api(request, booking_id: int) -> JsonResponse:
         .order_by('room_no')
     )
 
+@login_required
+def pg_referrals(request):
+    """PG Admin view: list referral credits for PGs the user administers."""
+    user = request.user
+    if not _require_pg_admin(user):
+        messages.error(request, 'PG Admin access required.')
+        return redirect('pg_my')
+
+    # Get PGs the user administers
+    admin_pgs = list(_admin_pgs(user))
+    if not admin_pgs:
+        messages.error(request, 'You are not an admin for any PG.')
+        return redirect('pg_my')
+
+    pg_id = request.GET.get('pg')
+    if pg_id:
+        try:
+            pg_id = int(pg_id)
+        except (TypeError, ValueError):
+            pg_id = None
+
+    # If pg_id provided and user not admin for it, ignore
+    if pg_id and not any(p.id == pg_id for p in admin_pgs):
+        pg_id = None
+
+    # Prefer explicit pg selection or default to first admin pg
+    selected_pg = None
+    if pg_id:
+        selected_pg = next((p for p in admin_pgs if p.id == pg_id), None)
+    else:
+        selected_pg = admin_pgs[0]
+
+    credits_qs = ReferralCredit.objects.filter(pg=selected_pg).select_related('referrer_user', 'referred_user', 'referrer_booking', 'referred_booking', 'application').order_by('-created_at')
+
+    redeemed = credits_qs.filter(redeemed_on__isnull=False)
+    pending = credits_qs.filter(redeemed_on__isnull=True)
+
+    # Totals
+    total_redeemed = redeemed.aggregate(total=Sum('redeemed_amount'))['total'] or 0
+    total_pending = pending.aggregate(total=Sum('amount'))['total'] or 0
+
+    context = {
+        'pgs': admin_pgs,
+        'pg': selected_pg,
+        'redeemed': redeemed,
+        'pending': pending,
+        'total_redeemed': total_redeemed,
+        'total_pending': total_pending,
+    }
+    return render(request, 'pgadmin/referrals.html', context)
     room_data = [
         {
             'id': room.id,
