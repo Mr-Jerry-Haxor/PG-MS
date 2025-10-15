@@ -52,11 +52,20 @@
       <div class="booking-actions mt-1">
         <a href="{% url 'pg_booking_approve' b.id %}" class="btn btn-sm btn-success">Approve</a>
         <a href="{% url 'pg_booking_reject' b.id %}" class="btn btn-sm btn-outline-danger">Reject</a>
-        <a href="{% url 'pg_application_email_send' b.id %}" class="btn btn-sm btn-outline-primary">Send Link</a>
+        {% if b.has_application %}
+          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View Application</button>
+        {% else %}
+          <a href="{% url 'pg_application_email_send' b.id %}" class="btn btn-sm btn-outline-primary">Send Link</a>
+        {% endif %}
       </div>
     </div>
   {% empty %}
     <div class="empty-state">No pending bookings.</div>
   {% endfor %}
 </div>
+{% for b in bookings %}
+  {% if b.has_application and b.application %}
+    {% include 'pgadmin/_application_modal.html' with booking=b pg=pg referral_options=referral_options %}
+  {% endif %}
+{% endfor %}
 {% endblock %}

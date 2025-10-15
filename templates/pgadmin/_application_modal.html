@@ -1,0 +1,179 @@
+{# Reusable application modal. Expects `booking` in context, and optionally `pg`, `referral_options` #}
+<div class="modal fade" id="appModal{{ booking.id }}" tabindex="-1" aria-labelledby="appModalLabel{{ booking.id }}" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="appModalLabel{{ booking.id }}">Application — {{ booking.user.first_name }} {{ booking.user.last_name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <style>
+          .section-title{font-size:.7rem;letter-spacing:.08em;font-weight:600;text-transform:uppercase;color:#64748b;margin:1rem 0 .35rem}
+          .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+          .field small{display:block;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:.15rem}
+          .doc-preview{display:flex;flex-wrap:wrap;gap:.5rem}
+            .doc-thumb{width:64px;height:64px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
+          .declarations-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;margin-top:.5rem}
+          .decl-item{display:flex;align-items:center;gap:.35rem;font-size:.75rem;padding:.4rem .55rem;border:1px solid #e2e8f0;border-radius:.5rem;background:#f8fafc}
+          .field-box{background:#f8fafc;padding:.55rem .6rem;border:1px solid #e2e8f0;border-radius:.6rem;min-height:72px}
+          .doc-embed{border:1px solid #e2e8f0;border-radius:.6rem;background:#f8fafc}
+          .selfie-embed{border:1px solid #e2e8f0;border-radius:.75rem;background:#f1f5f9;position:relative;overflow:hidden}
+          .selfie-embed iframe{width:100%;height:280px;border:0}
+          @media (min-width:768px){.selfie-embed iframe{height:320px}}
+        </style>
+        <div class="section-title mt-0">Personal</div>
+        {% if booking.application.selfie_url %}
+        <div class="mb-3">
+          <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#selfieWrap{{ booking.id }}" aria-expanded="false" aria-controls="selfieWrap{{ booking.id }}">
+            <i class="bi bi-person-bounding-box me-1"></i>Show Selfie
+          </button>
+          <div class="collapse mt-2" id="selfieWrap{{ booking.id }}">
+            <div class="selfie-embed p-2">
+              <iframe src="{{ booking.application.selfie_url }}" title="Selfie" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups" onload="this.dataset.loaded=1"></iframe>
+              <div class="small text-secondary mt-2">If the selfie doesn't render (some CDNs block iframe embedding), <a href="{{ booking.application.selfie_url }}" target="_blank">open in new tab</a>.</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        <div class="field-grid">
+          <div class="field field-box"><small>Name</small><span class="fw-semibold d-block">{{ booking.application.name|default:booking.user.first_name }} {{ booking.user.last_name }}</span></div>
+          <div class="field field-box"><small>DOB</small><span>{{ booking.application.dob|default:"—" }}</span></div>
+          <div class="field field-box"><small>Age</small><span>{{ booking.application.age|default:"—" }}</span></div>
+          <div class="field field-box"><small>Phone</small><span>{{ booking.application.phone|default:booking.user.profile.phone|default:"—" }}</span></div>
+          <div class="field field-box"><small>Email</small><span class="text-break">{{ booking.application.email|default:booking.user.email }}</span></div>
+          <div class="field field-box"><small>Food Pref</small><span>{{ booking.application.food_pref|default:"—" }}</span></div>
+          <div class="field field-box"><small>Marital</small><span>{{ booking.application.marital_status|default:"—" }}</span></div>
+          <div class="field field-box"><small>Date of Admission</small><span>{{ booking.application.date_of_admission|default:"—" }}</span></div>
+          <div class="field field-box"><small>Joining Date</small><span>{% if booking.joining_date %}{{ booking.joining_date|date:'Y-m-d' }}{% elif booking.start_date %}{{ booking.start_date|date:'Y-m-d' }}{% else %}—{% endif %}</span></div>
+        </div>
+        <div class="field mt-2 field-box"><small>Address</small><div>{{ booking.application.address|default:"—" }}</div></div>
+        <div class="section-title">Family</div>
+        <div class="field-grid">
+          <div class="field field-box"><small>Father Name</small><span>{{ booking.application.father_name|default:"—" }}</span></div>
+          <div class="field field-box"><small>Father Phone or Emergency Contact 1</small><span>{{ booking.application.father_phone|default:"—" }}</span></div>
+          <div class="field field-box"><small>Mother Name</small><span>{{ booking.application.mother_name|default:"—" }}</span></div>
+          <div class="field field-box"><small>Mother Phone or Emergency Contact 2</small><span>{{ booking.application.mother_phone|default:"—" }}</span></div>
+        </div>
+        <div class="section-title">Education / Work</div>
+        <div class="field-grid">
+          <div class="field field-box"><small>Occupation</small><span>{{ booking.application.occupation|default:"—" }}</span></div>
+          <div class="field field-box"><small>Education</small><span>{{ booking.application.education|default:"—" }}</span></div>
+          <div class="field field-box"><small>Organisation</small><span>{{ booking.application.org_name|default:"—" }}</span></div>
+        </div>
+        <div class="field mt-2 field-box"><small>Organisation Address</small><div>{{ booking.application.org_address|default:"—" }}</div></div>
+        <div class="section-title">Documents</div>
+        <div class="field-grid">
+          <div class="field field-box"><small>Aadhaar Number</small><span>{{ booking.application.aadhaar_number|default:"—" }}</span></div>
+        </div>
+        <div class="doc-preview mt-2">
+          {% if booking.application.selfie_url %}
+            <a href="{{ booking.application.selfie_url }}" target="_blank" class="text-decoration-none" title="Open Selfie">
+              <img src="{{ booking.application.selfie_url }}" alt="Selfie" class="doc-thumb" onerror="this.style.display='none'" />
+            </a>
+          {% endif %}
+          {% if booking.application.aadhaar_file_url %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ booking.application.aadhaar_file_url }}" target="_blank">Open Aadhaar/Document</a>
+            {% if booking.application.aadhaar_file_url_2 %}
+              <a class="btn btn-outline-secondary btn-sm" href="{{ booking.application.aadhaar_file_url_2 }}" target="_blank">Open Back Side</a>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% if booking.application.aadhaar_file_url %}
+        <div class="mt-2">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#aadhaarPreview{{ booking.id }}" aria-expanded="false" aria-controls="aadhaarPreview{{ booking.id }}">
+            <i class="bi bi-file-earmark-text me-1"></i>Preview Document
+          </button>
+          <div class="collapse mt-2" id="aadhaarPreview{{ booking.id }}">
+            <div class="doc-embed p-2">
+              <iframe src="{{ booking.application.aadhaar_file_url }}" title="Aadhaar/Document" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load document (blocked).'}))"></iframe>
+              {% if booking.application.aadhaar_file_url_2 %}
+                <div class="small text-secondary mt-2">Back Side</div>
+                <iframe src="{{ booking.application.aadhaar_file_url_2 }}" title="Aadhaar/Document Back Side" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'Unable to load document (blocked).'}))"></iframe>
+              {% endif %}
+              <div class="small text-secondary mt-2">If the document doesn't display, it may be blocked by the server. <a href="{{ booking.application.aadhaar_file_url }}" target="_blank">Open in new tab</a>.</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        <div class="section-title">Vehicle</div>
+        <div class="field-grid">
+          <div class="field field-box"><small>Has Vehicle</small><span>{% if booking.application.has_vehicle %}Yes{% else %}No{% endif %}</span></div>
+          {% if booking.application.has_vehicle %}
+            <div class="field field-box"><small>Number</small><span>{{ booking.application.vehicle_number|default:"—" }}</span></div>
+            <div class="field field-box"><small>Model</small><span>{{ booking.application.vehicle_model|default:"—" }}</span></div>
+          {% endif %}
+        </div>
+        <div class="section-title">Declarations</div>
+        <div class="declarations-grid">
+          <div class="decl-item">Valuables {% if booking.application.decl_valuables %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
+          <div class="decl-item">Notice {% if booking.application.decl_notice %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
+          <div class="decl-item">Deposit {% if booking.application.decl_deposit %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
+          <div class="decl-item">Truth {% if booking.application.decl_truth %}<i class="bi bi-check2 text-success"></i>{% else %}<i class="bi bi-x text-danger"></i>{% endif %}</div>
+        </div>
+        {% if booking.application.status_history.all %}
+        <div class="section-title">Status History</div>
+        <div class="field-grid">
+          {% for h in booking.application.status_history.all %}
+            <div class="field field-box"><small>{{ h.created_at|date:"Y-m-d H:i" }}</small><div><strong>{{ h.get_status_display }}</strong>{% if h.comment %}<div class="small text-secondary mt-1">{{ h.comment }}</div>{% endif %}</div></div>
+          {% empty %}
+            <div class="text-secondary small">No history yet.</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% with credit=booking.application.referral_credit %}
+        <div class="section-title">Referral</div>
+        <form method="post" action="{% url 'pg_application_referral' booking.application.id %}" class="border rounded p-3 bg-light" style="background:var(--bs-light, #f8fafc) !important;">
+          {% csrf_token %}
+          <div class="row g-2 align-items-end">
+            <div class="col-md-6">
+              <label class="form-label small text-uppercase text-secondary">Referrer</label>
+              <select name="referred_by_booking" class="form-select form-select-sm">
+                <option value="">No referral</option>
+                {% if referral_options %}
+                  {% for ref in referral_options %}
+                    {% if ref.id != booking.id %}
+                      <option value="{{ ref.id }}" {% if booking.application.referred_by_booking_id == ref.id %}selected{% endif %}>
+                        {{ ref.user.get_full_name|default:ref.user.email }} — Room {{ ref.room.room_no }} Bed {{ ref.share_no }}
+                      </option>
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small text-uppercase text-secondary">Apply Month</label>
+              <input type="month" name="scheduled_month" class="form-control form-control-sm" value="{% if credit and credit.scheduled_month %}{{ credit.scheduled_month|date:'Y-m' }}{% endif %}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small text-uppercase text-secondary">Amount (₹)</label>
+              <input type="number" name="amount" class="form-control form-control-sm" min="0" step="0.01" value="{% if credit %}{{ credit.amount }}{% else %}{{ pg.referral_amount|default:'0.00' }}{% endif %}">
+            </div>
+          </div>
+          <div class="row g-2 mt-2">
+            <div class="col-md-8">
+              <label class="form-label small text-uppercase text-secondary">Notes</label>
+              <input type="text" name="notes" class="form-control form-control-sm" maxlength="255" value="{% if credit %}{{ credit.notes }}{% endif %}">
+            </div>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mt-3 align-items-center">
+            <button class="btn btn-sm btn-primary" type="submit">Save Referral</button>
+            {% if credit and not credit.redeemed_on %}
+              <button class="btn btn-sm btn-outline-danger" type="submit" name="action" value="clear">Clear Referral</button>
+            {% endif %}
+            <div class="small text-secondary ms-auto">Default credit: ₹ {{ pg.referral_amount|default:'0.00' }}</div>
+          </div>
+          {% if credit and credit.redeemed_for_month %}
+            <div class="small text-success mt-2">Applied for {{ credit.redeemed_for_month|date:"F Y" }} (₹ {{ credit.redeemed_amount|default:credit.amount }})</div>
+          {% elif credit %}
+            <div class="small text-secondary mt-2">Scheduled for {% if credit.scheduled_month %}{{ credit.scheduled_month|date:"F Y" }}{% else %}manual application{% endif %}.</div>
+          {% endif %}
+        </form>
+        {% endwith %}
+      </div>
+      <div class="modal-footer">
+        <a class="btn btn-outline-primary" href="{% url 'pg_application_pdf' booking.application.id %}" target="_blank" rel="noopener">Print</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

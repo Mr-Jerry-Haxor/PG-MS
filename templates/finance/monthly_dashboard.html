@@ -234,15 +234,16 @@
                 {% endif %}
               </div>
               {% for credit in r.referral_pending %}
-                <form method="post" action="{% url 'finance_referral_credit_apply' credit.id %}" class="mt-2">
-                  {% csrf_token %}
-                  <input type="hidden" name="year" value="{{ summary.year }}">
-                  <input type="hidden" name="month" value="{{ summary.month }}">
-                  <input type="hidden" name="pg" value="{% if pg %}{{ pg.id }}{% endif %}">
-                  <input type="hidden" name="sort" value="{{ current_sort|default:'room' }}">
-                  <input type="hidden" name="dir" value="{{ current_dir|default:'asc' }}">
-                  <input type="hidden" name="only" value="{{ request.GET.only|default:'' }}">
-                  <button type="submit" class="btn btn-sm btn-outline-primary w-100 text-start">
+                <div class="mt-2 d-flex gap-1">
+                  <button type="button"
+                          class="btn btn-sm btn-outline-primary flex-grow-1 text-start apply-referral-btn"
+                          data-credit-id="{{ credit.id }}"
+                          data-year="{{ summary.year }}"
+                          data-month="{{ summary.month }}"
+                          data-pg="{% if pg %}{{ pg.id }}{% endif %}"
+                          data-sort="{{ current_sort|default:'room' }}"
+                          data-dir="{{ current_dir|default:'asc' }}"
+                          data-only="{{ request.GET.only|default:'' }}">
                     Apply Referral Credit (₹ {{ credit.amount|floatformat:2 }})
                     {% if credit.scheduled_month %}
                       <span class="small text-secondary d-block">{{ credit.scheduled_month|date:"F Y" }}</span>
@@ -253,8 +254,28 @@
                       <span class="small text-secondary d-block">Note: {{ credit.notes }}</span>
                     {% endif %}
                   </button>
-                </form>
+                  {# remove button omitted for pending credits; only allow Apply here #}
+                </div>
               {% endfor %}
+              {% if r.referral_redeemed %}
+                <div class="mt-2">
+                  {% for credit in r.referral_redeemed %}
+                    <div class="d-flex gap-1 align-items-start">
+                      <div class="flex-grow-1 small text-success">Applied: -₹ {{ credit.redeemed_amount|default:credit.amount|floatformat:2 }} ({{ credit.redeemed_for_month|date:'M Y' }})</div>
+                      <button type="button" class="btn btn-sm btn-outline-danger remove-referral-btn" title="Unapply referral"
+                              data-credit-id="{{ credit.id }}"
+                              data-year="{{ summary.year }}"
+                              data-month="{{ summary.month }}"
+                              data-pg="{% if pg %}{{ pg.id }}{% endif %}"
+                              data-sort="{{ current_sort|default:'room' }}"
+                              data-dir="{{ current_dir|default:'asc' }}"
+                              data-only="{{ request.GET.only|default:'' }}">
+                        &times;
+                      </button>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
             </td>
           </tr>
           {% if r.segments and r.segments|length > 1 %}
@@ -441,6 +462,81 @@
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
       try { new bootstrap.Tooltip(tooltipTriggerEl); } catch (e) {}
+    });
+    // CSRF helper: prefer hidden csrf input if present, else fallback to cookie
+    function getCsrfTokenFromPage() {
+      try {
+        var el = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        if (el && el.value) return el.value;
+      } catch (e) {}
+      // fallback to cookie
+      var v = document.cookie.match('(^|;)\\s*' + 'csrftoken' + '\\s*=\\s*([^;]+)');
+      return v ? v.pop() : '';
+    }
+
+    // Handle Apply Referral Credit buttons (avoid nested form submission)
+    document.querySelectorAll('.apply-referral-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var creditId = this.dataset.creditId;
+        if (!creditId) return;
+        if (!confirm('Apply this referral credit now?')) return;
+        var payload = new URLSearchParams();
+        payload.set('year', this.dataset.year || '');
+        payload.set('month', this.dataset.month || '');
+        payload.set('pg', this.dataset.pg || '');
+        payload.set('sort', this.dataset.sort || '');
+        payload.set('dir', this.dataset.dir || '');
+        payload.set('only', this.dataset.only || '');
+        var csrftoken = getCsrfTokenFromPage();
+        fetch('{% url "finance_referral_credit_apply" 0 %}'.replace('/0/', '/' + creditId + '/'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-CSRFToken': csrftoken,
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: payload.toString()
+        }).then(function(resp){
+          if (resp.ok) {
+            // Reload page to reflect changes
+            window.location.reload();
+          } else {
+            resp.text().then(function(t){ alert('Failed to apply referral: ' + t); });
+          }
+        }).catch(function(err){ alert('Network error applying referral.'); });
+      });
+    });
+
+    // Handle Remove Referral Credit buttons
+    document.querySelectorAll('.remove-referral-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var creditId = this.dataset.creditId;
+        if (!creditId) return;
+        if (!confirm('Remove/unapply this referral credit? This will make it available to apply again.')) return;
+        var payload = new URLSearchParams();
+        payload.set('year', this.dataset.year || '');
+        payload.set('month', this.dataset.month || '');
+        payload.set('pg', this.dataset.pg || '');
+        payload.set('sort', this.dataset.sort || '');
+        payload.set('dir', this.dataset.dir || '');
+        payload.set('only', this.dataset.only || '');
+        var csrftoken = getCsrfTokenFromPage();
+        fetch('{% url "finance_referral_credit_remove" 0 %}'.replace('/0/', '/' + creditId + '/'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-CSRFToken': csrftoken,
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: payload.toString()
+        }).then(function(resp){
+          if (resp.ok) {
+            window.location.reload();
+          } else {
+            resp.text().then(function(t){ alert('Failed to remove referral: ' + t); });
+          }
+        }).catch(function(err){ alert('Network error removing referral.'); });
+      });
     });
 
     function setAllStays(open) {

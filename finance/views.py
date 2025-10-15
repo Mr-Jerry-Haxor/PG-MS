@@ -851,6 +851,7 @@ def monthly_dashboard(request):
             'referral_adjustment': redeemed_total,
             'referral_pending_total': pending_current_total,
             'referral_pending': scheduled_list,
+            'referral_redeemed': credit_entry['redeemed'] if credit_entry else [],
             'referral_future': referral_future,
             'segments': [
                 {
@@ -1043,6 +1044,49 @@ def referral_credit_apply(request, credit_id: int):
             message=f"Applied referral credit of ₹{credit.amount} for {credit.referrer_user_id} ({month_start})",
         )
         messages.success(request, f"Referral credit of ₹{credit.amount} applied for {month_start.strftime('%B %Y')}.")
+
+    params = []
+    for key in ('year', 'month', 'pg', 'sort', 'dir', 'only'):
+        val = request.POST.get(key)
+        if val not in (None, ''):
+            params.append((key, val))
+    redirect_url = reverse('finance_monthly')
+    if params:
+        redirect_url = f"{redirect_url}?{urlencode(params)}"
+    return redirect(redirect_url)
+
+
+@login_required
+@transaction.atomic
+def referral_credit_remove(request, credit_id: int):
+    """Undo an applied referral credit for the month (unapply) or clear scheduling.
+
+    This keeps the ReferralCredit record for audit but clears the redeemed_* fields so
+    it no longer affects monthly calculations.
+    """
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('finance_monthly')
+
+    credit = get_object_or_404(ReferralCredit, pk=credit_id)
+    if not _is_authorized_pg(request.user, credit.pg_id):
+        messages.error(request, "You do not have access to this PG.")
+        return redirect('finance_monthly')
+
+    # If not redeemed, nothing to remove — provide feedback
+    if not credit.redeemed_on and not credit.redeemed_for_month:
+        messages.info(request, "Referral credit is not applied; nothing to remove.")
+    else:
+        # Clear redeemed fields but keep scheduled_month as-is (so admin can reschedule/apply later)
+        credit.redeemed_on = None
+        credit.redeemed_for_month = None
+        credit.redeemed_amount = None
+        credit.save(update_fields=['redeemed_on', 'redeemed_for_month', 'redeemed_amount', 'updated_at'])
+        log(request.user, 'referral_credit_removed', 'ReferralCredit', credit.id, message=f"Unapplied referral credit {credit.id} for PG {credit.pg_id}")
+        messages.success(request, "Referral credit unapplied.")
 
     params = []
     for key in ('year', 'month', 'pg', 'sort', 'dir', 'only'):

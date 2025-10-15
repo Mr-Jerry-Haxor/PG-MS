@@ -1313,6 +1313,7 @@ def bookings_pending(request):
         pending = (
             Booking.objects.filter(status=Booking.PENDING, room__pg=pg)
             .select_related('user', 'room')
+            .prefetch_related('application', 'application__status_history')
             .annotate(has_application=Exists(ResidentApplication.objects.filter(booking_id=OuterRef('pk'))))
         )
     return render(request, 'pgadmin/bookings_pending.html', {"pg": pg, "bookings": pending, "pgs": list(_admin_pgs(request.user))})
