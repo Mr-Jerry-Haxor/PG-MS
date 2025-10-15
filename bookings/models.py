@@ -156,6 +156,7 @@ class ResidentApplication(TimeStampedModel):
 	decl_notice = models.BooleanField(default=False)
 	decl_deposit = models.BooleanField(default=False)
 	decl_truth = models.BooleanField(default=False)
+	referred_by_booking = models.ForeignKey('Booking', null=True, blank=True, on_delete=models.SET_NULL, related_name='referrals_made', help_text='Booking of the resident who referred this applicant (set by PG admin).')
 
 	def __str__(self):
 		return f"Application for {self.user.email} ({self.booking_id})"
@@ -169,5 +170,26 @@ class ApplicationStatusHistory(TimeStampedModel):
 
 	def __str__(self):
 		return f"{self.application_id} -> {self.status}"
+
+
+class ReferralCredit(TimeStampedModel):
+	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='referral_credits')
+	referrer_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='referral_credits_given')
+	referrer_booking = models.ForeignKey('Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='referral_credits_source')
+	referred_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='referral_credits_received')
+	referred_booking = models.ForeignKey('Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='referral_credit_target')
+	application = models.OneToOneField(ResidentApplication, on_delete=models.CASCADE, related_name='referral_credit')
+	amount = models.DecimalField(max_digits=10, decimal_places=2)
+	scheduled_month = models.DateField(null=True, blank=True, help_text='First day of month when this credit should be applied.')
+	redeemed_for_month = models.DateField(null=True, blank=True, help_text='First day of the month where the credit was applied.')
+	redeemed_on = models.DateTimeField(null=True, blank=True)
+	redeemed_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+	notes = models.CharField(max_length=255, blank=True)
+
+	class Meta:
+		ordering = ['-created_at']
+
+	def __str__(self):
+		return f"Referral credit ₹{self.amount} for {self.referrer_user}"
 
 # Create your models here.

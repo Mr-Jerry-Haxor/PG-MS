@@ -6,7 +6,8 @@ from pgadmin.models import PG
 from .models import Fees, Payment, Expenditure
 from core.audit import log
 from .forms import FeesForm, PaymentForm, ExpenditureForm
-from bookings.models import Booking
+from bookings.models import Booking, ReferralCredit
+from django.db import transaction
 from django.db.models import Q, Sum
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
@@ -14,6 +15,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from datetime import date, timedelta
+from collections import defaultdict
 import calendar
 from django.http import HttpResponse, JsonResponse
 from decimal import Decimal, InvalidOperation
@@ -703,6 +705,26 @@ def monthly_dashboard(request):
             continue
         by_user.setdefault(b.user_id, []).append(b)
 
+    user_ids = list(by_user.keys())
+    month_start = m_first
+    credits_by_referrer: dict[int, dict[str, list[ReferralCredit]]] = defaultdict(lambda: {'redeemed': [], 'pending': [], 'scheduled': [], 'history': []})
+    if user_ids:
+        credit_qs = (
+            ReferralCredit.objects
+            .filter(pg=pg, referrer_user_id__in=user_ids)
+            .select_related('referrer_booking', 'referred_user')
+        )
+        for credit in credit_qs:
+            entry = credits_by_referrer[credit.referrer_user_id]
+            if credit.redeemed_for_month == month_start:
+                entry['redeemed'].append(credit)
+            elif credit.redeemed_on:
+                entry['history'].append(credit)
+            else:
+                entry['pending'].append(credit)
+                if credit.scheduled_month == month_start or credit.scheduled_month is None:
+                    entry['scheduled'].append(credit)
+
     rows = []
     total_expected = 0.0
     total_collected = 0.0
@@ -739,12 +761,18 @@ def monthly_dashboard(request):
         segs.sort(key=lambda x: (x['start'] or m_first, x['end'] or m_last))
 
         expected_total = round(sum((seg['expected'] or 0.0) for seg in segs), 2)
+        # Referral credits applied/pending for the user this month
+        credit_entry = credits_by_referrer.get(user_id)
+        redeemed_total = 0.0
+        if credit_entry:
+            redeemed_total = round(sum(float((c.redeemed_amount or c.amount or 0)) for c in credit_entry['redeemed']), 2)
+        expected_after_credit = max(0.0, round(expected_total - redeemed_total, 2))
         # Collected for the user across the month (unchanged)
         u = segs[0]['b'].user
         collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
-        pending = round(expected_total - collected, 2)
+        pending = round(expected_after_credit - collected, 2)
         primary_due = primary_seg.get('payment_due') if primary_seg else None
-        status, status_label, status_css = _resolve_status(expected_total, float(collected), m_first, primary_due, today)
+        status, status_label, status_css = _resolve_status(expected_after_credit, float(collected), m_first, primary_due, today)
         # Phone sanitize
         try:
             import re
@@ -778,6 +806,16 @@ def monthly_dashboard(request):
             )
             if primary_seg and primary_seg.get('payment_due'):
                 exp_tip += f" Primary payment date: {primary_seg['payment_due'].strftime('%Y-%m-%d')}"
+        if redeemed_total:
+            exp_tip += f" Referral credit applied: -₹{redeemed_total:.2f}."
+        scheduled_list = credit_entry['scheduled'] if credit_entry else []
+        pending_current_total = 0.0
+        if scheduled_list:
+            pending_current_total = round(sum(float(c.amount or 0) for c in scheduled_list), 2)
+            exp_tip += f" Pending referral credit to apply: -₹{pending_current_total:.2f}."
+        referral_future = []
+        if credit_entry:
+            referral_future = [c for c in credit_entry['pending'] if c not in scheduled_list]
         # Pick joining as earliest start in month; leaving as latest end if present
         earliest_start = min((seg['start'] or m_first) for seg in segs)
         latest_end = None
@@ -793,7 +831,7 @@ def monthly_dashboard(request):
         rows.append({
             'user': u,
             'room_no': getattr(last_seg['b'].room, 'room_no', '—'),
-            'expected': expected_total,
+            'expected': expected_after_credit,
             'expected_tip': exp_tip,
             'collected': round(float(collected), 2),
             'pending': max(0.0, pending),
@@ -810,6 +848,10 @@ def monthly_dashboard(request):
             'payment_anchor_iso': payment_anchor.isoformat() if payment_anchor else '',
             'payment_date_iso': payment_due.isoformat() if payment_due else '',
             'primary_booking_id': primary_booking_id,
+            'referral_adjustment': redeemed_total,
+            'referral_pending_total': pending_current_total,
+            'referral_pending': scheduled_list,
+            'referral_future': referral_future,
             'segments': [
                 {
                     'room_no': seg['room_no'],
@@ -825,7 +867,7 @@ def monthly_dashboard(request):
             ],
             'month_days': m_days,
         })
-        total_expected += expected_total
+        total_expected += expected_after_credit
         total_collected += float(collected)
 
     # Filters
@@ -948,6 +990,65 @@ def monthly_update_payment_date(request):
         val = request.POST.get(key)
         if val not in (None, ''):
             params[key] = val
+    redirect_url = reverse('finance_monthly')
+    if params:
+        redirect_url = f"{redirect_url}?{urlencode(params)}"
+    return redirect(redirect_url)
+
+
+@login_required
+@transaction.atomic
+def referral_credit_apply(request, credit_id: int):
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('finance_monthly')
+
+    credit = get_object_or_404(
+        ReferralCredit.objects.select_related('pg', 'referrer_user'),
+        pk=credit_id,
+    )
+    if not _is_authorized_pg(request.user, credit.pg_id):
+        messages.error(request, "You do not have access to this PG.")
+        return redirect('finance_monthly')
+
+    today = timezone.now().date()
+    try:
+        year = int(request.POST.get('year') or today.year)
+        month = int(request.POST.get('month') or today.month)
+    except (TypeError, ValueError):
+        year, month = today.year, today.month
+    month_start, _, _ = _month_range(year, month)
+
+    if credit.redeemed_on:
+        if credit.redeemed_for_month == month_start:
+            messages.info(request, "Referral credit already applied for this month.")
+        else:
+            applied_month = credit.redeemed_for_month.strftime('%B %Y') if credit.redeemed_for_month else 'a previous month'
+            messages.info(request, f"Referral credit was already applied in {applied_month}.")
+    else:
+        credit.redeemed_on = timezone.now()
+        credit.redeemed_for_month = month_start
+        credit.redeemed_amount = credit.amount
+        if not credit.scheduled_month:
+            credit.scheduled_month = month_start
+        credit.save(update_fields=['redeemed_on', 'redeemed_for_month', 'redeemed_amount', 'scheduled_month', 'updated_at'])
+        log(
+            request.user,
+            'referral_credit_applied',
+            'ReferralCredit',
+            credit.id,
+            message=f"Applied referral credit of ₹{credit.amount} for {credit.referrer_user_id} ({month_start})",
+        )
+        messages.success(request, f"Referral credit of ₹{credit.amount} applied for {month_start.strftime('%B %Y')}.")
+
+    params = []
+    for key in ('year', 'month', 'pg', 'sort', 'dir', 'only'):
+        val = request.POST.get(key)
+        if val not in (None, ''):
+            params.append((key, val))
     redirect_url = reverse('finance_monthly')
     if params:
         redirect_url = f"{redirect_url}?{urlencode(params)}"

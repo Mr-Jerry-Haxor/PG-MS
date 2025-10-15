@@ -22,6 +22,7 @@ urlpatterns = [
     path('monthly/remind-bulk/', views.monthly_bulk_remind, name='finance_monthly_bulk_remind'),
     path('monthly/quick-payment/', views.monthly_quick_payment, name='finance_monthly_quick_payment'),
     path('monthly/update-payment-date/', views.monthly_update_payment_date, name='finance_monthly_update_payment_date'),
+    path('monthly/referral/<int:credit_id>/apply/', views.referral_credit_apply, name='finance_referral_credit_apply'),
     path('monthly/<int:user_id>/export-segments.csv', views.monthly_export_segments_user_csv, name='finance_monthly_export_segments_user_csv'),
 
     # Ledger

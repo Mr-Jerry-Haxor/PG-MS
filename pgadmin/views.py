@@ -1,3 +1,6 @@
+from decimal import Decimal, InvalidOperation
+from datetime import date
+
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -16,7 +19,7 @@ try:
 except Exception:  # allauth not strictly required at import time
     EmailAddress = None
 
-from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus
+from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus, ReferralCredit
 from core.audit import log
 from core.drive import drive_delete
 from core.models import Notification
@@ -1576,6 +1579,7 @@ def resident_applications(request):
         return redirect('dashboard')
     pg = _active_pg(request)
     bookings = []
+    referral_options = []
     if pg:
         today = timezone.now().date()
         bookings = (
@@ -1585,8 +1589,18 @@ def resident_applications(request):
                 status=Booking.APPROVED,
             )
             .filter(Q(leaving_date__isnull=True) | Q(leaving_date__gt=today))
-            .select_related('user', 'room', 'application')
+            .select_related('user', 'room', 'application', 'application__referral_credit')
             .order_by('room__room_no', 'share_no')
+        )
+        referral_options = (
+            Booking.objects
+            .filter(
+                room__pg=pg,
+                status=Booking.APPROVED,
+            )
+            .filter(Q(leaving_date__isnull=True) | Q(leaving_date__gt=today))
+            .select_related('user', 'room', 'user__profile')
+            .order_by('user__first_name', 'user__last_name', 'room__room_no', 'share_no')
         )
     submitted_count = bookings.filter(application__isnull=False).count() if bookings else 0
     pending_count = bookings.filter(application__isnull=True).count() if bookings else 0
@@ -1599,6 +1613,7 @@ def resident_applications(request):
             "pgs": list(_admin_pgs(request.user)),
             "submitted_count": submitted_count,
             "pending_count": pending_count,
+            "referral_options": referral_options,
         },
     )
 
@@ -1619,6 +1634,31 @@ def application_confirm(request, app_id):
     # History
     from bookings.models import ApplicationStatusHistory
     ApplicationStatusHistory.objects.create(application=app, status=app.status, comment='Confirmed by PG admin', by_user=request.user)
+    # Ensure referral credit record exists when applicable
+    try:
+        if app.referred_by_booking_id and not getattr(app, 'referral_credit', None):
+            ref_booking = app.referred_by_booking
+            if ref_booking and ref_booking.status == Booking.APPROVED:
+                amount = Decimal(str(app.pg.referral_amount or 0))
+                if amount > 0:
+                    anchor = getattr(app.booking, 'payment_date', None) or getattr(app.booking, 'joining_date', None)
+                    if anchor:
+                        scheduled_month = anchor.replace(day=1)
+                    else:
+                        scheduled_month = timezone.now().date().replace(day=1)
+                    ReferralCredit.objects.create(
+                        pg=app.pg,
+                        referrer_user=ref_booking.user,
+                        referrer_booking=ref_booking,
+                        referred_user=app.user,
+                        referred_booking=app.booking,
+                        application=app,
+                        amount=amount,
+                        scheduled_month=scheduled_month,
+                        notes='Auto-created on confirmation',
+                    )
+    except Exception as exc:
+        messages.warning(request, f"Referral credit could not be created automatically: {exc}")
     # Notify user
     try:
         from django.urls import reverse
@@ -1707,3 +1747,158 @@ def application_refill_request(request, app_id):
     if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
         return JsonResponse({'ok': True, 'action': 'application_refill', 'application_id': app.id, 'status': app.status})
     return redirect('pg_resident_applications')
+
+
+@login_required
+@transaction.atomic
+def application_update_referral(request, app_id):
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    app = get_object_or_404(
+        ResidentApplication.objects.select_related('pg', 'booking', 'user', 'referral_credit'),
+        pk=app_id,
+    )
+    if not _admin_pgs(request.user).filter(id=getattr(app, 'pg_id', None)).exists():
+        messages.error(request, "PG Admin access required for this PG.")
+        return redirect('dashboard')
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('pg_resident_applications')
+
+    redirect_target = redirect('pg_resident_applications')
+    action = (request.POST.get('action') or '').strip().lower()
+    credit = getattr(app, 'referral_credit', None)
+
+    # Clear referral
+    if action == 'clear' or not (request.POST.get('referred_by_booking') or '').strip():
+        if credit and credit.redeemed_on:
+            messages.error(request, "Referral credit already redeemed; cannot clear it.")
+            return redirect_target
+        app.referred_by_booking = None
+        app.save(update_fields=['referred_by_booking'])
+        if credit:
+            credit.delete()
+        messages.success(request, "Referral cleared for this application.")
+        return redirect_target
+
+    # Validate selected booking
+    try:
+        ref_booking_id = int(request.POST.get('referred_by_booking'))
+    except (TypeError, ValueError):
+        messages.error(request, "Select a valid referrer.")
+        return redirect_target
+
+    ref_booking = (
+        Booking.objects.select_related('user')
+        .filter(pk=ref_booking_id, room__pg_id=app.pg_id, status=Booking.APPROVED)
+        .first()
+    )
+    if not ref_booking:
+        messages.error(request, "Selected referrer is not valid for this PG.")
+        return redirect_target
+    if ref_booking.id == app.booking_id:
+        messages.error(request, "An application cannot reference its own booking as referrer.")
+        return redirect_target
+    if ref_booking.user_id == app.user_id:
+        messages.error(request, "A resident cannot refer themselves.")
+        return redirect_target
+
+    amount_raw = (request.POST.get('amount') or '').strip()
+    if amount_raw:
+        try:
+            amount = Decimal(amount_raw)
+        except (InvalidOperation, ValueError):
+            messages.error(request, "Enter a valid referral amount.")
+            return redirect_target
+    else:
+        amount = Decimal(str(app.pg.referral_amount or 0))
+
+    if amount <= 0:
+        messages.error(request, "Set a referral amount greater than zero to record credits.")
+        return redirect_target
+
+    scheduled_input = (request.POST.get('scheduled_month') or '').strip()
+    scheduled_month = None
+    if scheduled_input:
+        try:
+            year_str, month_str = scheduled_input.split('-', 1)
+            scheduled_month = date(int(year_str), int(month_str), 1)
+        except Exception:
+            messages.error(request, "Invalid referral month selection.")
+            return redirect_target
+
+    notes = (request.POST.get('notes') or '').strip()[:255]
+
+    app.referred_by_booking = ref_booking
+    app.save(update_fields=['referred_by_booking'])
+
+    default_month = scheduled_month
+    if not default_month:
+        anchor = getattr(app.booking, 'payment_date', None) or getattr(app.booking, 'joining_date', None)
+        if anchor:
+            default_month = anchor.replace(day=1)
+        else:
+            today = timezone.now().date()
+            default_month = today.replace(day=1)
+
+    credit = getattr(app, 'referral_credit', None)
+    if credit and credit.redeemed_on:
+        # Allow updating notes or schedule if it aligns with redeemed month
+        if credit.referrer_booking_id != ref_booking.id:
+            messages.error(request, "Referral credit already redeemed; cannot change the referrer.")
+            return redirect_target
+        if amount != credit.amount:
+            messages.error(request, "Referral credit already redeemed; cannot change the amount.")
+            return redirect_target
+        if scheduled_month and credit.redeemed_for_month and credit.redeemed_for_month != scheduled_month:
+            messages.error(request, "Referral credit already redeemed for a different month.")
+            return redirect_target
+        update_fields = []
+        if scheduled_month and credit.scheduled_month != scheduled_month:
+            credit.scheduled_month = scheduled_month
+            update_fields.append('scheduled_month')
+        if notes != credit.notes:
+            credit.notes = notes
+            update_fields.append('notes')
+        if update_fields:
+            credit.save(update_fields=update_fields)
+        messages.success(request, "Referral details updated.")
+        return redirect_target
+
+    if not credit:
+        credit = ReferralCredit.objects.create(
+            pg=app.pg,
+            referrer_user=ref_booking.user,
+            referrer_booking=ref_booking,
+            referred_user=app.user,
+            referred_booking=app.booking,
+            application=app,
+            amount=amount,
+            scheduled_month=default_month,
+            notes=notes,
+        )
+    else:
+        credit.referrer_user = ref_booking.user
+        credit.referrer_booking = ref_booking
+        credit.referred_user = app.user
+        credit.referred_booking = app.booking
+        credit.amount = amount
+        credit.notes = notes
+        if scheduled_month or not credit.scheduled_month:
+            credit.scheduled_month = scheduled_month or default_month
+        credit.save(update_fields=[
+            'referrer_user',
+            'referrer_booking',
+            'referred_user',
+            'referred_booking',
+            'amount',
+            'notes',
+            'scheduled_month',
+        ])
+
+    messages.success(
+        request,
+        f"Referral recorded: {ref_booking.user.get_full_name() or ref_booking.user.email} will receive ₹{amount:.2f}.",
+    )
+    return redirect_target

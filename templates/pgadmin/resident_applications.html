@@ -87,6 +87,9 @@
         <div class="fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }}</div>
         <div class="text-secondary">{{ b.user.email }}</div>
         <div class="text-secondary">{{ b.user.profile.phone|default:"—" }}</div>
+        {% if b.application and b.application.referred_by_booking %}
+          <div class="text-secondary">Referred by {{ b.application.referred_by_booking.user.get_full_name|default:b.application.referred_by_booking.user.email }} (Room {{ b.application.referred_by_booking.room.room_no }})</div>
+        {% endif %}
         {% if b.application %}
           {% with last=b.application.status_history.last %}
             <div class="text-secondary">Last update: 
@@ -272,6 +275,53 @@
             {% endfor %}
           </div>
           {% endif %}
+          {% with credit=b.application.referral_credit %}
+          <div class="section-title">Referral</div>
+          <form method="post" action="{% url 'pg_application_referral' b.application.id %}" class="border rounded p-3 bg-light" style="background:var(--bs-light, #f8fafc) !important;">
+            {% csrf_token %}
+            <div class="row g-2 align-items-end">
+              <div class="col-md-6">
+                <label class="form-label small text-uppercase text-secondary">Referrer</label>
+                <select name="referred_by_booking" class="form-select form-select-sm">
+                  <option value="">No referral</option>
+                  {% for ref in referral_options %}
+                    {% if ref.id != b.id %}
+                      <option value="{{ ref.id }}" {% if b.application.referred_by_booking_id == ref.id %}selected{% endif %}>
+                        {{ ref.user.get_full_name|default:ref.user.email }} — Room {{ ref.room.room_no }} Bed {{ ref.share_no }}
+                      </option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small text-uppercase text-secondary">Apply Month</label>
+                <input type="month" name="scheduled_month" class="form-control form-control-sm" value="{% if credit and credit.scheduled_month %}{{ credit.scheduled_month|date:'Y-m' }}{% endif %}">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small text-uppercase text-secondary">Amount (₹)</label>
+                <input type="number" name="amount" class="form-control form-control-sm" min="0" step="0.01" value="{% if credit %}{{ credit.amount }}{% else %}{{ pg.referral_amount|default:'0.00' }}{% endif %}">
+              </div>
+            </div>
+            <div class="row g-2 mt-2">
+              <div class="col-md-8">
+                <label class="form-label small text-uppercase text-secondary">Notes</label>
+                <input type="text" name="notes" class="form-control form-control-sm" maxlength="255" value="{% if credit %}{{ credit.notes }}{% endif %}">
+              </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-3 align-items-center">
+              <button class="btn btn-sm btn-primary" type="submit">Save Referral</button>
+              {% if credit and not credit.redeemed_on %}
+                <button class="btn btn-sm btn-outline-danger" type="submit" name="action" value="clear">Clear Referral</button>
+              {% endif %}
+              <div class="small text-secondary ms-auto">Default credit: ₹ {{ pg.referral_amount|default:'0.00' }}</div>
+            </div>
+            {% if credit and credit.redeemed_for_month %}
+              <div class="small text-success mt-2">Applied for {{ credit.redeemed_for_month|date:"F Y" }} (₹ {{ credit.redeemed_amount|default:credit.amount }})</div>
+            {% elif credit %}
+              <div class="small text-secondary mt-2">Scheduled for {% if credit.scheduled_month %}{{ credit.scheduled_month|date:"F Y" }}{% else %}manual application{% endif %}.</div>
+            {% endif %}
+          </form>
+          {% endwith %}
         </div>
         <div class="modal-footer">
           <a class="btn btn-outline-primary" href="{% url 'pg_application_pdf' b.application.id %}" target="_blank" rel="noopener">Print</a>

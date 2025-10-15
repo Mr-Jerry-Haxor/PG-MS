@@ -11,6 +11,7 @@ class PG(TimeStampedModel):
 	# Optional contact phone number for the PG (10-15 digits to allow country codes)
 	phone = models.CharField(max_length=20, blank=True, help_text="Contact phone number")
 	created_by_admin = models.ForeignKey(get_user_model(), on_delete=models.SET_NULL, null=True, blank=True, related_name='created_pgs')
+	referral_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Default referral credit amount for this PG.")
 
 	def __str__(self):
 		return self.name

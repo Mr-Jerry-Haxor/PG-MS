@@ -160,6 +160,19 @@
               {% if r.room_no %}
                 <div class="small text-secondary">Room {{ r.room_no }}</div>
               {% endif %}
+              {% if r.referral_adjustment %}
+                <div class="small text-success">Referral credit applied: -₹ {{ r.referral_adjustment|floatformat:2 }}</div>
+              {% endif %}
+              {% if r.referral_pending_total %}
+                <div class="small text-secondary">Pending referral credit: -₹ {{ r.referral_pending_total|floatformat:2 }}
+                  {% for credit in r.referral_pending %}
+                    <span class="d-inline"{% if credit.notes %} title="{{ credit.notes }}"{% endif %}>({{ credit.scheduled_month|date:"M Y"|default:"unscheduled" }}){% if not forloop.last %}, {% endif %}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if r.referral_future %}
+                <div class="small text-secondary">Upcoming referral credit: {% for credit in r.referral_future %}-₹ {{ credit.amount|floatformat:2 }} {% if credit.scheduled_month %}({{ credit.scheduled_month|date:"M Y" }}){% else %}(unscheduled){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}</div>
+              {% endif %}
               {% if r.segments and r.segments|length > 1 %}
                 <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#stays-{{ r.user.id }}" aria-expanded="false" aria-controls="stays-{{ r.user.id }}">
                   View stays ({{ r.segments|length }})
@@ -214,11 +227,34 @@
                 data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">{{ r.status_label }}</span>
             </td>
             <td>
-              <a class="btn btn-sm btn-outline-secondary" href="{% url 'finance_monthly_remind' r.user.id %}?year={{ summary.year }}&month={{ summary.month }}">Send Reminder</a>
-              {% if r.whatsapp_phone %}
-                <a class="btn btn-sm btn-outline-success" target="_blank" href="https://wa.me/{{ r.whatsapp_phone }}?text={{ 'Hello%20this%20is%20a%20rent%20reminder' }}">WhatsApp</a>
-              {% endif %}
-              
+              <div class="d-flex flex-wrap gap-1">
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'finance_monthly_remind' r.user.id %}?year={{ summary.year }}&month={{ summary.month }}">Send Reminder</a>
+                {% if r.whatsapp_phone %}
+                  <a class="btn btn-sm btn-outline-success" target="_blank" href="https://wa.me/{{ r.whatsapp_phone }}?text={{ 'Hello%20this%20is%20a%20rent%20reminder' }}">WhatsApp</a>
+                {% endif %}
+              </div>
+              {% for credit in r.referral_pending %}
+                <form method="post" action="{% url 'finance_referral_credit_apply' credit.id %}" class="mt-2">
+                  {% csrf_token %}
+                  <input type="hidden" name="year" value="{{ summary.year }}">
+                  <input type="hidden" name="month" value="{{ summary.month }}">
+                  <input type="hidden" name="pg" value="{% if pg %}{{ pg.id }}{% endif %}">
+                  <input type="hidden" name="sort" value="{{ current_sort|default:'room' }}">
+                  <input type="hidden" name="dir" value="{{ current_dir|default:'asc' }}">
+                  <input type="hidden" name="only" value="{{ request.GET.only|default:'' }}">
+                  <button type="submit" class="btn btn-sm btn-outline-primary w-100 text-start">
+                    Apply Referral Credit (₹ {{ credit.amount|floatformat:2 }})
+                    {% if credit.scheduled_month %}
+                      <span class="small text-secondary d-block">{{ credit.scheduled_month|date:"F Y" }}</span>
+                    {% else %}
+                      <span class="small text-secondary d-block">Apply manually</span>
+                    {% endif %}
+                    {% if credit.notes %}
+                      <span class="small text-secondary d-block">Note: {{ credit.notes }}</span>
+                    {% endif %}
+                  </button>
+                </form>
+              {% endfor %}
             </td>
           </tr>
           {% if r.segments and r.segments|length > 1 %}

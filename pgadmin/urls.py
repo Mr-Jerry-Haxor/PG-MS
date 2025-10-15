@@ -28,5 +28,6 @@ urlpatterns = [
     path('applications/<int:app_id>/confirm/', views.application_confirm, name='pg_application_confirm'),
     path('applications/<int:app_id>/reject/', views.application_reject, name='pg_application_reject'),
     path('applications/<int:app_id>/refill/', views.application_refill_request, name='pg_application_refill'),
+    path('applications/<int:app_id>/referral/', views.application_update_referral, name='pg_application_referral'),
     path('applications/<int:app_id>/pdf/', views.application_pdf, name='pg_application_pdf'),
 ]
