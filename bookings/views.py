@@ -79,8 +79,10 @@ def pg_quick_booking(request, pgslug):
     joining_date = parse_date(joining_raw) if joining_raw else None
     if joining_date is None:
         errors.append('Enter a valid joining date.')
-    elif joining_date < today:
-        errors.append('Joining date cannot be in the past.')
+    else:
+        # Allow past joining date only if PG explicitly permits it
+        if joining_date < today and not getattr(pg, 'past_joining_date_allowed', False):
+            errors.append('Joining date cannot be in the past.')
 
     # Prepare application form data (ensure date_of_admission mirrors joining_date)
     data = request.POST.copy()
@@ -102,17 +104,22 @@ def pg_quick_booking(request, pgslug):
 
     # Validate share availability
     if rs:
-        can_book_now = (
-            rs.status == RoomShareStatus.VACANT or (
-                rs.status == RoomShareStatus.VACANT_FROM and (not rs.vacant_from or rs.vacant_from <= today)
-            )
-        )
-        if not can_book_now:
+        # Determine whether the share is available at the requested joining_date
+        can_book_on_date = False
+        if joining_date:
+            if rs.status == RoomShareStatus.VACANT:
+                can_book_on_date = True
+            elif rs.status == RoomShareStatus.VACANT_FROM:
+                # If vacant_from is not set or is on/before the joining_date, it's selectable
+                can_book_on_date = (not rs.vacant_from) or (rs.vacant_from <= joining_date)
+
+        if not can_book_on_date:
             current = (
                 Booking.objects.filter(room=room, share_no=share_no, status=Booking.APPROVED)
                 .order_by('-created_at').first()
             )
-            if not current or not current.leaving_date or not (joining_date > current.leaving_date):
+            # If there's no current booking or leaving date doesn't free it before requested joining_date, reject
+            if not current or not current.leaving_date or not (joining_date and joining_date > current.leaving_date):
                 errors.append('Selected share is not yet available for the chosen date.')
 
     # Validate application form last, accumulate errors

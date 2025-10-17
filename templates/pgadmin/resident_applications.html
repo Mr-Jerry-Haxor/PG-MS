@@ -89,7 +89,7 @@
         {% endif %}
       </div>
       <div class="small">
-        <div class="fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }}</div>
+  <div class="fw-semibold">{% if b.application and b.application.name %}{{ b.application.name }}{% else %}{{ b.user.first_name }} {{ b.user.last_name }}{% endif %}</div>
         <div class="text-secondary">{{ b.user.email }}</div>
         <div class="text-secondary">{{ b.user.profile.phone|default:"—" }}</div>
         {% if b.application and b.application.referred_by_booking %}
@@ -185,7 +185,7 @@
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="appModalLabel{{ b.id }}">Application — {{ b.user.first_name }} {{ b.user.last_name }}</h5>
+          <h5 class="modal-title" id="appModalLabel{{ b.id }}">Application — {% if b.application and b.application.name %}{{ b.application.name }}{% else %}{{ b.user.first_name }} {{ b.user.last_name }}{% endif %}</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
   <div class="modal-body">

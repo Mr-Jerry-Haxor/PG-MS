@@ -2,6 +2,7 @@
 {% block title %}Quick Booking • {{ pg.name }}{% endblock %}
 {% block content %}
 <h1 class="h4 mb-3">Book a Room — {{ pg.name }}</h1>
+  <div id="pastAllowedBadge" class="mb-2"></div>
 
 <div class="card border-0 shadow-sm">
   <div class="card-body">
@@ -24,8 +25,9 @@
       </div>
     {% endif %}
 
-    <form method="post" class="vstack gap-3" id="quickForm" enctype="multipart/form-data">
+    <form method="post" class="vstack gap-3" id="quickForm" enctype="multipart/form-data" data-past-allowed="{{ pg.past_joining_date_allowed|yesno:'1,0' }}">
       {% csrf_token %}
+      <div id="quickErrors"></div>
       <!-- Step 1: Validation summary -->
       <div class="border rounded p-2 {% if has_active %}bg-warning-subtle{% else %}bg-light{% endif %}">
         <div class="d-flex align-items-center gap-2"><i class="bi bi-shield-check"></i><strong>Step 1:</strong> Validation</div>
@@ -89,16 +91,19 @@
     const shareSel = document.getElementById('shareSelect');
     const spinner = document.getElementById('submitSpinner');
     const form = document.getElementById('quickForm');
+    const errorsDiv = document.getElementById('quickErrors');
+    const pastBadge = document.getElementById('pastAllowedBadge');
     const selectedRoom = '{{ selected_room_id|default:"" }}';
     const selectedShare = '{{ selected_share_no|default:"" }}';
     const shareHint = document.getElementById('shareHint');
     const joiningDate = document.getElementById('joiningDate');
   const step3Block = document.getElementById('step3Block');
+    const submitBtn = document.getElementById('submitBtn');
 
   function showStep3(){ if (step3Block) step3Block.style.display = 'block'; }
   function hideStep3(){ if (step3Block) step3Block.style.display = 'none'; }
 
-    function setRooms(list){
+  function setRooms(list){
       roomSel.innerHTML = '';
       if (!list || !list.length) {
         roomSel.innerHTML = '<option value="">No rooms with vacancy</option>';
@@ -121,7 +126,7 @@
       }
     }
 
-    function setBeds(list){
+  function setBeds(list){
       shareSel.innerHTML = '';
       if (!list || !list.length) {
         shareSel.innerHTML = '<option value="">No vacant beds</option>';
@@ -129,7 +134,9 @@
         hideStep3();
         return;
       }
-      shareSel.disabled = false;
+  shareSel.disabled = false;
+  // Reset any errors and allow submit only after choosing bed and valid joining date
+  clearErrors();
   shareSel.insertAdjacentHTML('beforeend','<option value="">Select a bed…</option>');
   // Only include beds that are VACANT or VACANT_FROM; hide OCCUPIED/RESERVED
       list.forEach(function(s){
@@ -160,6 +167,30 @@
       shareSel.dispatchEvent(new Event('change'));
     }
 
+    function clearErrors(){
+      if (!errorsDiv) return;
+      errorsDiv.innerHTML = '';
+    }
+
+    function showErrors(list){
+      if (!errorsDiv) return;
+      const html = `<div class="alert alert-danger" role="alert"><ul class="mb-0">${list.map(e=>`<li>${e}</li>`).join('')}</ul></div>`;
+      errorsDiv.innerHTML = html;
+    }
+
+      // Show PG-level past-allowed badge
+      try{
+        const pastAllowed = form && form.dataset && form.dataset.pastAllowed === '1';
+        if (pastAllowed){
+          pastBadge.innerHTML = '<span class="badge bg-success">Past dates allowed</span> <small class="text-muted">(PG allows past joining dates)</small>';
+        } else {
+          pastBadge.innerHTML = '<span class="badge bg-secondary">Past dates disallowed</span> <small class="text-muted">(joining date cannot be before today)</small>';
+        }
+      }catch(e){}
+
+      // Disable submit until Step 3 is visible (and unless server rendered has_active true which already disables)
+      try{ if (submitBtn) submitBtn.disabled = true; }catch(e){}
+
     // Load rooms with vacancy
     fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/')
       .then(r=>r.json())
@@ -188,17 +219,32 @@
       if (!opt || !opt.value) { hideStep3(); return; }
       const selectable = opt.dataset.selectable === '1' || typeof opt.dataset.selectable === 'undefined';
       const availableFrom = opt.dataset.availableFrom || '';
-      const today = new Date();
-      function fmt(d){ return d.toISOString().slice(0,10); }
+      // Read PG-level flag allowing past joining dates
+      const pastAllowed = (form && form.dataset && form.dataset.pastAllowed === '1');
+
+      // Local YYYY-MM-DD formatting (avoids UTC offset surprises)
+      function localYYYYMMDD(d){
+        const year = d.getFullYear();
+        const m = String(d.getMonth()+1).padStart(2,'0');
+        const day = String(d.getDate()).padStart(2,'0');
+        return `${year}-${m}-${day}`;
+      }
+
       // Reset constraints
       joiningDate.removeAttribute('min');
       if (selectable){
-        // Ensure min is today for selectable beds
-        const min = fmt(today);
-        joiningDate.setAttribute('min', min);
+        if (!pastAllowed){
+          // Ensure min is today for selectable beds unless PG explicitly allows past dates
+          joiningDate.setAttribute('min', localYYYYMMDD(new Date()));
+        } else {
+          // Past allowed: remove min so user can pick past dates
+          joiningDate.removeAttribute('min');
+        }
         showStep3();
+        // Enable submit now that user can fill details
+        if (submitBtn) submitBtn.disabled = false;
       } else {
-        // Not yet available: inform the user and enforce min = available_from, clear value
+        // Not yet available: enforce min = available_from, clear value
         if (availableFrom){
           shareHint.textContent = `This bed will be vacant from ${availableFrom}. Please select a joining date on or after this date.`;
           joiningDate.value = '';
@@ -209,13 +255,43 @@
         }
         // Reveal Step 3 so user can pick a valid joining date even if future-dated
         showStep3();
+        // If not selectable and no availableFrom, disable submit (not selectable)
+        if (!availableFrom && submitBtn) submitBtn.disabled = true;
+        else if (submitBtn) submitBtn.disabled = false;
       }
     });
 
-    // Debounce submit
+    // Client-side pre-submit validation for better UX
     form.addEventListener('submit', function(e){
+      clearErrors();
+      const problems = [];
       const btn = document.getElementById('submitBtn');
+      // Ensure a bed is selected
+      if (!shareSel.value){ problems.push('Please select a bed.'); }
+      // Ensure joining date present
+      const jd = joiningDate.value;
+      if (!jd){ problems.push('Please choose a joining date.'); }
+      // if min is present, enforce it
+      const min = joiningDate.getAttribute('min');
+      const pastAllowed = (form && form.dataset && form.dataset.pastAllowed === '1');
+      function cmpDate(a,b){ return a.localeCompare(b); }
+      if (jd){
+        if (min && cmpDate(jd, min) < 0){ problems.push('Joining date must be on or after ' + min + '.'); }
+        else if (!min && !pastAllowed){
+          const todayLocal = localYYYYMMDD(new Date());
+          if (cmpDate(jd, todayLocal) < 0) problems.push('Joining date cannot be in the past.');
+        }
+      }
+      if (problems.length){
+        e.preventDefault();
+        showErrors(problems);
+        // focus first invalid control
+        if (!shareSel.value) shareSel.focus();
+        else if (!jd) joiningDate.focus();
+        return;
+      }
       if (btn.disabled) { e.preventDefault(); return; }
+      // Show spinner and allow submit
       btn.disabled = true;
       spinner.classList.remove('d-none');
     });

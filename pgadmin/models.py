@@ -12,6 +12,8 @@ class PG(TimeStampedModel):
 	phone = models.CharField(max_length=20, blank=True, help_text="Contact phone number")
 	created_by_admin = models.ForeignKey(get_user_model(), on_delete=models.SET_NULL, null=True, blank=True, related_name='created_pgs')
 	referral_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Default referral credit amount for this PG.")
+	# Allow PG admins to permit selecting past joining dates in quick booking flows
+	past_joining_date_allowed = models.BooleanField(default=False, help_text="Allow selecting a joining date in the past for quick bookings.")
 
 	def __str__(self):
 		return self.name

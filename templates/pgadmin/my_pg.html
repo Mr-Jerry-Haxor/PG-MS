@@ -40,6 +40,11 @@
       {{ form.referral_amount }}
       <div class="form-text">Default credit applied when a resident refers a new tenant for this PG.</div>
     </div>
+    <div class="mb-3 form-check">
+      {{ form.past_joining_date_allowed }}
+      <label class="form-check-label">Allow past joining date for quick bookings</label>
+      <div class="form-text">If enabled, prospective residents can pick a joining date in the past when using the quick booking link.</div>
+    </div>
     <button class="btn btn-primary" type="submit">Save</button>
   </div>
 </form>
