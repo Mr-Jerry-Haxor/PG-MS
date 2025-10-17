@@ -193,3 +193,35 @@ class ReferralCredit(TimeStampedModel):
 		return f"Referral credit ₹{self.amount} for {self.referrer_user}"
 
 # Create your models here.
+
+
+# Keep ResidentApplication.name in sync with the related User's first_name/last_name.
+# When an application's name is changed, copy it to user.first_name and clear user.last_name.
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.contrib.auth import get_user_model
+
+
+@receiver(post_save, sender=ResidentApplication)
+def sync_application_name_to_user(sender, instance: ResidentApplication, created, **kwargs):
+	"""If the ResidentApplication.name differs from the user's first_name, update the user.
+
+	Behavior:
+	- On create or update, if instance.name is non-empty and not equal to user.first_name,
+	  set user.first_name = instance.name and user.last_name = '' then save the user.
+	- This keeps the profile display name in sync when PG admins or users edit the application name.
+	"""
+	try:
+		User = get_user_model()
+		user = instance.user
+		if not user:
+			return
+		new_first = (instance.name or '').strip()
+		old_first = (getattr(user, 'first_name', '') or '').strip()
+		if new_first and new_first != old_first:
+			user.first_name = new_first
+			user.last_name = ''
+			user.save(update_fields=['first_name', 'last_name'])
+	except Exception:
+		# Avoid raising from signal; logging can be added if needed.
+		pass
