@@ -12,4 +12,6 @@ urlpatterns = [
     path('bookings/', views.bookings, name='siteadmin_bookings'),
     path('payments/', views.payments, name='siteadmin_payments'),
     path('expenditures/', views.expenditures, name='siteadmin_expenditures'),
+    path('applications/', views.applications, name='siteadmin_applications'),
+    path('applications/bulk-refill/', views.bulk_refill_applications, name='siteadmin_bulk_refill'),
 ]

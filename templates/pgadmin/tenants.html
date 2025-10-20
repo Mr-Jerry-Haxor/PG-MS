@@ -20,6 +20,7 @@
     <a href="{% url 'pg_rooms' %}" class="btn btn-outline-primary">Manage Rooms</a>
     {% if pg %}
       <a href="{% url 'pg_tenants_export' %}?pg={{ pg.id }}" class="btn btn-primary ms-2">Export Excel</a>
+      <a href="{% url 'pg_tenants_export_pdf' %}?pg={{ pg.id }}" class="btn btn-outline-primary ms-2">Export PDF</a>
     {% endif %}
   </div>
 </div>

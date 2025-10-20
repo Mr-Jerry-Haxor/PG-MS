@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+{% block title %}Applications | Site Admin{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap gap-3 align-items-end mb-3">
+  <div>
+    <h3 class="mb-0">All Applications</h3>
+  </div>
+  <div>
+    <label for="pgFilter" class="form-label small text-uppercase text-secondary mb-1">Filter by PG</label>
+    <form method="get" class="m-0">
+      <select name="pg" id="pgFilter" class="form-select form-select-sm" onchange="this.form.submit()" style="min-width: 200px;">
+        <option value="">All PGs</option>
+        {% for pg in all_pgs %}
+          <option value="{{ pg.id }}" {% if selected_pg and selected_pg.id == pg.id %}selected{% endif %}>{{ pg.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  <div class="ms-auto">
+    <label for="appSearch" class="form-label small text-uppercase text-secondary mb-1">Search</label>
+    <input id="appSearch" type="text" class="form-control form-control-sm" placeholder="Filter by name, email, room, status">
+  </div>
+  <a href="{% url 'sa_dashboard' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+</div>
+
+{% if applications %}
+<form method="post" action="{% url 'siteadmin_bulk_refill' %}{% if selected_pg %}?pg={{ selected_pg.id }}{% endif %}" id="bulkActionForm">
+  {% csrf_token %}
+  
+  <!-- Bulk Actions Bar -->
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="selectAll">
+          <label class="form-check-label small" for="selectAll">
+            Select All
+          </label>
+        </div>
+        <span class="text-secondary small ms-2" id="selectedCount">0 selected</span>
+        <div class="ms-auto d-flex gap-2">
+          <button type="submit" class="btn btn-sm btn-primary" id="bulkRefillBtn" disabled>
+            <i class="bi bi-arrow-clockwise me-1"></i>Allow to Refill
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Applications Table -->
+  <div class="card">
+    <div class="table-responsive">
+      <table id="appTable" class="table table-hover mb-0 align-middle" data-data-table>
+        <thead class="table-light">
+          <tr>
+            <th scope="col" style="width: 40px;">
+              <!-- Checkbox column -->
+            </th>
+            <th scope="col" data-sortable="true" data-type="number">S.No</th>
+            <th scope="col" data-sortable="true">PG</th>
+            <th scope="col" data-sortable="true">Room</th>
+            <th scope="col" data-sortable="true">Bed</th>
+            <th scope="col" data-sortable="true">Name</th>
+            <th scope="col" data-sortable="true">Email</th>
+            <th scope="col" data-sortable="true">Phone</th>
+            <th scope="col" data-sortable="true">Status</th>
+            <th scope="col" data-sortable="true" data-type="date">Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for app in applications %}
+          <tr data-search="{{ app.pg.name }} {{ app.room.room_no }} {{ app.booking.share_no|default:'' }} {{ app.name }} {{ app.email }} {{ app.phone|default:'' }} {{ app.get_status_display }} {{ app.created_at|date:'Y-m-d H:i' }}" data-row>
+            <td>
+              <input class="form-check-input app-checkbox" type="checkbox" name="application_ids" value="{{ app.id }}">
+            </td>
+            <td data-sno></td>
+            <td data-value="{{ app.pg.name }}">{{ app.pg.name }}</td>
+            <td data-value="{{ app.room.room_no }}">{{ app.room.room_no }}</td>
+            <td data-value="{{ app.booking.share_no|default:0 }}">{% if app.booking %}{{ app.booking.share_no }}{% else %}—{% endif %}</td>
+            <td data-value="{{ app.name|default:'' }}">{{ app.name|default:"—" }}</td>
+            <td data-value="{{ app.email }}"><span class="text-break">{{ app.email }}</span></td>
+            <td data-value="{{ app.phone|default:'' }}">{{ app.phone|default:"—" }}</td>
+            <td data-value="{{ app.status }}">
+              {% if app.status == 'submitted' %}
+                <span class="badge bg-info">Submitted</span>
+              {% elif app.status == 'confirmed' %}
+                <span class="badge bg-success">Confirmed</span>
+              {% elif app.status == 'refill_requested' %}
+                <span class="badge bg-warning text-dark">Refill Requested</span>
+              {% elif app.status == 'resubmitted' %}
+                <span class="badge bg-primary">Re-Submitted</span>
+              {% elif app.status == 'rejected' %}
+                <span class="badge bg-danger">Rejected</span>
+              {% else %}
+                <span class="badge bg-secondary">{{ app.get_status_display }}</span>
+              {% endif %}
+            </td>
+            <td data-value="{{ app.created_at|date:'Y-m-d H:i' }}">{{ app.created_at|date:"Y-m-d H:i" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="10" class="text-secondary text-center">No applications found.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</form>
+{% else %}
+  <div class="alert alert-info">No applications found.</div>
+{% endif %}
+
+{% if applications %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const table = document.getElementById('appTable');
+  const search = document.getElementById('appSearch');
+  const selectAll = document.getElementById('selectAll');
+  const bulkBtn = document.getElementById('bulkRefillBtn');
+  const selectedCount = document.getElementById('selectedCount');
+  const form = document.getElementById('bulkActionForm');
+  
+  if(!table) return;
+  
+  const tbody = table.querySelector('tbody');
+  const headers = table.querySelectorAll('thead th[data-sortable="true"]');
+  const checkboxes = table.querySelectorAll('.app-checkbox');
+
+  // Sorting logic
+  const asNumber = raw => {
+    const num = parseFloat(raw);
+    return isNaN(num) ? 0 : num;
+  };
+
+  let sortState = {col: -1, asc: true};
+
+  function sort(colIndex, dataType){
+    const rows = Array.from(tbody.querySelectorAll('tr[data-row]'));
+    const isAsc = (sortState.col === colIndex) ? !sortState.asc : true;
+    sortState = {col: colIndex, asc: isAsc};
+
+    rows.sort((a, b) => {
+      const cellA = a.querySelectorAll('td')[colIndex];
+      const cellB = b.querySelectorAll('td')[colIndex];
+      let valA = cellA ? (cellA.getAttribute('data-value') || cellA.textContent || '') : '';
+      let valB = cellB ? (cellB.getAttribute('data-value') || cellB.textContent || '') : '';
+      if(dataType === 'number'){
+        valA = asNumber(valA);
+        valB = asNumber(valB);
+        return isAsc ? (valA - valB) : (valB - valA);
+      } else if(dataType === 'date'){
+        const dA = new Date(valA);
+        const dB = new Date(valB);
+        return isAsc ? (dA - dB) : (dB - dA);
+      } else {
+        valA = String(valA).toLowerCase();
+        valB = String(valB).toLowerCase();
+        if(valA < valB) return isAsc ? -1 : 1;
+        if(valA > valB) return isAsc ? 1 : -1;
+        return 0;
+      }
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+    headers.forEach(h => h.classList.remove('sorted-asc', 'sorted-desc'));
+    headers[colIndex - 1].classList.add(isAsc ? 'sorted-asc' : 'sorted-desc');
+    renumber();
+  }
+
+  headers.forEach((th, idx) => {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', function(){
+      const dataType = this.getAttribute('data-type') || 'string';
+      sort(idx + 2, dataType); // +2 because checkbox and S.No columns come first
+    });
+  });
+
+  function renumber(){
+    const visible = tbody.querySelectorAll('tr[data-row]:not([style*="display: none"])');
+    visible.forEach((row, i) => {
+      const snoCell = row.querySelector('td[data-sno]');
+      if(snoCell) snoCell.textContent = i + 1;
+    });
+  }
+
+  // Search filter
+  if(search){
+    search.addEventListener('input', function(){
+      const q = this.value.trim().toLowerCase();
+      tbody.querySelectorAll('tr[data-row]').forEach(row => {
+        const hay = (row.getAttribute('data-search') || '').toLowerCase();
+        row.style.display = hay.includes(q) ? '' : 'none';
+      });
+      renumber();
+      updateSelectedCount();
+    });
+  }
+
+  // Multi-select logic
+  function updateSelectedCount(){
+    const visibleChecked = Array.from(checkboxes).filter(cb => {
+      const row = cb.closest('tr');
+      return cb.checked && row && row.style.display !== 'none';
+    });
+    const count = visibleChecked.length;
+    selectedCount.textContent = `${count} selected`;
+    bulkBtn.disabled = count === 0;
+  }
+
+  if(selectAll){
+    selectAll.addEventListener('change', function(){
+      const visibleCheckboxes = Array.from(checkboxes).filter(cb => {
+        const row = cb.closest('tr');
+        return row && row.style.display !== 'none';
+      });
+      visibleCheckboxes.forEach(cb => cb.checked = this.checked);
+      updateSelectedCount();
+    });
+  }
+
+  checkboxes.forEach(cb => {
+    cb.addEventListener('change', updateSelectedCount);
+  });
+
+  // Confirm before bulk action
+  if(form){
+    form.addEventListener('submit', function(e){
+      const count = Array.from(checkboxes).filter(cb => cb.checked).length;
+      if(count === 0){
+        e.preventDefault();
+        alert('Please select at least one application.');
+        return;
+      }
+      if(!confirm(`Are you sure you want to change ${count} application(s) to "Refill Requested" status?`)){
+        e.preventDefault();
+      }
+    });
+  }
+
+  renumber();
+  updateSelectedCount();
+});
+</script>
+{% endif %}
+{% endblock %}

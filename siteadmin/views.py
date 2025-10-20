@@ -2,9 +2,11 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.db.models import Q
+from django.db import transaction
 
 from pgadmin.models import PG, PGAdmin
-from bookings.models import Booking
+from bookings.models import Booking, ResidentApplication, ApplicationStatusHistory
 from finance.models import Payment, Expenditure
 from pgadmin.forms import PGForm
 
@@ -144,3 +146,88 @@ def expenditures(request):
         return redirect('dashboard')
     items = Expenditure.objects.select_related('pg').all().order_by('-created_at')
     return render(request, 'siteadmin/expenditures.html', {"items": items})
+
+
+@login_required
+def applications(request):
+    """Site Admin view: all resident applications with PG filter and bulk refill action."""
+    if not _require_site_admin(request.user):
+        messages.error(request, "Website Admin access required.")
+        return redirect('dashboard')
+    
+    # Get all PGs for filter dropdown
+    all_pgs = PG.objects.all().order_by('name')
+    
+    # Filter by PG if specified
+    pg_id = request.GET.get('pg')
+    selected_pg = None
+    if pg_id:
+        selected_pg = all_pgs.filter(id=pg_id).first()
+    
+    # Query applications
+    apps_qs = ResidentApplication.objects.select_related(
+        'user', 'booking', 'pg', 'room', 'user__profile'
+    ).all()
+    
+    if selected_pg:
+        apps_qs = apps_qs.filter(pg=selected_pg)
+    
+    apps_qs = apps_qs.order_by('-created_at')
+    
+    context = {
+        'applications': apps_qs,
+        'all_pgs': all_pgs,
+        'selected_pg': selected_pg,
+    }
+    return render(request, 'siteadmin/applications.html', context)
+
+
+@login_required
+@transaction.atomic
+def bulk_refill_applications(request):
+    """Bulk action: change selected applications to refill status (no email sent)."""
+    if not _require_site_admin(request.user):
+        messages.error(request, "Website Admin access required.")
+        return redirect('dashboard')
+    
+    if request.method != 'POST':
+        return redirect('siteadmin_applications')
+    
+    # Get selected application IDs from form
+    app_ids = request.POST.getlist('application_ids')
+    if not app_ids:
+        messages.warning(request, "No applications selected.")
+        return redirect('siteadmin_applications')
+    
+    # Update applications to refill_requested status
+    updated_count = 0
+    for app_id in app_ids:
+        try:
+            app = ResidentApplication.objects.get(id=app_id)
+            # Only update if not already in refill_requested status
+            if app.status != ResidentApplication.REFILL_REQUESTED:
+                old_status = app.status
+                app.status = ResidentApplication.REFILL_REQUESTED
+                app.save(update_fields=['status'])
+                
+                # Create status history record
+                ApplicationStatusHistory.objects.create(
+                    application=app,
+                    status=ResidentApplication.REFILL_REQUESTED,
+                    comment=f'Bulk action by super admin (changed from {old_status})',
+                    by_user=request.user
+                )
+                updated_count += 1
+        except ResidentApplication.DoesNotExist:
+            continue
+    
+    if updated_count > 0:
+        messages.success(request, f"Successfully updated {updated_count} application(s) to refill status.")
+    else:
+        messages.info(request, "No applications were updated (may already be in refill status).")
+    
+    # Redirect back to applications page with same PG filter
+    pg_id = request.GET.get('pg', '')
+    if pg_id:
+        return redirect(f"{request.path.replace('/bulk-refill/', '/')}?pg={pg_id}")
+    return redirect('siteadmin_applications')

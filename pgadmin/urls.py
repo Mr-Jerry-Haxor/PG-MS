@@ -7,6 +7,7 @@ urlpatterns = [
     path('my/<int:pg_id>/qr.pdf', views.quick_booking_qr_pdf, name='pg_quick_booking_qr_pdf'),
     path('tenants/', views.tenants, name='pg_tenants'),
     path('tenants/export/', views.tenants_export_excel, name='pg_tenants_export'),
+    path('tenants/export/pdf/', views.tenants_export_pdf, name='pg_tenants_export_pdf'),
     path('rooms/', views.rooms_list, name='pg_rooms'),
     path('rooms/new/', views.room_create, name='pg_room_create'),
     path('rooms/<int:pk>/edit/', views.room_edit, name='pg_room_edit'),
