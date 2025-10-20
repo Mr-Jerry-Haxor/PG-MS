@@ -1,0 +1,144 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}My Complaints - PG Management System{% endblock %}
+
+{% block head_extra %}
+<style>
+    .complaint-card {
+        transition: all 0.3s ease;
+        border-left: 4px solid transparent;
+    }
+    .complaint-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .complaint-card.priority-urgent { border-left-color: #dc3545; }
+    .complaint-card.priority-high { border-left-color: #fd7e14; }
+    .complaint-card.priority-medium { border-left-color: #0d6efd; }
+    .complaint-card.priority-low { border-left-color: #6c757d; }
+    
+    .filter-chip {
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .filter-chip:hover {
+        transform: scale(1.05);
+    }
+    .filter-chip.active {
+        box-shadow: 0 0 0 2px currentColor;
+    }
+    
+    @media (max-width: 576px) {
+        .complaint-meta {
+            font-size: 0.85rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Page Header -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">
+                <i class="bi bi-chat-left-text text-primary"></i> My Complaints
+            </h1>
+            <p class="text-muted mb-0">Track and manage your reported issues</p>
+        </div>
+        <a href="{% url 'create_complaint' %}" class="btn btn-primary mt-3 mt-md-0">
+            <i class="bi bi-plus-circle"></i> New Complaint
+        </a>
+    </div>
+    
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-12 col-md-4">
+                    <label class="form-label small text-muted">Status</label>
+                    <select name="status" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Status</option>
+                        {% for value, label in status_choices %}
+                            <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% if user_pgs %}
+                <div class="col-12 col-md-4">
+                    <label class="form-label small text-muted">PG</label>
+                    <select name="pg" class="form-select" onchange="this.form.submit()">
+                        <option value="">All PGs</option>
+                        {% for pg_id, pg_name in user_pgs %}
+                            <option value="{{ pg_id }}" {% if current_pg == pg_id|stringformat:"s" %}selected{% endif %}>{{ pg_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-12 col-md-4 d-flex align-items-end">
+                    <a href="{% url 'my_complaints' %}" class="btn btn-outline-secondary w-100">
+                        <i class="bi bi-arrow-clockwise"></i> Reset
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Complaints List -->
+    {% if complaints %}
+        <div class="row g-3">
+            {% for complaint in complaints %}
+            <div class="col-12">
+                <a href="{% url 'complaint_detail' complaint.id %}" class="text-decoration-none">
+                    <div class="card complaint-card priority-{{ complaint.priority }} shadow-hover">
+                        <div class="card-body">
+                            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start">
+                                <div class="flex-grow-1 mb-3 mb-md-0">
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                        <h5 class="card-title mb-0">
+                                            <i class="{{ complaint.get_category_icon }} text-muted"></i>
+                                            {{ complaint.title }}
+                                        </h5>
+                                        <span class="badge {{ complaint.get_status_badge_class }} rounded-pill">
+                                            {{ complaint.get_status_display }}
+                                        </span>
+                                        <span class="badge {{ complaint.get_priority_badge_class }} rounded-pill">
+                                            <i class="bi bi-flag"></i> {{ complaint.get_priority_display }}
+                                        </span>
+                                    </div>
+                                    <p class="card-text text-muted mb-2">{{ complaint.description|truncatewords:25 }}</p>
+                                    <div class="complaint-meta text-muted">
+                                        <small>
+                                            <i class="bi bi-building"></i> {{ complaint.pg.name }}
+                                            <span class="mx-2">•</span>
+                                            <i class="bi bi-calendar3"></i> {{ complaint.created_at|date:"M d, Y" }}
+                                            <span class="mx-2">•</span>
+                                            <i class="bi bi-chat-dots"></i> {{ complaint.public_comment_count }} comment{{ complaint.public_comment_count|pluralize }}
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="text-md-end">
+                                    <i class="bi bi-chevron-right text-muted"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-inbox display-1 text-muted mb-3"></i>
+                <h5 class="text-muted">No Complaints Found</h5>
+                <p class="text-muted">You haven't raised any complaints yet.</p>
+                <a href="{% url 'create_complaint' %}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Create Your First Complaint
+                </a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

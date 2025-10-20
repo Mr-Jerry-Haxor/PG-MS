@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ complaint.title }} - PG Management System{% endblock %}
+
+{% block head_extra %}
+<style>
+    .timeline {
+        position: relative;
+        padding-left: 2rem;
+    }
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 8px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #e9ecef;
+    }
+    .timeline-item {
+        position: relative;
+        padding-bottom: 1.5rem;
+    }
+    .timeline-item::before {
+        content: '';
+        position: absolute;
+        left: -1.5rem;
+        top: 0.5rem;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #0d6efd;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 2px #e9ecef;
+    }
+    .comment-box {
+        background: #f8f9fa;
+        border-left: 3px solid #0d6efd;
+    }
+    
+    @media (max-width: 576px) {
+        .detail-label {
+            font-size: 0.85rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-12 col-lg-8 mx-auto">
+            <!-- Back Button -->
+            <a href="{% url 'my_complaints' %}" class="btn btn-sm btn-outline-secondary mb-3">
+                <i class="bi bi-arrow-left"></i> Back to My Complaints
+            </a>
+            
+            <!-- Complaint Header -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-start gap-2 mb-3">
+                        <h1 class="h4 mb-0 flex-grow-1">
+                            <i class="{{ complaint.get_category_icon }} text-muted"></i>
+                            {{ complaint.title }}
+                        </h1>
+                        <span class="badge {{ complaint.get_status_badge_class }} fs-6">
+                            {{ complaint.get_status_display }}
+                        </span>
+                    </div>
+                    
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <span class="badge {{ complaint.get_priority_badge_class }} rounded-pill">
+                            <i class="bi bi-flag"></i> {{ complaint.get_priority_display }}
+                        </span>
+                        <span class="badge bg-secondary rounded-pill">
+                            {{ complaint.get_category_display }}
+                        </span>
+                    </div>
+                    
+                    <div class="row g-3 text-muted">
+                        <div class="col-12 col-md-6">
+                            <div class="detail-label">
+                                <i class="bi bi-building"></i>
+                                <strong>PG:</strong> {{ complaint.pg.name }}
+                            </div>
+                        </div>
+                        {% if complaint.booking %}
+                        <div class="col-12 col-md-6">
+                            <div class="detail-label">
+                                <i class="bi bi-door-open"></i>
+                                <strong>Room:</strong> {{ complaint.booking.room.room_no }} (Bed {{ complaint.booking.share_no }})
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div class="col-12 col-md-6">
+                            <div class="detail-label">
+                                <i class="bi bi-calendar3"></i>
+                                <strong>Created:</strong> {{ complaint.created_at|date:"F d, Y" }}
+                            </div>
+                        </div>
+                        {% if complaint.resolved_at %}
+                        <div class="col-12 col-md-6">
+                            <div class="detail-label text-success">
+                                <i class="bi bi-check-circle"></i>
+                                <strong>Resolved:</strong> {{ complaint.resolved_at|date:"F d, Y" }}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Complaint Description -->
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-text"></i> Description
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space: pre-wrap;">{{ complaint.description }}</p>
+                </div>
+            </div>
+            
+            <!-- Comments Section -->
+            <div class="card">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-chat-dots"></i> Updates & Comments
+                        <span class="badge bg-secondary ms-2">{{ comments.count }}</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if comments %}
+                        <div class="timeline">
+                            {% for comment in comments %}
+                            <div class="timeline-item">
+                                <div class="comment-box p-3 rounded">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <strong class="text-primary">
+                                                <i class="bi bi-person-badge"></i>
+                                                {{ comment.user.get_full_name|default:comment.user.email }}
+                                            </strong>
+                                            <small class="text-muted ms-2">PG Admin</small>
+                                        </div>
+                                        <small class="text-muted">
+                                            {{ comment.created_at|date:"M d, Y" }}
+                                            <span class="d-none d-md-inline">at {{ comment.created_at|time:"g:i A" }}</span>
+                                        </small>
+                                    </div>
+                                    <p class="mb-0" style="white-space: pre-wrap;">{{ comment.comment }}</p>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-chat-square-text display-4 mb-3"></i>
+                            <p class="mb-0">No comments yet. The admin will respond soon.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if complaint.status == 'open' or complaint.status == 'in_progress' %}
+            <div class="alert alert-info mt-3">
+                <i class="bi bi-info-circle"></i>
+                Your complaint is being reviewed. You'll be notified when there are updates.
+            </div>
+            {% elif complaint.status == 'solved' %}
+            <div class="alert alert-success mt-3">
+                <i class="bi bi-check-circle"></i>
+                This complaint has been resolved.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

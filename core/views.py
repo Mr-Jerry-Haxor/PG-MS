@@ -4,8 +4,9 @@ from .models import Notification
 from bookings.models import RoomShareStatus, Booking
 from finance.models import Payment, Expenditure
 from django.utils import timezone
-from django.db.models import Sum
-from pgadmin.models import PG
+from django.db.models import Sum, Q
+from pgadmin.models import PG, Complaint
+from datetime import date as _date
 
 
 @login_required
@@ -18,9 +19,10 @@ def dashboard(request):
 	# Mark only these displayed notifications as read so the unread badge updates immediately
 	if notes:
 		Notification.objects.filter(id__in=[n.id for n in notes], user=request.user, is_read=False).update(is_read=True)
-	from datetime import date as _date
 
 	ctx["today"] = _date.today()
+	today = _date.today()
+	
 	# Always show user's bookings on dashboard (approved/pending/completed)
 	approved_qs = (
 		Booking.objects.filter(user=request.user, status=Booking.APPROVED)
@@ -43,6 +45,37 @@ def dashboard(request):
 		.order_by('-updated_at')[:5]
 	)
 	ctx["my_completed_bookings"] = list(completed_qs)
+	
+	# Get active bookings (not left yet) for complaint button
+	active_bookings = Booking.objects.filter(
+		user=request.user,
+		status=Booking.APPROVED
+	).filter(
+		Q(leaving_date__isnull=True) | Q(leaving_date__gte=today)
+	).select_related('pg', 'room')
+	
+	ctx["has_active_booking"] = active_bookings.exists()
+	ctx["active_bookings_count"] = active_bookings.count()
+	ctx["active_bookings"] = list(active_bookings)
+	
+	# Get user's complaints for active bookings
+	if active_bookings.exists():
+		user_complaints = Complaint.objects.filter(
+			user=request.user,
+			booking__in=active_bookings
+		).select_related('pg', 'booking').prefetch_related(
+			'comments'
+		).order_by('-created_at')[:5]
+		
+		# Add public comment count to each complaint
+		complaints_list = []
+		for complaint in user_complaints:
+			# Count public comments (non-internal)
+			complaint.public_comment_count = complaint.comments.filter(is_internal=False).count()
+			complaints_list.append(complaint)
+		
+		ctx["user_complaints"] = complaints_list
+	
 	if hasattr(request.user, 'profile') and request.user.profile.is_pg_admin:
 		# Determine PGs this admin can manage and active selection
 		pgs_qs = PG.objects.filter(admins__user=request.user).order_by('name')
@@ -90,6 +123,13 @@ def dashboard(request):
 			expense = (
 				Expenditure.objects.filter(pg__admins__user=request.user, date__gte=month_start, date__lt=next_month_start).aggregate(total=Sum('amount')).get('total') or 0
 			)
+		
+		# Get complaints count for admin
+		if pg:
+			complaints_open = Complaint.objects.filter(pg=pg, status__in=[Complaint.OPEN, Complaint.IN_PROGRESS]).count()
+		else:
+			complaints_open = Complaint.objects.filter(pg__admins__user=request.user, status__in=[Complaint.OPEN, Complaint.IN_PROGRESS]).count()
+		
 		ctx.update({
 			"vacant_beds": vacant,
 			"occupied_beds": occupied,
@@ -98,6 +138,7 @@ def dashboard(request):
 			"leaving_confirmed": leaving_confirmed,
 			"month_income": income,
 			"month_expense": expense,
+			"complaints_open": complaints_open,
 			"pg": pg,
 			"pgs": list(pgs_qs),
 			# Legacy aliases maintained until template migration completes everywhere

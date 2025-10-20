@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Create Complaint - PG Management System{% endblock %}
+
+{% block head_extra %}
+<style>
+    .category-option {
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid #e9ecef;
+    }
+    .category-option:hover {
+        border-color: #0d6efd;
+        background-color: #f8f9fa;
+    }
+    .category-option.selected {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+    }
+    .priority-option {
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .priority-option:hover {
+        transform: scale(1.05);
+    }
+    .priority-option input[type="radio"]:checked + label {
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <!-- Back Button -->
+            <a href="{% url 'my_complaints' %}" class="btn btn-sm btn-outline-secondary mb-3">
+                <i class="bi bi-arrow-left"></i> Back to My Complaints
+            </a>
+            
+            <!-- Page Header -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h1 class="h3 mb-2">
+                        <i class="bi bi-plus-circle text-primary"></i> Create New Complaint
+                    </h1>
+                    <p class="text-muted mb-0">Please provide details about your issue or concern</p>
+                </div>
+            </div>
+            
+            <!-- Form -->
+            <form method="post" id="complaintForm">
+                {% csrf_token %}
+                
+                <!-- Booking Selection -->
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-building"></i> Select Your Booking
+                            <span class="text-danger">*</span>
+                        </label>
+                        <select name="booking" class="form-select" required>
+                            <option value="">-- Select a booking --</option>
+                            {% for booking in active_bookings %}
+                                <option value="{{ booking.id }}">
+                                    {{ booking.pg.name }} - Room {{ booking.room.room_no }} (Bed {{ booking.share_no }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Choose the PG and room related to this complaint</small>
+                    </div>
+                </div>
+                
+                <!-- Title -->
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-pencil"></i> Complaint Title
+                            <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" name="title" class="form-control" 
+                               placeholder="Brief description of the issue" 
+                               required maxlength="200">
+                        <small class="text-muted">Keep it short and descriptive</small>
+                    </div>
+                </div>
+                
+                <!-- Category -->
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <label class="form-label fw-semibold mb-3">
+                            <i class="bi bi-tags"></i> Category
+                            <span class="text-danger">*</span>
+                        </label>
+                        <div class="row g-2">
+                            {% for value, label in category_choices %}
+                            <div class="col-6 col-md-4">
+                                <input type="radio" class="btn-check" name="category" 
+                                       id="category_{{ value }}" value="{{ value }}" 
+                                       {% if forloop.counter == 1 %}checked{% endif %}>
+                                <label class="btn btn-outline-primary w-100 py-3 text-center" 
+                                       for="category_{{ value }}">
+                                    <div>{{ label }}</div>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Priority -->
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <label class="form-label fw-semibold mb-3">
+                            <i class="bi bi-flag"></i> Priority Level
+                            <span class="text-danger">*</span>
+                        </label>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for value, label in priority_choices %}
+                            <div class="form-check priority-option">
+                                <input class="form-check-input" type="radio" 
+                                       name="priority" id="priority_{{ value }}" 
+                                       value="{{ value }}" 
+                                       {% if value == 'medium' %}checked{% endif %}>
+                                <label class="form-check-label badge 
+                                       {% if value == 'low' %}bg-info
+                                       {% elif value == 'medium' %}bg-primary
+                                       {% elif value == 'high' %}bg-warning text-dark
+                                       {% elif value == 'urgent' %}bg-danger
+                                       {% endif %}" 
+                                       for="priority_{{ value }}">
+                                    {{ label }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Choose based on urgency: Low (can wait), Medium (normal), High (needs attention soon), Urgent (immediate action needed)
+                        </small>
+                    </div>
+                </div>
+                
+                <!-- Description -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-card-text"></i> Detailed Description
+                            <span class="text-danger">*</span>
+                        </label>
+                        <textarea name="description" class="form-control" rows="6" 
+                                  placeholder="Please provide a detailed description of the issue..." 
+                                  required></textarea>
+                        <small class="text-muted">Include as much detail as possible to help us resolve your issue quickly</small>
+                    </div>
+                </div>
+                
+                <!-- Submit Buttons -->
+                <div class="d-flex gap-2 mb-4">
+                    <button type="submit" class="btn btn-primary flex-grow-1">
+                        <i class="bi bi-send"></i> Submit Complaint
+                    </button>
+                    <a href="{% url 'my_complaints' %}" class="btn btn-outline-secondary">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -14,9 +14,16 @@
     </form>
     {% endif %}
   </div>
-  {% if user.is_authenticated and user.profile.is_pg_admin and pg %}
-    <span class="badge bg-light text-dark">{{ pg.name }}</span>
-  {% endif %}
+  <div class="d-flex align-items-center gap-2">
+    {% if user.is_authenticated and user.profile.is_pg_admin and pg %}
+      <span class="badge bg-light text-dark">{{ pg.name }}</span>
+    {% endif %}
+    {% if user.is_authenticated and has_active_booking and not user.profile.is_pg_admin %}
+      <button type="button" class="btn btn-warning btn-sm text-dark" data-bs-toggle="modal" data-bs-target="#raiseComplaintModal" style="font-size: 0.85rem;">
+        <i class="bi bi-exclamation-circle"></i> Raise Complaint
+      </button>
+    {% endif %}
+  </div>
 </div>
 <style>
   /* Scoped to dashboard cards for compact, mobile-first layout */
@@ -56,7 +63,7 @@
   <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0" style="background:var(--accent-3)">
       <div class="card-body">
-        <div class="text-secondary small">Vacant Shares</div>
+        <div class="text-secondary small">Vacant Beds</div>
         <div class="display-6">{{ vacant_shares|default:"—" }}</div>
       </div>
     </div>
@@ -64,7 +71,7 @@
   <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0" style="background:#dbeafe">
       <div class="card-body">
-        <div class="text-secondary small">Occupied Shares</div>
+        <div class="text-secondary small">Occupied Beds</div>
         <div class="display-6">{{ occupied_shares|default:"—" }}</div>
       </div>
     </div>
@@ -266,6 +273,22 @@
     </a>
   </div>
   <div class="col-6 col-md-4 col-lg-3">
+    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'admin_complaints' %}">
+      <div class="card-body d-flex align-items-center gap-3">
+        <i class="bi bi-chat-left-dots fs-3 text-warning"></i>
+        <div class="d-flex align-items-center justify-content-between flex-grow-1">
+          <div>
+            <div class="fw-semibold">Complaints</div>
+            <div class="small text-secondary">Manage issues</div>
+          </div>
+          {% if complaints_open > 0 %}
+            <span class="badge bg-danger rounded-pill">{{ complaints_open }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg-3">
     <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_referrals' %}">
       <div class="card-body d-flex align-items-center gap-3">
         <i class="bi bi-person-plus fs-3 text-primary"></i>
@@ -304,7 +327,7 @@
       <div class="list-group-item">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
           <div>
-            <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
+            <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
             <div class="text-secondary small">Approved on {{ b.updated_at|date:"Y-m-d" }} • Joining {{ b.joining_date|default:"—" }}</div>
             <div class="mt-1 d-flex flex-wrap gap-2">
               <span class="badge bg-success-subtle text-dark border">Approved</span>
@@ -516,7 +539,7 @@
       {% for b in my_completed_bookings %}
       <div class="list-group-item d-flex justify-content-between align-items-center">
         <div>
-          <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
+          <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
           <div class="text-secondary small">Stayed till {{ b.leaving_date|default:b.updated_at|date:"Y-m-d" }}</div>
           <span class="badge bg-secondary-subtle text-dark border">Completed</span>
         </div>
@@ -538,7 +561,7 @@
       {% for b in my_pending_bookings %}
         <div class="list-group-item d-flex justify-content-between align-items-center">
           <div>
-            <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Share {{ b.share_no }}</div>
+            <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
             <div class="text-secondary small">Applied on {{ b.created_at|date:"Y-m-d" }} • Joining {{ b.joining_date|default:"—" }}</div>
             <div class="badge bg-warning-subtle text-dark border">Pending</div>
           </div>
@@ -553,5 +576,241 @@
   </div>
  </div>
 {% endif %}
+
+{% if user.is_authenticated and user_complaints %}
+<div class="mt-4">
+  <h2 class="h6 text-secondary mb-2">My Complaints</h2>
+  <div class="accordion" id="complaintsAccordion">
+    {% for complaint in user_complaints %}
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" 
+                data-bs-toggle="collapse" data-bs-target="#complaint{{ complaint.id }}" 
+                aria-expanded="{% if forloop.first %}true{% else %}false{% endif %}">
+          <div class="d-flex w-100 justify-content-between align-items-center pe-3">
+            <div>
+              <i class="{{ complaint.get_category_icon }} text-muted me-2"></i>
+              <strong>{{ complaint.title }}</strong>
+            </div>
+            <div class="d-flex gap-2">
+              <span class="badge {{ complaint.get_status_badge_class }}">{{ complaint.get_status_display }}</span>
+              <span class="badge {{ complaint.get_priority_badge_class }}">{{ complaint.get_priority_display }}</span>
+            </div>
+          </div>
+        </button>
+      </h2>
+      <div id="complaint{{ complaint.id }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" 
+           data-bs-parent="#complaintsAccordion">
+        <div class="accordion-body">
+          <div class="mb-3">
+            <small class="text-muted">
+              <i class="bi bi-building"></i> {{ complaint.pg.name }} • 
+              <i class="bi bi-calendar3"></i> {{ complaint.created_at|date:"M d, Y" }}
+            </small>
+          </div>
+          <p class="mb-3">{{ complaint.description }}</p>
+          
+          {% if complaint.comments.all %}
+          <div class="border-top pt-3">
+            <h6 class="text-muted mb-3">
+              <i class="bi bi-chat-dots"></i> Comments 
+              {% if complaint.public_comment_count > 0 %}({{ complaint.public_comment_count }}){% endif %}
+            </h6>
+            {% for comment in complaint.comments.all %}
+              {% if not comment.is_internal %}
+              <div class="card mb-2 bg-light">
+                <div class="card-body py-2 px-3">
+                  <div class="d-flex justify-content-between align-items-start mb-1">
+                    <small class="fw-semibold text-primary">
+                      <i class="bi bi-person-badge"></i> Admin
+                    </small>
+                    <small class="text-muted">{{ comment.created_at|date:"M d, g:i A" }}</small>
+                  </div>
+                  <p class="mb-0 small">{{ comment.comment }}</p>
+                </div>
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+          
+          <div class="mt-3">
+            <a href="{% url 'complaint_detail' complaint.id %}" class="btn btn-sm btn-outline-primary">
+              View Full Details
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="mt-2">
+    <a href="{% url 'my_complaints' %}" class="btn btn-sm btn-outline-secondary">
+      View All Complaints
+    </a>
+  </div>
+</div>
+{% endif %}
+
+<!-- Raise Complaint Modal -->
+<div class="modal fade" id="raiseComplaintModal" tabindex="-1" aria-labelledby="raiseComplaintModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-warning bg-opacity-10">
+        <h5 class="modal-title" id="raiseComplaintModalLabel">
+          <i class="bi bi-exclamation-circle text-warning"></i> Raise a Complaint
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post" action="{% url 'create_complaint' %}" id="raiseComplaintForm">
+        {% csrf_token %}
+        <div class="modal-body">
+          {% if active_bookings %}
+            {% if active_bookings_count == 1 %}
+              <!-- Single booking - auto-selected, no dropdown -->
+              <input type="hidden" name="booking" value="{{ active_bookings.0.id }}">
+              <div class="mb-3">
+                <div class="alert alert-info mb-0">
+                  <i class="bi bi-info-circle"></i> 
+                  <strong>Booking:</strong> {{ active_bookings.0.room.pg.name }} - Room {{ active_bookings.0.room.room_no }} (Bed {{ active_bookings.0.share_no }})
+                </div>
+              </div>
+            {% else %}
+              <!-- Multiple bookings - show dropdown -->
+              <div class="mb-3">
+                <label class="form-label fw-semibold">
+                  <i class="bi bi-building"></i> Select Booking <span class="text-danger">*</span>
+                </label>
+                <select name="booking" class="form-select" required>
+                  <option value="">-- Choose your booking --</option>
+                  {% for b in active_bookings %}
+                    <option value="{{ b.id }}">{{ b.room.pg.name }} - Room {{ b.room.room_no }} (Bed {{ b.share_no }})</option>
+                  {% endfor %}
+                </select>
+              </div>
+            {% endif %}
+          
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-pencil"></i> Complaint Title <span class="text-danger">*</span>
+            </label>
+            <input type="text" name="title" class="form-control" 
+                   placeholder="Brief description of the issue" 
+                   required maxlength="200">
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-tags"></i> Category <span class="text-danger">*</span>
+            </label>
+            <div class="row g-2">
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_maintenance" value="maintenance" required>
+                <label class="btn btn-outline-primary w-100" for="cat_maintenance">
+                  <i class="bi bi-tools"></i><br><small>Maintenance</small>
+                </label>
+              </div>
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_cleanliness" value="cleanliness">
+                <label class="btn btn-outline-primary w-100" for="cat_cleanliness">
+                  <i class="bi bi-spray"></i><br><small>Cleanliness</small>
+                </label>
+              </div>
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_food" value="food">
+                <label class="btn btn-outline-primary w-100" for="cat_food">
+                  <i class="bi bi-egg-fried"></i><br><small>Food</small>
+                </label>
+              </div>
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_wifi" value="wifi">
+                <label class="btn btn-outline-primary w-100" for="cat_wifi">
+                  <i class="bi bi-wifi"></i><br><small>WiFi</small>
+                </label>
+              </div>
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_electricity" value="electricity">
+                <label class="btn btn-outline-primary w-100" for="cat_electricity">
+                  <i class="bi bi-lightning-charge"></i><br><small>Electricity</small>
+                </label>
+              </div>
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_water" value="water">
+                <label class="btn btn-outline-primary w-100" for="cat_water">
+                  <i class="bi bi-droplet"></i><br><small>Water</small>
+                </label>
+              </div>
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_security" value="security">
+                <label class="btn btn-outline-primary w-100" for="cat_security">
+                  <i class="bi bi-shield-check"></i><br><small>Security</small>
+                </label>
+              </div>
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_noise" value="noise">
+                <label class="btn btn-outline-primary w-100" for="cat_noise">
+                  <i class="bi bi-volume-up"></i><br><small>Noise</small>
+                </label>
+              </div>
+              <div class="col-4">
+                <input type="radio" class="btn-check" name="category" id="cat_other" value="other">
+                <label class="btn btn-outline-primary w-100" for="cat_other">
+                  <i class="bi bi-question-circle"></i><br><small>Other</small>
+                </label>
+              </div>
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-flag"></i> Priority Level <span class="text-danger">*</span>
+            </label>
+            <div class="d-flex gap-2 flex-wrap">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="priority" id="priority_low" value="low">
+                <label class="form-check-label badge bg-info" for="priority_low">Low</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="priority" id="priority_medium" value="medium" checked>
+                <label class="form-check-label badge bg-primary" for="priority_medium">Medium</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="priority" id="priority_high" value="high">
+                <label class="form-check-label badge bg-warning text-dark" for="priority_high">High</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="priority" id="priority_urgent" value="urgent">
+                <label class="form-check-label badge bg-danger" for="priority_urgent">Urgent</label>
+              </div>
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-card-text"></i> Detailed Description <span class="text-danger">*</span>
+            </label>
+            <textarea name="description" class="form-control" rows="5" 
+                      placeholder="Please provide detailed information about the issue..." 
+                      required></textarea>
+          </div>
+          {% else %}
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i>
+            You need an active booking to raise a complaint.
+          </div>
+          {% endif %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          {% if my_approved_bookings %}
+          <button type="submit" class="btn btn-warning text-dark">
+            <i class="bi bi-send"></i> Submit Complaint
+          </button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 {% endblock %}

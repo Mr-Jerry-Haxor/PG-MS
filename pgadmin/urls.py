@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import complaint_views
 
 
 urlpatterns = [
@@ -39,4 +40,13 @@ urlpatterns = [
     path('applications/<int:app_id>/referral/', views.application_update_referral, name='pg_application_referral'),
     path('applications/<int:app_id>/pdf/', views.application_pdf, name='pg_application_pdf'),
     path('referrals/', views.pg_referrals, name='pg_referrals'),
+    
+    # Complaint management
+    path('complaints/', complaint_views.admin_complaints, name='admin_complaints'),
+    path('complaints/<int:complaint_id>/', complaint_views.admin_complaint_detail, name='admin_complaint_detail'),
+    path('complaints/<int:complaint_id>/comment/', complaint_views.admin_complaint_add_comment, name='admin_complaint_add_comment'),
+    path('complaints/<int:complaint_id>/status/', complaint_views.admin_complaint_update_status, name='admin_complaint_update_status'),
+    path('complaints/<int:complaint_id>/priority/', complaint_views.admin_complaint_update_priority, name='admin_complaint_update_priority'),
+    path('complaints/comment/<int:comment_id>/edit/', complaint_views.admin_complaint_edit_comment, name='admin_complaint_edit_comment'),
+    path('complaints/comment/<int:comment_id>/delete/', complaint_views.admin_complaint_delete_comment, name='admin_complaint_delete_comment'),
 ]
