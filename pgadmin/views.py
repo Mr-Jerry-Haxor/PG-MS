@@ -2437,3 +2437,549 @@ def application_update_referral(request, app_id):
         f"Referral recorded: {ref_booking.user.get_full_name() or ref_booking.user.email} will receive ₹{amount:.2f}.",
     )
     return redirect_target
+
+
+# ============================================================================
+# ASYNC PDF GENERATION WITH PROGRESS TRACKING
+# ============================================================================
+
+@login_required
+def tenants_export_pdf_async_start(request):
+    """Start async PDF generation and return task ID"""
+    from .pdf_tasks import PDFTaskManager
+    import threading
+    
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    pg = _active_pg(request)
+    if not pg:
+        return JsonResponse({'error': 'No active PG selected'}, status=400)
+    
+    # Check if user already has an active task for this PG
+    task_id, existing_task = PDFTaskManager.get_user_active_task(request.user.id, pg.id)
+    if existing_task:
+        return JsonResponse({
+            'task_id': task_id,
+            'status': existing_task['status'],
+            'message': 'Task already in progress'
+        })
+    
+    # Create new task
+    task_id = PDFTaskManager.create_task(request.user.id, pg.id, pg.name)
+    
+    # Start background thread for PDF generation
+    thread = threading.Thread(
+        target=_generate_pdf_async,
+        args=(task_id, request.user.id, pg.id),
+        daemon=True
+    )
+    thread.start()
+    
+    return JsonResponse({
+        'task_id': task_id,
+        'status': 'pending',
+        'message': 'PDF generation started'
+    })
+
+
+@login_required
+def tenants_export_pdf_async_progress(request, task_id):
+    """Check PDF generation progress"""
+    from .pdf_tasks import PDFTaskManager
+    
+    task = PDFTaskManager.get_task(task_id)
+    
+    if not task:
+        return JsonResponse({'error': 'Task not found'}, status=404)
+    
+    # Verify user owns this task
+    if task['user_id'] != request.user.id:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    
+    return JsonResponse({
+        'task_id': task_id,
+        'status': task['status'],
+        'progress': task['progress'],
+        'message': task['message'],
+        'error': task.get('error'),
+    })
+
+
+@login_required
+def tenants_export_pdf_async_download(request, task_id):
+    """Download completed PDF and delete task"""
+    from .pdf_tasks import PDFTaskManager
+    import os
+    
+    task = PDFTaskManager.get_task(task_id)
+    
+    if not task:
+        return HttpResponse('Task not found', status=404)
+    
+    # Verify user owns this task
+    if task['user_id'] != request.user.id:
+        return HttpResponse('Forbidden', status=403)
+    
+    if task['status'] != 'completed':
+        return HttpResponse('PDF not ready yet', status=400)
+    
+    if not task.get('file_path') or not os.path.exists(task['file_path']):
+        return HttpResponse('PDF file not found', status=404)
+    
+    # Read file
+    with open(task['file_path'], 'rb') as f:
+        pdf_data = f.read()
+    
+    # Delete task and file
+    PDFTaskManager.delete_task(task_id)
+    
+    # Return PDF
+    response = HttpResponse(pdf_data, content_type='application/pdf')
+    filename = f"{task['pg_name'].replace(' ', '_')}_tenants_{datetime.now().strftime('%B_%Y')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
+
+
+@login_required
+def tenants_export_pdf_async_cancel(request, task_id):
+    """Cancel/delete a PDF generation task"""
+    from .pdf_tasks import PDFTaskManager
+    
+    task = PDFTaskManager.get_task(task_id)
+    
+    if not task:
+        return JsonResponse({'error': 'Task not found'}, status=404)
+    
+    # Verify user owns this task
+    if task['user_id'] != request.user.id:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    
+    # Delete task
+    PDFTaskManager.delete_task(task_id)
+    
+    return JsonResponse({'message': 'Task cancelled'})
+
+
+def _generate_pdf_async(task_id, user_id, pg_id):
+    """
+    Background function to generate PDF with progress tracking.
+    This runs in a separate thread.
+    """
+    from .pdf_tasks import PDFTaskManager, get_pdf_storage_dir
+    import os
+    from datetime import datetime
+    
+    try:
+        PDFTaskManager.update_task(
+            task_id,
+            status='processing',
+            progress=5,
+            message='Fetching PG data...'
+        )
+        
+        # Get PG object
+        pg = PG.objects.get(id=pg_id)
+        
+        PDFTaskManager.update_task(
+            task_id,
+            progress=10,
+            message='Fetching rooms and tenants...'
+        )
+        
+        # Import required libraries
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm, inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, Flowable
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_LEFT, TA_CENTER
+        from reportlab.lib import colors
+        import requests
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from io import BytesIO
+        from PIL import Image as PILImage
+        
+        # Get current date and month/year
+        today = timezone.now().date()
+        current_month_year = datetime.now().strftime('%B %Y')
+        
+        PDFTaskManager.update_task(
+            task_id,
+            progress=15,
+            message='Loading room data...'
+        )
+        
+        # Fetch all rooms with optimized queries
+        rooms = list(Room.objects.filter(pg=pg).order_by('room_no').prefetch_related(
+            Prefetch('shares', queryset=RoomShareStatus.objects.all())
+        ))
+        
+        total_rooms = len(rooms)
+        
+        PDFTaskManager.update_task(
+            task_id,
+            progress=20,
+            message=f'Processing {total_rooms} rooms...'
+        )
+        
+        # Create PDF file path
+        pdf_dir = get_pdf_storage_dir()
+        filename = f"pdf_{task_id}.pdf"
+        file_path = os.path.join(pdf_dir, filename)
+        
+        # Create PDF document
+        doc = SimpleDocTemplate(file_path, pagesize=A4, topMargin=10*mm, bottomMargin=10*mm, 
+                               leftMargin=12*mm, rightMargin=12*mm)
+        story = []
+        
+        # Styles
+        styles = getSampleStyleSheet()
+        pg_name_style = ParagraphStyle(
+            'PGName',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#1a237e'),
+            alignment=TA_CENTER,
+            spaceAfter=3*mm,
+            fontName='Helvetica-Bold'
+        )
+        pg_addr_style = ParagraphStyle(
+            'PGAddr',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=TA_CENTER,
+            spaceAfter=2*mm
+        )
+        pg_phone_style = ParagraphStyle(
+            'PGPhone',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=TA_CENTER,
+            spaceAfter=2*mm,
+            fontName='Helvetica-Bold'
+        )
+        pg_month_style = ParagraphStyle(
+            'PGMonth',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=TA_CENTER,
+            spaceAfter=4*mm,
+            fontName='Helvetica-Bold'
+        )
+        room_header_style = ParagraphStyle(
+            'RoomHeader',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#0d47a1'),
+            spaceAfter=2*mm,
+            spaceBefore=3*mm,
+            fontName='Helvetica-Bold'
+        )
+        label_style = ParagraphStyle(
+            'Label',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=colors.grey,
+            leading=10
+        )
+        value_style = ParagraphStyle(
+            'Value',
+            parent=styles['Normal'],
+            fontSize=9,
+            leading=11,
+            fontName='Helvetica-Bold'
+        )
+        
+        # Header
+        story.append(Paragraph(pg.name, pg_name_style))
+        story.append(Paragraph(pg.address or '', pg_addr_style))
+        if pg.phone:
+            story.append(Paragraph(f"Phone: {pg.phone}", pg_phone_style))
+        story.append(Paragraph(current_month_year, pg_month_style))
+        story.append(Spacer(1, 2*mm))
+        
+        PDFTaskManager.update_task(
+            task_id,
+            progress=25,
+            message='Downloading tenant images...'
+        )
+        
+        # Image cache
+        _image_cache = {}
+        
+        # Custom Flowable for checkbox outline
+        class OutlinedCheckbox(Flowable):
+            def __init__(self, size=5*mm, checked=False):
+                Flowable.__init__(self)
+                self.size = size
+                self.checked = checked
+                self.width = size
+                self.height = size
+            
+            def draw(self):
+                self.canv.setStrokeColor(colors.black)
+                self.canv.setLineWidth(0.5)
+                self.canv.rect(0, 0, self.size, self.size, stroke=1, fill=0)
+                if self.checked:
+                    self.canv.setStrokeColor(colors.black)
+                    self.canv.setLineWidth(1)
+                    self.canv.line(0.15*self.size, 0.5*self.size, 0.4*self.size, 0.25*self.size)
+                    self.canv.line(0.4*self.size, 0.25*self.size, 0.85*self.size, 0.75*self.size)
+        
+        def _get_image(url, default_width=18*mm, default_height=22*mm):
+            """Download and cache image with timeout"""
+            if url in _image_cache:
+                return _image_cache[url]
+            
+            if not url:
+                return None
+            
+            # Normalize Drive/Dropbox URLs
+            if 'drive.google.com' in url and '/file/d/' in url:
+                fid = url.split('/file/d/')[1].split('/')[0]
+                url = f"https://drive.google.com/uc?export=download&id={fid}"
+            elif 'dropbox.com' in url:
+                url = url.replace('?dl=0', '?dl=1')
+            
+            try:
+                resp = requests.get(url, timeout=2, stream=True)
+                resp.raise_for_status()
+                
+                img_data = BytesIO(resp.content)
+                pil_img = PILImage.open(img_data)
+                
+                # Resize if needed
+                max_w, max_h = int(default_width * 2.83), int(default_height * 2.83)
+                if pil_img.width > max_w or pil_img.height > max_h:
+                    pil_img.thumbnail((max_w, max_h), PILImage.Resampling.LANCZOS)
+                
+                # Convert to RGB if needed
+                if pil_img.mode in ('RGBA', 'LA', 'P'):
+                    bg = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                    if pil_img.mode == 'P':
+                        pil_img = pil_img.convert('RGBA')
+                    bg.paste(pil_img, mask=pil_img.split()[-1] if pil_img.mode in ('RGBA', 'LA') else None)
+                    pil_img = bg
+                
+                # Save to BytesIO
+                buf = BytesIO()
+                pil_img.save(buf, format='JPEG', quality=85)
+                buf.seek(0)
+                
+                from reportlab.platypus import Image as RLImage
+                rl_img = RLImage(buf, width=default_width, height=default_height)
+                _image_cache[url] = rl_img
+                return rl_img
+            
+            except Exception:
+                _image_cache[url] = None
+                return None
+        
+        # Get all bookings for rooms
+        all_booking_ids = []
+        for room in rooms:
+            for share in room.shares.all():
+                if share.booking_id:
+                    all_booking_ids.append(share.booking_id)
+        
+        # Batch fetch bookings with related data
+        bookings_qs = Booking.objects.filter(id__in=all_booking_ids).select_related(
+            'user', 'user__profile', 'application'
+        )
+        bookings_map = {b.id: b for b in bookings_qs}
+        
+        # Build room_share_map
+        room_share_map = {}
+        for room in rooms:
+            for share in room.shares.all():
+                key = (room.id, share.bed_label)
+                room_share_map[key] = bookings_map.get(share.booking_id) if share.booking_id else None
+        
+        PDFTaskManager.update_task(
+            task_id,
+            progress=30,
+            message='Pre-loading images in parallel...'
+        )
+        
+        # Pre-download images in parallel
+        image_urls = set()
+        for booking in room_share_map.values():
+            if booking:
+                user = booking.user
+                app = getattr(booking, 'application', None)
+                selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
+                if selfie_url:
+                    image_urls.add(selfie_url)
+        
+        # Download images in parallel (max 3 concurrent)
+        if image_urls:
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                future_to_url = {executor.submit(_get_image, url): url for url in image_urls}
+                completed = 0
+                total_images = len(image_urls)
+                
+                for future in as_completed(future_to_url, timeout=60):
+                    try:
+                        future.result(timeout=2)
+                    except Exception:
+                        pass
+                    
+                    completed += 1
+                    progress = 30 + int((completed / total_images) * 20)  # 30-50%
+                    PDFTaskManager.update_task(
+                        task_id,
+                        progress=min(progress, 50),
+                        message=f'Loaded {completed}/{total_images} images...'
+                    )
+        
+        PDFTaskManager.update_task(
+            task_id,
+            progress=55,
+            message='Generating PDF pages...'
+        )
+        
+        # Generate PDF content for each room
+        for idx, room in enumerate(rooms):
+            # Room header
+            story.append(Paragraph(f"Room {room.room_no}", room_header_style))
+            
+            # Get shares for this room
+            shares_data = []
+            for share in room.shares.all().order_by('bed_label'):
+                booking = room_share_map.get((room.id, share.bed_label))
+                
+                if not booking:
+                    # Vacant bed
+                    shares_data.append({
+                        'bed_label': share.bed_label,
+                        'status': 'Vacant',
+                        'name': '-',
+                        'phone': '-',
+                        'joining': '-',
+                        'payment': '-',
+                        'leaving': '-',
+                        'selfie': None
+                    })
+                else:
+                    user = booking.user
+                    app = getattr(booking, 'application', None)
+                    
+                    # Get selfie
+                    selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
+                    selfie_img = _get_image(selfie_url) if selfie_url else None
+                    
+                    # Get details
+                    name = user.get_full_name() or user.email or 'N/A'
+                    phone = getattr(user, 'phone', '') or getattr(getattr(user, 'profile', None), 'phone', '') or '-'
+                    joining = booking.joining_date.strftime('%d %b %Y') if booking.joining_date else '-'
+                    
+                    # Payment status
+                    payment_status = 'Paid' if getattr(booking, 'payment_done', False) else 'Pending'
+                    
+                    # Leaving date
+                    leaving = '-'
+                    if booking.leaving_date:
+                        leaving = booking.leaving_date.strftime('%d %b %Y')
+                        if booking.leaving_date <= today:
+                            leaving += ' (Left)'
+                        else:
+                            leaving += ' (Leaving)'
+                    
+                    shares_data.append({
+                        'bed_label': share.bed_label,
+                        'status': 'Occupied',
+                        'name': name,
+                        'phone': phone,
+                        'joining': joining,
+                        'payment': payment_status,
+                        'leaving': leaving,
+                        'selfie': selfie_img
+                    })
+            
+            # Create cards for each share
+            for share_info in shares_data:
+                # Create a table for each tenant card
+                card_data = []
+                
+                # Row 1: Selfie (left), Details (center), Checkbox (right)
+                selfie_cell = share_info['selfie'] if share_info['selfie'] else Paragraph('', value_style)
+                
+                details_content = [
+                    [Paragraph('Name:', label_style), Paragraph(share_info['name'], value_style)],
+                    [Paragraph('Phone:', label_style), Paragraph(share_info['phone'], value_style)],
+                    [Paragraph('Joining:', label_style), Paragraph(share_info['joining'], value_style)],
+                    [Paragraph('Payment:', label_style), Paragraph(share_info['payment'], value_style)],
+                    [Paragraph('Leaving:', label_style), Paragraph(share_info['leaving'], value_style)],
+                ]
+                
+                details_table = Table(details_content, colWidths=[20*mm, 50*mm])
+                details_table.setStyle(TableStyle([
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                    ('TOPPADDING', (0, 0), (-1, -1), 1),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+                ]))
+                
+                checkbox_cell = OutlinedCheckbox()
+                
+                # Main card table
+                card_table = Table(
+                    [[selfie_cell, details_table, checkbox_cell]],
+                    colWidths=[20*mm, 72*mm, 8*mm]
+                )
+                
+                card_table.setStyle(TableStyle([
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                    ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.whitesmoke if share_info['status'] == 'Vacant' else colors.white),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 3*mm),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 3*mm),
+                    ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
+                ]))
+                
+                story.append(card_table)
+                story.append(Spacer(1, 2*mm))
+            
+            # Update progress
+            progress = 55 + int(((idx + 1) / total_rooms) * 35)  # 55-90%
+            PDFTaskManager.update_task(
+                task_id,
+                progress=min(progress, 90),
+                message=f'Generated {idx + 1}/{total_rooms} rooms...'
+            )
+            
+            # Page break between rooms (except last)
+            if idx < len(rooms) - 1:
+                story.append(PageBreak())
+        
+        PDFTaskManager.update_task(
+            task_id,
+            progress=95,
+            message='Building final PDF...'
+        )
+        
+        # Build PDF
+        doc.build(story)
+        
+        PDFTaskManager.update_task(
+            task_id,
+            status='completed',
+            progress=100,
+            message='PDF generated successfully!',
+            file_path=file_path,
+            completed_at=timezone.now()
+        )
+        
+    except Exception as e:
+        PDFTaskManager.update_task(
+            task_id,
+            status='failed',
+            progress=0,
+            message='PDF generation failed',
+            error=str(e)
+        )

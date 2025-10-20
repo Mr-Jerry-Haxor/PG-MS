@@ -20,8 +20,53 @@
     <a href="{% url 'pg_rooms' %}" class="btn btn-outline-primary">Manage Rooms</a>
     {% if pg %}
       <a href="{% url 'pg_tenants_export' %}?pg={{ pg.id }}" class="btn btn-primary ms-2">Export Excel</a>
-      <a href="{% url 'pg_tenants_export_pdf' %}?pg={{ pg.id }}" class="btn btn-outline-primary ms-2">Export PDF</a>
+      <button id="exportPdfBtn" class="btn btn-outline-primary ms-2" onclick="startPdfExport()">
+        <span id="exportBtnText">Export PDF</span>
+        <span id="exportBtnSpinner" class="spinner-border spinner-border-sm ms-1 d-none" role="status"></span>
+      </button>
     {% endif %}
+  </div>
+</div>
+
+<!-- PDF Export Progress Modal -->
+<div class="modal fade" id="pdfProgressModal" tabindex="-1" aria-labelledby="pdfProgressModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="pdfProgressModalLabel">
+          <i class="bi bi-file-earmark-pdf me-2"></i>Generating PDF
+        </h5>
+      </div>
+      <div class="modal-body">
+        <div class="text-center mb-3">
+          <div class="spinner-border text-primary mb-3" role="status" id="pdfSpinner">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <div class="d-none mb-3" id="pdfSuccess">
+            <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+          </div>
+          <div class="d-none mb-3" id="pdfError">
+            <i class="bi bi-x-circle-fill text-danger" style="font-size: 3rem;"></i>
+          </div>
+        </div>
+        
+        <div class="progress mb-3" style="height: 25px;">
+          <div id="pdfProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+               role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <span id="pdfProgressText">0%</span>
+          </div>
+        </div>
+        
+        <p class="text-center mb-0" id="pdfProgressMessage">Initializing...</p>
+        <p class="text-center text-danger mb-0 d-none" id="pdfErrorMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="pdfCancelBtn" onclick="cancelPdfExport()">Cancel</button>
+        <button type="button" class="btn btn-success d-none" id="pdfDownloadBtn" onclick="downloadPdf()">
+          <i class="bi bi-download me-2"></i>Download PDF
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -406,5 +451,244 @@
 
     document.querySelectorAll('.tenant-share-col').forEach(initShareColumn);
   })();
+
+  // ============================================================================
+  // ASYNC PDF EXPORT WITH PROGRESS TRACKING
+  // ============================================================================
+  let pdfTaskId = null;
+  let pdfProgressInterval = null;
+
+  function getCookie(name) {
+    const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return m ? m.pop() : '';
+  }
+
+  function startPdfExport() {
+    const btn = document.getElementById('exportPdfBtn');
+    const btnText = document.getElementById('exportBtnText');
+    const btnSpinner = document.getElementById('exportBtnSpinner');
+    
+    // Disable button and show spinner
+    btn.disabled = true;
+    btnSpinner.classList.remove('d-none');
+    
+    // Start PDF generation
+    fetch('{% url "pg_tenants_export_pdf_async_start" %}', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': getCookie('csrftoken'),
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      credentials: 'same-origin'
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        alert('Error: ' + data.error);
+        btn.disabled = false;
+        btnSpinner.classList.add('d-none');
+        return;
+      }
+      
+      // Store task ID
+      pdfTaskId = data.task_id;
+      
+      // Show progress modal
+      const modal = new bootstrap.Modal(document.getElementById('pdfProgressModal'));
+      modal.show();
+      
+      // Start polling for progress
+      checkPdfProgress();
+    })
+    .catch(err => {
+      alert('Failed to start PDF generation: ' + err.message);
+      btn.disabled = false;
+      btnSpinner.classList.add('d-none');
+    });
+  }
+
+  function checkPdfProgress() {
+    if (!pdfTaskId) return;
+    
+    const progressUrl = '{% url "pg_tenants_export_pdf_async_progress" "TASK_ID" %}'.replace('TASK_ID', pdfTaskId);
+    
+    fetch(progressUrl, {
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      credentials: 'same-origin'
+    })
+    .then(r => r.json())
+    .then(data => {
+      const progressBar = document.getElementById('pdfProgressBar');
+      const progressText = document.getElementById('pdfProgressText');
+      const progressMessage = document.getElementById('pdfProgressMessage');
+      const spinner = document.getElementById('pdfSpinner');
+      const successIcon = document.getElementById('pdfSuccess');
+      const errorIcon = document.getElementById('pdfError');
+      const errorMessage = document.getElementById('pdfErrorMessage');
+      const cancelBtn = document.getElementById('pdfCancelBtn');
+      const downloadBtn = document.getElementById('pdfDownloadBtn');
+      
+      // Update progress bar
+      progressBar.style.width = data.progress + '%';
+      progressBar.setAttribute('aria-valuenow', data.progress);
+      progressText.textContent = data.progress + '%';
+      progressMessage.textContent = data.message || 'Processing...';
+      
+      if (data.status === 'completed') {
+        // PDF is ready
+        progressBar.classList.remove('progress-bar-animated');
+        progressBar.classList.add('bg-success');
+        spinner.classList.add('d-none');
+        successIcon.classList.remove('d-none');
+        progressMessage.textContent = 'PDF generated successfully!';
+        
+        // Show download button, hide cancel
+        cancelBtn.classList.add('d-none');
+        downloadBtn.classList.remove('d-none');
+        
+        // Stop polling
+        if (pdfProgressInterval) {
+          clearInterval(pdfProgressInterval);
+          pdfProgressInterval = null;
+        }
+      } else if (data.status === 'failed') {
+        // PDF generation failed
+        progressBar.classList.remove('progress-bar-animated');
+        progressBar.classList.add('bg-danger');
+        spinner.classList.add('d-none');
+        errorIcon.classList.remove('d-none');
+        progressMessage.classList.add('d-none');
+        errorMessage.textContent = data.error || 'PDF generation failed';
+        errorMessage.classList.remove('d-none');
+        
+        // Stop polling
+        if (pdfProgressInterval) {
+          clearInterval(pdfProgressInterval);
+          pdfProgressInterval = null;
+        }
+        
+        // Re-enable export button
+        const btn = document.getElementById('exportPdfBtn');
+        const btnSpinner = document.getElementById('exportBtnSpinner');
+        btn.disabled = false;
+        btnSpinner.classList.add('d-none');
+      } else {
+        // Still processing, check again in 1 second
+        if (!pdfProgressInterval) {
+          pdfProgressInterval = setInterval(checkPdfProgress, 1000);
+        }
+      }
+    })
+    .catch(err => {
+      console.error('Failed to check progress:', err);
+      // Retry after 2 seconds
+      if (!pdfProgressInterval) {
+        pdfProgressInterval = setInterval(checkPdfProgress, 2000);
+      }
+    });
+  }
+
+  function downloadPdf() {
+    if (!pdfTaskId) return;
+    
+    const downloadUrl = '{% url "pg_tenants_export_pdf_async_download" "TASK_ID" %}'.replace('TASK_ID', pdfTaskId);
+    
+    // Download PDF
+    window.location.href = downloadUrl;
+    
+    // Close modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('pdfProgressModal'));
+    if (modal) modal.hide();
+    
+    // Reset state
+    pdfTaskId = null;
+    resetPdfExportUI();
+  }
+
+  function cancelPdfExport() {
+    if (pdfTaskId) {
+      const cancelUrl = '{% url "pg_tenants_export_pdf_async_cancel" "TASK_ID" %}'.replace('TASK_ID', pdfTaskId);
+      
+      fetch(cancelUrl, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': getCookie('csrftoken'),
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
+      })
+      .then(() => {
+        // Stop polling
+        if (pdfProgressInterval) {
+          clearInterval(pdfProgressInterval);
+          pdfProgressInterval = null;
+        }
+        
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('pdfProgressModal'));
+        if (modal) modal.hide();
+        
+        // Reset state
+        pdfTaskId = null;
+        resetPdfExportUI();
+      })
+      .catch(err => {
+        console.error('Failed to cancel:', err);
+      });
+    } else {
+      // Just close modal
+      const modal = bootstrap.Modal.getInstance(document.getElementById('pdfProgressModal'));
+      if (modal) modal.hide();
+      resetPdfExportUI();
+    }
+  }
+
+  function resetPdfExportUI() {
+    // Reset export button
+    const btn = document.getElementById('exportPdfBtn');
+    const btnSpinner = document.getElementById('exportBtnSpinner');
+    btn.disabled = false;
+    btnSpinner.classList.add('d-none');
+    
+    // Reset modal
+    const progressBar = document.getElementById('pdfProgressBar');
+    const progressText = document.getElementById('pdfProgressText');
+    const progressMessage = document.getElementById('pdfProgressMessage');
+    const spinner = document.getElementById('pdfSpinner');
+    const successIcon = document.getElementById('pdfSuccess');
+    const errorIcon = document.getElementById('pdfError');
+    const errorMessage = document.getElementById('pdfErrorMessage');
+    const cancelBtn = document.getElementById('pdfCancelBtn');
+    const downloadBtn = document.getElementById('pdfDownloadBtn');
+    
+    progressBar.style.width = '0%';
+    progressBar.setAttribute('aria-valuenow', '0');
+    progressBar.classList.add('progress-bar-animated');
+    progressBar.classList.remove('bg-success', 'bg-danger');
+    progressText.textContent = '0%';
+    progressMessage.textContent = 'Initializing...';
+    progressMessage.classList.remove('d-none');
+    
+    spinner.classList.remove('d-none');
+    successIcon.classList.add('d-none');
+    errorIcon.classList.add('d-none');
+    errorMessage.classList.add('d-none');
+    
+    cancelBtn.classList.remove('d-none');
+    downloadBtn.classList.add('d-none');
+  }
+
+  // Reset modal when it's hidden
+  document.getElementById('pdfProgressModal')?.addEventListener('hidden.bs.modal', function() {
+    if (pdfProgressInterval) {
+      clearInterval(pdfProgressInterval);
+      pdfProgressInterval = null;
+    }
+    setTimeout(resetPdfExportUI, 300);
+  });
+
 </script>
 {% endblock %}

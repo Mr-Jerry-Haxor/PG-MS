@@ -8,6 +8,11 @@ urlpatterns = [
     path('tenants/', views.tenants, name='pg_tenants'),
     path('tenants/export/', views.tenants_export_excel, name='pg_tenants_export'),
     path('tenants/export/pdf/', views.tenants_export_pdf, name='pg_tenants_export_pdf'),
+    # Async PDF generation endpoints
+    path('tenants/export/pdf/async/start/', views.tenants_export_pdf_async_start, name='pg_tenants_export_pdf_async_start'),
+    path('tenants/export/pdf/async/<str:task_id>/progress/', views.tenants_export_pdf_async_progress, name='pg_tenants_export_pdf_async_progress'),
+    path('tenants/export/pdf/async/<str:task_id>/download/', views.tenants_export_pdf_async_download, name='pg_tenants_export_pdf_async_download'),
+    path('tenants/export/pdf/async/<str:task_id>/cancel/', views.tenants_export_pdf_async_cancel, name='pg_tenants_export_pdf_async_cancel'),
     path('rooms/', views.rooms_list, name='pg_rooms'),
     path('rooms/new/', views.room_create, name='pg_room_create'),
     path('rooms/<int:pk>/edit/', views.room_edit, name='pg_room_edit'),
