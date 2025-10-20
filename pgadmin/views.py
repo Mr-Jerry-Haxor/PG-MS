@@ -2510,6 +2510,7 @@ def tenants_export_pdf_async_progress(request, task_id):
 def tenants_export_pdf_async_download(request, task_id):
     """Download completed PDF and delete task"""
     from .pdf_tasks import PDFTaskManager
+    from datetime import datetime
     import os
     
     task = PDFTaskManager.get_task(task_id)
@@ -2610,10 +2611,8 @@ def _generate_pdf_async(task_id, user_id, pg_id):
             message='Loading room data...'
         )
         
-        # Fetch all rooms with optimized queries
-        rooms = list(Room.objects.filter(pg=pg).order_by('room_no').prefetch_related(
-            Prefetch('shares', queryset=RoomShareStatus.objects.all())
-        ))
+        # Fetch all rooms (we'll get bookings separately)
+        rooms = list(Room.objects.filter(pg=pg).order_by('room_no'))
         
         total_rooms = len(rooms)
         
@@ -2728,7 +2727,7 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                     self.canv.line(0.4*self.size, 0.25*self.size, 0.85*self.size, 0.75*self.size)
         
         def _get_image(url, default_width=18*mm, default_height=22*mm):
-            """Download and cache image with timeout"""
+            """Download and cache image with extended timeout and retry support"""
             if url in _image_cache:
                 return _image_cache[url]
             
@@ -2743,7 +2742,8 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                 url = url.replace('?dl=0', '?dl=1')
             
             try:
-                resp = requests.get(url, timeout=2, stream=True)
+                # Increased timeout to 10s for very reliable image loading
+                resp = requests.get(url, timeout=10, stream=True)
                 resp.raise_for_status()
                 
                 img_data = BytesIO(resp.content)
@@ -2772,37 +2772,38 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                 _image_cache[url] = rl_img
                 return rl_img
             
-            except Exception:
+            except Exception as e:
+                # Cache the failure to avoid retrying in the same session
                 _image_cache[url] = None
                 return None
         
-        # Get all bookings for rooms
-        all_booking_ids = []
-        for room in rooms:
-            for share in room.shares.all():
-                if share.booking_id:
-                    all_booking_ids.append(share.booking_id)
-        
-        # Batch fetch bookings with related data
-        bookings_qs = Booking.objects.filter(id__in=all_booking_ids).select_related(
-            'user', 'user__profile', 'application'
-        )
-        bookings_map = {b.id: b for b in bookings_qs}
-        
-        # Build room_share_map
+        # Build room_share_map with all possible shares
         room_share_map = {}
         for room in rooms:
-            for share in room.shares.all():
-                key = (room.id, share.bed_label)
-                room_share_map[key] = bookings_map.get(share.booking_id) if share.booking_id else None
+            total_shares = room.total_shares or 1
+            for share_no in range(1, total_shares + 1):
+                room_share_map[(room.id, share_no)] = None
+        
+        # Batch fetch bookings with related data
+        bookings_qs = Booking.objects.filter(
+            room__in=rooms,
+            status__in=[Booking.APPROVED, Booking.PENDING]
+        ).select_related('user', 'user__profile', 'application').order_by('-created_at')
+        
+        # Map bookings to their room/share positions
+        for booking in bookings_qs:
+            key = (booking.room_id, booking.share_no)
+            if key in room_share_map and room_share_map[key] is None:
+                if not booking.leaving_date or booking.leaving_date >= today:
+                    room_share_map[key] = booking
         
         PDFTaskManager.update_task(
             task_id,
             progress=30,
-            message='Pre-loading images in parallel...'
+            message='Loading images sequentially for best quality...'
         )
         
-        # Pre-download images in parallel
+        # Pre-download images sequentially (one by one) for maximum reliability
         image_urls = set()
         for booking in room_share_map.values():
             if booking:
@@ -2812,26 +2813,39 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                 if selfie_url:
                     image_urls.add(selfie_url)
         
-        # Download images in parallel (max 3 concurrent)
+        # Download images one by one with retry logic for perfect loading
         if image_urls:
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                future_to_url = {executor.submit(_get_image, url): url for url in image_urls}
-                completed = 0
-                total_images = len(image_urls)
+            completed = 0
+            total_images = len(image_urls)
+            
+            for url in image_urls:
+                # Try to load image with up to 3 retries
+                max_retries = 3
+                success = False
                 
-                for future in as_completed(future_to_url, timeout=60):
+                for attempt in range(max_retries):
                     try:
-                        future.result(timeout=2)
-                    except Exception:
-                        pass
-                    
-                    completed += 1
-                    progress = 30 + int((completed / total_images) * 20)  # 30-50%
-                    PDFTaskManager.update_task(
-                        task_id,
-                        progress=min(progress, 50),
-                        message=f'Loaded {completed}/{total_images} images...'
-                    )
+                        result = _get_image(url)
+                        if result is not None:
+                            success = True
+                            break
+                        # If result is None, retry
+                        import time
+                        time.sleep(1)  # Wait 1 second before retry
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(1)  # Wait before retry
+                        continue
+                
+                completed += 1
+                progress = 30 + int((completed / total_images) * 20)  # 30-50%
+                status = "✓" if success else "✗"
+                PDFTaskManager.update_task(
+                    task_id,
+                    progress=min(progress, 50),
+                    message=f'Loading images: {completed}/{total_images} {status}'
+                )
         
         PDFTaskManager.update_task(
             task_id,
@@ -2845,105 +2859,126 @@ def _generate_pdf_async(task_id, user_id, pg_id):
             story.append(Paragraph(f"Room {room.room_no}", room_header_style))
             
             # Get shares for this room
-            shares_data = []
-            for share in room.shares.all().order_by('bed_label'):
-                booking = room_share_map.get((room.id, share.bed_label))
+            total_shares = room.total_shares or 1
+            
+            # Collect all cards for this room
+            all_cards = []
+            
+            for share_no in range(1, total_shares + 1):
+                booking = room_share_map.get((room.id, share_no))
                 
-                if not booking:
-                    # Vacant bed
-                    shares_data.append({
-                        'bed_label': share.bed_label,
-                        'status': 'Vacant',
-                        'name': '-',
-                        'phone': '-',
-                        'joining': '-',
-                        'payment': '-',
-                        'leaving': '-',
-                        'selfie': None
-                    })
-                else:
+                # Build single card with 3 columns: [selfie | details | checkbox]
+                if booking:
                     user = booking.user
                     app = getattr(booking, 'application', None)
-                    
-                    # Get selfie
                     selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
-                    selfie_img = _get_image(selfie_url) if selfie_url else None
                     
-                    # Get details
-                    name = user.get_full_name() or user.email or 'N/A'
-                    phone = getattr(user, 'phone', '') or getattr(getattr(user, 'profile', None), 'phone', '') or '-'
-                    joining = booking.joining_date.strftime('%d %b %Y') if booking.joining_date else '-'
+                    # Normalize URL before cache lookup (must match normalization during download)
+                    normalized_url = None
+                    if selfie_url:
+                        normalized_url = selfie_url
+                        # Google Drive: file/d/ID/view → uc?export=download&id=ID
+                        if 'drive.google.com/file/d/' in normalized_url:
+                            parts = normalized_url.split('/d/')
+                            if len(parts) > 1:
+                                file_id = parts[1].split('/')[0]
+                                normalized_url = f'https://drive.google.com/uc?export=download&id={file_id}'
+                        # Dropbox: ?dl=0 → ?dl=1
+                        elif 'dropbox.com' in normalized_url and '?dl=0' in normalized_url:
+                            normalized_url = normalized_url.replace('?dl=0', '?dl=1')
                     
-                    # Payment status
-                    payment_status = 'Paid' if getattr(booking, 'payment_done', False) else 'Pending'
+                    selfie_img = _image_cache.get(normalized_url) if normalized_url else None
                     
-                    # Leaving date
-                    leaving = '-'
-                    if booking.leaving_date:
-                        leaving = booking.leaving_date.strftime('%d %b %Y')
-                        if booking.leaving_date <= today:
-                            leaving += ' (Left)'
-                        else:
-                            leaving += ' (Leaving)'
+                    name = f"{user.first_name} {user.last_name}".strip() or user.email
+                    phone = getattr(app, 'phone', None) or getattr(getattr(user, 'profile', None), 'phone', '') or ''
+                    joining = booking.joining_date or booking.start_date
+                    joining_str = joining.strftime('%d/%m/%y') if joining else '—'
+                    payment = booking.payment_date
+                    payment_str = payment.strftime('%d/%m/%y') if payment else '—'
+                    leaving = booking.leaving_date
+                    leaving_str = leaving.strftime('%d/%m/%y') if leaving else '—'
                     
-                    shares_data.append({
-                        'bed_label': share.bed_label,
-                        'status': 'Occupied',
-                        'name': name,
-                        'phone': phone,
-                        'joining': joining,
-                        'payment': payment_status,
-                        'leaving': leaving,
-                        'selfie': selfie_img
-                    })
+                    # Column 1: Selfie
+                    if selfie_img:
+                        selfie_cell = selfie_img
+                    else:
+                        selfie_cell = Paragraph("<i>No Photo</i>", ParagraphStyle('TinyText', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER))
+                    
+                    # Column 2: Details
+                    detail_style = ParagraphStyle('CardDetail', parent=styles['Normal'], fontSize=7, leading=9, wordWrap='CJK')
+                    details_lines = [
+                        f"<b>{name}</b>",
+                        f"Phone: {phone}",
+                        f"Join: {joining_str}",
+                        f"Pay: {payment_str}",
+                        f"Leave: {leaving_str}"
+                    ]
+                    details_cell = Paragraph("<br/>".join(details_lines), detail_style)
+                    
+                    # Column 3: Checkbox
+                    checkbox_cell = OutlinedCheckbox(size=4*mm)
+                    
+                    # Build card
+                    single_card_data = [[selfie_cell, details_cell, checkbox_cell]]
+                    single_card = Table(single_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
+                    single_card.setStyle(TableStyle([
+                        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+                        ('VALIGN', (1, 0), (1, 0), 'TOP'),
+                        ('VALIGN', (2, 0), (2, 0), 'MIDDLE'),
+                        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                        ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+                        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+                        ('TOPPADDING', (0, 0), (-1, -1), 2),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                    ]))
+                    all_cards.append(single_card)
+                else:
+                    # Empty bed card
+                    vacant_text = Paragraph("<i>VACANT</i>", ParagraphStyle('VacantText', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER, textColor=colors.grey))
+                    empty_detail = Paragraph(f"<i>Bed {share_no}</i>", ParagraphStyle('EmptyDetail', parent=styles['Normal'], fontSize=7, textColor=colors.grey))
+                    checkbox_cell = OutlinedCheckbox(size=4*mm)
+                    
+                    empty_card_data = [[vacant_text, empty_detail, checkbox_cell]]
+                    empty_card = Table(empty_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
+                    empty_card.setStyle(TableStyle([
+                        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+                        ('VALIGN', (1, 0), (1, 0), 'MIDDLE'),
+                        ('VALIGN', (2, 0), (2, 0), 'MIDDLE'),
+                        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                        ('ALIGN', (1, 0), (1, 0), 'LEFT'),
+                        ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+                        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+                        ('TOPPADDING', (0, 0), (-1, -1), 2),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                    ]))
+                    all_cards.append(empty_card)
             
-            # Create cards for each share
-            for share_info in shares_data:
-                # Create a table for each tenant card
-                card_data = []
+            # Arrange cards in rows of 3
+            cards_per_row = 3
+            for i in range(0, len(all_cards), cards_per_row):
+                row_cards = all_cards[i:i+cards_per_row]
+                # Pad row if less than 3 cards
+                while len(row_cards) < cards_per_row:
+                    row_cards.append(Paragraph("", styles['Normal']))  # empty placeholder
                 
-                # Row 1: Selfie (left), Details (center), Checkbox (right)
-                selfie_cell = share_info['selfie'] if share_info['selfie'] else Paragraph('', value_style)
-                
-                details_content = [
-                    [Paragraph('Name:', label_style), Paragraph(share_info['name'], value_style)],
-                    [Paragraph('Phone:', label_style), Paragraph(share_info['phone'], value_style)],
-                    [Paragraph('Joining:', label_style), Paragraph(share_info['joining'], value_style)],
-                    [Paragraph('Payment:', label_style), Paragraph(share_info['payment'], value_style)],
-                    [Paragraph('Leaving:', label_style), Paragraph(share_info['leaving'], value_style)],
-                ]
-                
-                details_table = Table(details_content, colWidths=[20*mm, 50*mm])
-                details_table.setStyle(TableStyle([
+                # Create row table
+                row_table = Table([row_cards], colWidths=[60*mm, 60*mm, 60*mm])
+                row_table.setStyle(TableStyle([
                     ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                    ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-                    ('TOPPADDING', (0, 0), (-1, -1), 1),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 2),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+                    ('TOPPADDING', (0, 0), (-1, -1), 0),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
                 ]))
-                
-                checkbox_cell = OutlinedCheckbox()
-                
-                # Main card table
-                card_table = Table(
-                    [[selfie_cell, details_table, checkbox_cell]],
-                    colWidths=[20*mm, 72*mm, 8*mm]
-                )
-                
-                card_table.setStyle(TableStyle([
-                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-                    ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
-                    ('BOX', (0, 0), (-1, -1), 1, colors.grey),
-                    ('BACKGROUND', (0, 0), (-1, -1), colors.whitesmoke if share_info['status'] == 'Vacant' else colors.white),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 3*mm),
-                    ('RIGHTPADDING', (0, 0), (-1, -1), 3*mm),
-                    ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
-                ]))
-                
-                story.append(card_table)
+                story.append(row_table)
                 story.append(Spacer(1, 2*mm))
+            
+            # Add space between rooms
+            story.append(Spacer(1, 3*mm))
             
             # Update progress
             progress = 55 + int(((idx + 1) / total_rooms) * 35)  # 55-90%
@@ -2952,10 +2987,6 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                 progress=min(progress, 90),
                 message=f'Generated {idx + 1}/{total_rooms} rooms...'
             )
-            
-            # Page break between rooms (except last)
-            if idx < len(rooms) - 1:
-                story.append(PageBreak())
         
         PDFTaskManager.update_task(
             task_id,
