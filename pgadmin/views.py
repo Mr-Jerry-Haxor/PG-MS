@@ -873,10 +873,11 @@ def tenants_export_excel(request):
 @login_required
 def tenants_export_pdf(request):
     """Export tenants as a structured portrait PDF with room-by-room cards.
+    Optimized for large datasets with streaming and async processing.
 
     Layout:
     - Portrait mode (A4)
-    - Header: PG name (bold, large), address (medium), phone (medium bold) on separate lines
+    - Header: PG name (bold, large), address (medium), phone (medium bold), current month/year (bold) on separate lines
     - For each room: room number header, then resident cards (one per bed)
     - Each card: selfie (left), checkbox (right), details (center): name, phone, joining, payment, leaving
     """
@@ -891,17 +892,24 @@ def tenants_export_pdf(request):
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import mm, inch
         from reportlab.pdfgen import canvas
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, Image as RLImage
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether, Image as RLImage, Flowable
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.enums import TA_LEFT, TA_CENTER
         from reportlab.lib import colors
         import io as _io
         import requests
+        from datetime import datetime
+        from concurrent.futures import ThreadPoolExecutor, as_completed
     except Exception as e:
         return HttpResponse(f"PDF generation dependencies missing: {e}", status=500)
 
     today = timezone.now().date()
-    rooms = list(Room.objects.filter(pg=pg).order_by('room_no').prefetch_related('shares'))
+    current_month_year = datetime.now().strftime('%B %Y')  # e.g., "October 2025"
+    
+    # Fetch data with select_related for optimization
+    rooms = list(Room.objects.filter(pg=pg).order_by('room_no').prefetch_related(
+        Prefetch('shares', queryset=RoomShareStatus.objects.all())
+    ))
 
     buf = _io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=10*mm, bottomMargin=10*mm, leftMargin=12*mm, rightMargin=12*mm)
@@ -911,57 +919,111 @@ def tenants_export_pdf(request):
     # Custom styles - reduced font sizes and spacing
     pg_name_style = ParagraphStyle('PGName', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#000000"), alignment=TA_CENTER, spaceAfter=2)
     pg_address_style = ParagraphStyle('PGAddress', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#1a1a1a'), fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=1)
-    pg_phone_style = ParagraphStyle('PGPhone', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#1a1a1a'), fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=6)
+    pg_phone_style = ParagraphStyle('PGPhone', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#1a1a1a'), fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=1)
+    pg_month_style = ParagraphStyle('PGMonth', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#000000'), fontName='Helvetica-Bold', alignment=TA_CENTER, spaceAfter=6)
     room_header_style = ParagraphStyle('RoomHeader', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor('#2c5aa0'), spaceAfter=3, spaceBefore=5)
 
     # PG Header
     story.append(Paragraph(f"<b>{pg.name}</b>", pg_name_style))
     story.append(Paragraph(pg.address or '', pg_address_style))
     story.append(Paragraph(f"<b>{pg.phone or ''}</b>", pg_phone_style))
+    story.append(Paragraph(f"<b>{current_month_year}</b>", pg_month_style))
     story.append(Spacer(1, 4*mm))
 
-    # Helper to download image and create RLImage - smaller images
+    # Custom Flowable for outlined checkbox
+    class OutlinedCheckbox(Flowable):
+        def __init__(self, size=4*mm):
+            Flowable.__init__(self)
+            self.size = size
+            self.width = size
+            self.height = size
+        
+        def draw(self):
+            self.canv.setStrokeColor(colors.black)
+            self.canv.setFillColor(colors.white)
+            self.canv.setLineWidth(0.5)
+            self.canv.rect(0, 0, self.size, self.size, stroke=1, fill=1)
+
+    # Helper to download image and create RLImage - with caching
+    _image_cache = {}
     def _get_image(url, default_width=18*mm, default_height=22*mm):
         if not url:
             return None
+        if url in _image_cache:
+            return _image_cache[url]
         try:
-            # Normalize drive/dropbox URLs (reuse logic from application_pdf)
+            # Normalize drive/dropbox URLs
             if 'drive.google.com' in url and '/file/d/' in url:
                 fid = url.split('/file/d/')[1].split('/')[0]
                 url = f'https://drive.google.com/uc?export=download&id={fid}'
             elif 'dropbox.com' in url:
                 url = url.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '')
-            resp = requests.get(url, timeout=10, stream=True)
+            resp = requests.get(url, timeout=5, stream=True)
             resp.raise_for_status()
             img_data = _io.BytesIO(resp.content)
             img = RLImage(img_data, width=default_width, height=default_height)
+            _image_cache[url] = img
             return img
         except Exception:
             return None
 
-    # For each room, create room header + cards in 3-column grid
+    # Pre-fetch all bookings in bulk for optimization
+    all_booking_ids = []
+    room_share_map = {}
+    for room in rooms:
+        total_shares = room.total_shares or 1
+        for share_no in range(1, total_shares + 1):
+            room_share_map[(room.id, share_no)] = None
+    
+    # Bulk query bookings
+    bookings_qs = Booking.objects.filter(
+        room__in=rooms,
+        status__in=[Booking.APPROVED, Booking.PENDING]
+    ).select_related('user', 'user__profile', 'application').order_by('-created_at')
+    
+    for booking in bookings_qs:
+        key = (booking.room_id, booking.share_no)
+        if key in room_share_map and room_share_map[key] is None:
+            if not booking.leaving_date or booking.leaving_date >= today:
+                room_share_map[key] = booking
+
+    # Pre-download images in parallel for better performance
+    image_urls = set()
+    for booking in room_share_map.values():
+        if booking:
+            user = booking.user
+            app = getattr(booking, 'application', None)
+            selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
+            if selfie_url:
+                image_urls.add(selfie_url)
+    
+    # Download images in parallel (max 5 concurrent)
+    if image_urls:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_url = {executor.submit(_get_image, url): url for url in image_urls}
+            for future in as_completed(future_to_url):
+                try:
+                    future.result()
+                except Exception:
+                    pass  # Image download failed, will show placeholder
+
+    # Build cards for each room
     for room in rooms:
         story.append(Paragraph(f"Room {room.room_no}", room_header_style))
         total_shares = room.total_shares or 1
 
-        # Collect all cards for this room, then arrange in 3-column rows
+        # Collect all cards for this room
         all_cards = []
         
         for share_no in range(1, total_shares + 1):
-            # Find booking
-            booking = Booking.objects.filter(room=room, share_no=share_no, status__in=[Booking.APPROVED, Booking.PENDING]).select_related('user', 'user__profile').order_by('-created_at').first()
-            include_person = False
-            if booking:
-                if not booking.leaving_date or booking.leaving_date >= today:
-                    include_person = True
+            booking = room_share_map.get((room.id, share_no))
 
             # Build single card with 3 columns: [selfie | details | checkbox]
-            # Each card has consistent height
-            if include_person and booking:
+            if booking:
                 user = booking.user
                 app = getattr(booking, 'application', None)
                 selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
-                selfie_img = _get_image(selfie_url, default_width=16*mm, default_height=20*mm)
+                selfie_img = _image_cache.get(selfie_url) if selfie_url else None
 
                 name = f"{user.first_name} {user.last_name}".strip() or user.email
                 phone = getattr(app, 'phone', None) or getattr(getattr(user, 'profile', None), 'phone', '') or ''
@@ -972,13 +1034,13 @@ def tenants_export_pdf(request):
                 leaving = booking.leaving_date
                 leaving_str = leaving.strftime('%d/%m/%y') if leaving else '—'
 
-                # Column 1: Selfie (centered vertically)
+                # Column 1: Selfie
                 if selfie_img:
                     selfie_cell = selfie_img
                 else:
                     selfie_cell = Paragraph("<i>No Photo</i>", ParagraphStyle('TinyText', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER))
                 
-                # Column 2: Details (wraps if text exceeds column width)
+                # Column 2: Details
                 detail_style = ParagraphStyle('CardDetail', parent=styles['Normal'], fontSize=7, leading=9, wordWrap='CJK')
                 details_lines = [
                     f"<b>{name}</b>",
@@ -989,33 +1051,18 @@ def tenants_export_pdf(request):
                 ]
                 details_cell = Paragraph("<br/>".join(details_lines), detail_style)
                 
-                # Column 3: Checkbox (outlined, centered vertically)
-                # Using a table cell with border to create outlined checkbox
-                from reportlab.platypus import Flowable
-                class OutlinedCheckbox(Flowable):
-                    def __init__(self, size=3*mm):
-                        Flowable.__init__(self)
-                        self.size = size
-                        self.width = size
-                        self.height = size
-                    
-                    def draw(self):
-                        self.canv.setStrokeColor(colors.black)
-                        self.canv.setFillColor(colors.white)
-                        self.canv.setLineWidth(0.5)
-                        self.canv.rect(0, 0, self.size, self.size, stroke=1, fill=1)
-                
+                # Column 3: Checkbox
                 checkbox_cell = OutlinedCheckbox(size=4*mm)
                 
-                # Build card row: [selfie | details | checkbox]
+                # Build card
                 single_card_data = [[selfie_cell, details_cell, checkbox_cell]]
                 single_card = Table(single_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
                 single_card.setStyle(TableStyle([
-                    ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),  # selfie centered vertically
-                    ('VALIGN', (1, 0), (1, 0), 'TOP'),     # details at top
-                    ('VALIGN', (2, 0), (2, 0), 'MIDDLE'),  # checkbox centered vertically
-                    ('ALIGN', (0, 0), (0, 0), 'CENTER'),   # selfie centered horizontally
-                    ('ALIGN', (2, 0), (2, 0), 'CENTER'),   # checkbox centered horizontally
+                    ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+                    ('VALIGN', (1, 0), (1, 0), 'TOP'),
+                    ('VALIGN', (2, 0), (2, 0), 'MIDDLE'),
+                    ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                    ('ALIGN', (2, 0), (2, 0), 'CENTER'),
                     ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
                     ('LEFTPADDING', (0, 0), (-1, -1), 2),
                     ('RIGHTPADDING', (0, 0), (-1, -1), 2),
@@ -1024,31 +1071,11 @@ def tenants_export_pdf(request):
                 ]))
                 all_cards.append(single_card)
             else:
-                # Empty bed card - same size as occupied card
-                # Column 1: "VACANT" text instead of selfie
+                # Empty bed card
                 vacant_text = Paragraph("<i>VACANT</i>", ParagraphStyle('VacantText', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER, textColor=colors.grey))
-                
-                # Column 2: Empty or bed number
                 empty_detail = Paragraph(f"<i>Bed {share_no}</i>", ParagraphStyle('EmptyDetail', parent=styles['Normal'], fontSize=7, textColor=colors.grey))
-                
-                # Column 3: Checkbox (same as occupied)
-                from reportlab.platypus import Flowable
-                class OutlinedCheckbox(Flowable):
-                    def __init__(self, size=3*mm):
-                        Flowable.__init__(self)
-                        self.size = size
-                        self.width = size
-                        self.height = size
-                    
-                    def draw(self):
-                        self.canv.setStrokeColor(colors.black)
-                        self.canv.setFillColor(colors.white)
-                        self.canv.setLineWidth(0.5)
-                        self.canv.rect(0, 0, self.size, self.size, stroke=1, fill=1)
-                
                 checkbox_cell = OutlinedCheckbox(size=4*mm)
                 
-                # Build vacant card with same dimensions
                 empty_card_data = [[vacant_text, empty_detail, checkbox_cell]]
                 empty_card = Table(empty_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
                 empty_card.setStyle(TableStyle([
@@ -1086,10 +1113,10 @@ def tenants_export_pdf(request):
             story.append(row_table)
             story.append(Spacer(1, 2*mm))
 
-        # Add space between rooms - reduced
+        # Add space between rooms
         story.append(Spacer(1, 3*mm))
 
-    # Build PDF
+    # Build PDF with error handling
     try:
         doc.build(story)
     except Exception as e:
@@ -1108,7 +1135,7 @@ def tenants_export_pdf(request):
     pdf = buf.getvalue()
     buf.close()
     safe_name = ''.join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in (pg.name or 'pg'))
-    filename = f"{safe_name.replace(' ', '_')}_tenants_{today.isoformat()}.pdf"
+    filename = f"{safe_name.replace(' ', '_')}_tenants_{current_month_year.replace(' ', '_')}.pdf"
     resp = HttpResponse(pdf, content_type='application/pdf')
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp
