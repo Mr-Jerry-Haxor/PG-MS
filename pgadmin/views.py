@@ -906,6 +906,10 @@ def tenants_export_pdf(request):
     today = timezone.now().date()
     current_month_year = datetime.now().strftime('%B %Y')  # e.g., "October 2025"
     
+    # PERFORMANCE FIX: Skip images for large PGs to avoid 502 timeout
+    total_rooms = Room.objects.filter(pg=pg).count()
+    SKIP_IMAGES = total_rooms > 50  # Skip images if more than 50 rooms
+    
     # Fetch data with select_related for optimization
     rooms = list(Room.objects.filter(pg=pg).order_by('room_no').prefetch_related(
         Prefetch('shares', queryset=RoomShareStatus.objects.all())
@@ -947,6 +951,9 @@ def tenants_export_pdf(request):
     # Helper to download image and create RLImage - with caching
     _image_cache = {}
     def _get_image(url, default_width=18*mm, default_height=22*mm):
+        # PERFORMANCE FIX: Skip images for large PGs
+        if SKIP_IMAGES:
+            return None
         if not url:
             return None
         if url in _image_cache:
@@ -958,7 +965,7 @@ def tenants_export_pdf(request):
                 url = f'https://drive.google.com/uc?export=download&id={fid}'
             elif 'dropbox.com' in url:
                 url = url.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '')
-            resp = requests.get(url, timeout=5, stream=True)
+            resp = requests.get(url, timeout=2, stream=True)  # Reduced from 5s to 2s
             resp.raise_for_status()
             img_data = _io.BytesIO(resp.content)
             img = RLImage(img_data, width=default_width, height=default_height)
@@ -987,25 +994,26 @@ def tenants_export_pdf(request):
             if not booking.leaving_date or booking.leaving_date >= today:
                 room_share_map[key] = booking
 
-    # Pre-download images in parallel for better performance
+    # Pre-download images in parallel for better performance (skip if large PG)
     image_urls = set()
-    for booking in room_share_map.values():
-        if booking:
-            user = booking.user
-            app = getattr(booking, 'application', None)
-            selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
-            if selfie_url:
-                image_urls.add(selfie_url)
-    
-    # Download images in parallel (max 5 concurrent)
-    if image_urls:
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_url = {executor.submit(_get_image, url): url for url in image_urls}
-            for future in as_completed(future_to_url):
-                try:
-                    future.result()
-                except Exception:
-                    pass  # Image download failed, will show placeholder
+    if not SKIP_IMAGES:
+        for booking in room_share_map.values():
+            if booking:
+                user = booking.user
+                app = getattr(booking, 'application', None)
+                selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
+                if selfie_url:
+                    image_urls.add(selfie_url)
+        
+        # Download images in parallel (max 3 concurrent, reduced from 5)
+        if image_urls:
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                future_to_url = {executor.submit(_get_image, url): url for url in image_urls}
+                for future in as_completed(future_to_url, timeout=20):  # 20s max total
+                    try:
+                        future.result(timeout=2)  # 2s per image
+                    except Exception:
+                        pass  # Image download failed, will show placeholder
 
     # Build cards for each room
     for room in rooms:
