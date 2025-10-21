@@ -44,27 +44,55 @@ def booking_joining_update(request, booking_id):
     booking = get_object_or_404(Booking, pk=booking_id)
     # Authorization: must be a PG Admin and admin of the booking's PG
     u = request.user
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    redirect_url = request.META.get('HTTP_REFERER') or 'pg_resident_applications'
+
     if not _require_pg_admin(u) or not _admin_pgs(u).filter(id=getattr(booking, 'pg_id', None)).exists():
-        messages.error(request, 'PG Admin access required for this PG.')
+        message = 'PG Admin access required for this PG.'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': message}, status=403)
+        messages.error(request, message)
         return redirect('pg_resident_applications')
+
     if request.method != 'POST':
-        messages.error(request, 'Unsupported request method.')
+        message = 'Unsupported request method.'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': message}, status=405)
+        messages.error(request, message)
         return redirect('pg_resident_applications')
     date_str = (request.POST.get('joining_date') or '').strip()
     if not date_str:
-        messages.error(request, 'Joining date is required.')
-        return redirect(request.META.get('HTTP_REFERER') or 'pg_resident_applications')
+        message = 'Joining date is required.'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': message}, status=400)
+        messages.error(request, message)
+        return redirect(redirect_url)
     dt = parse_date(date_str)
     if not dt:
-        messages.error(request, 'Invalid date format. Use YYYY-MM-DD.')
-        return redirect(request.META.get('HTTP_REFERER') or 'pg_resident_applications')
+        message = 'Invalid date format. Use YYYY-MM-DD.'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': message}, status=400)
+        messages.error(request, message)
+        return redirect(redirect_url)
     try:
         booking.joining_date = dt
         booking.save(update_fields=['joining_date'])
-        messages.success(request, f'Joining date updated to {dt}.')
+        success_message = f'Joining date updated to {dt}.'
+        if is_ajax:
+            return JsonResponse({
+                'ok': True,
+                'message': success_message,
+                'value': dt.isoformat(),
+                'value_iso': dt.isoformat(),
+                'display': dt.isoformat(),
+            })
+        messages.success(request, success_message)
     except Exception as e:
-        messages.error(request, f'Could not update joining date: {e}')
-    return redirect(request.META.get('HTTP_REFERER') or 'pg_resident_applications')
+        error_message = f'Could not update joining date: {e}'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': error_message}, status=500)
+        messages.error(request, error_message)
+    return redirect(redirect_url)
 
 
 @login_required
@@ -254,29 +282,53 @@ def booking_payment_date_update(request, booking_id: int):
     """Allow PG admin to update the monthly payment_date for a booking from the PG admin UI.
     Mirrors finance.monthly_update_payment_date but scoped to PG admin area and redirects back.
     """
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    redirect_url = request.META.get('HTTP_REFERER') or 'pg_tenants'
+
     if request.method != 'POST':
-        messages.error(request, 'Invalid request method.')
+        message = 'Invalid request method.'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': message}, status=405)
+        messages.error(request, message)
         return redirect('pg_tenants')
     if not _require_pg_admin(request.user):
-        messages.error(request, 'PG Admin access required.')
+        message = 'PG Admin access required.'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': message}, status=403)
+        messages.error(request, message)
         return redirect('pg_my')
 
     payment_raw = (request.POST.get('payment_date') or '').strip()
     payment_date = parse_date(payment_raw) if payment_raw else None
     if not payment_date:
-        messages.error(request, 'Select a valid payment date.')
-        return redirect(request.META.get('HTTP_REFERER') or 'pg_tenants')
+        message = 'Select a valid payment date.'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': message}, status=400)
+        messages.error(request, message)
+        return redirect(redirect_url)
 
     booking = get_object_or_404(Booking, pk=booking_id)
     if not _admin_pgs(request.user).filter(id=getattr(booking, 'pg_id', None)).exists():
-        messages.error(request, 'You do not have access to the requested PG.')
-        return redirect(request.META.get('HTTP_REFERER') or 'pg_tenants')
+        message = 'You do not have access to the requested PG.'
+        if is_ajax:
+            return JsonResponse({'ok': False, 'error': message}, status=403)
+        messages.error(request, message)
+        return redirect(redirect_url)
 
     booking.payment_date = payment_date
     booking.save(update_fields=['payment_date'])
     log(request.user, 'booking_payment_date_updated', 'Booking', booking.id)
-    messages.success(request, 'Payment date updated.')
-    return redirect(request.META.get('HTTP_REFERER') or 'pg_tenants')
+    success_message = 'Payment date updated.'
+    if is_ajax:
+        return JsonResponse({
+            'ok': True,
+            'message': success_message,
+            'value': payment_date.isoformat(),
+            'value_iso': payment_date.isoformat(),
+            'display': payment_date.isoformat(),
+        })
+    messages.success(request, success_message)
+    return redirect(redirect_url)
 
 @login_required
 def pg_referrals(request):

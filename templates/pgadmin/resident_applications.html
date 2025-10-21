@@ -7,6 +7,8 @@
   .apps-summary{display:flex;flex-wrap:wrap;gap:.5rem;font-size:.75rem}
   .apps-summary .badge{font-weight:500}
   .apps-grid{display:grid;gap:.85rem}
+  .flash-update{animation:flashFade 1.4s ease-out}
+  @keyframes flashFade{0%{background:#fff3cd}100%{background:transparent}}
   @media(min-width:700px){.apps-grid{grid-template-columns:repeat(auto-fill,minmax(360px,1fr))}}
   .app-card{position:relative;border:1px solid #e5e7eb;border-radius:1rem;padding:.9rem .95rem;background:var(--card);box-shadow:0 4px 12px -3px rgba(0,0,0,.05);display:flex;flex-direction:column;gap:.5rem}
   .app-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem}
@@ -61,12 +63,12 @@
       <div class="app-card-header">
         <div>
           <div class="fw-semibold">Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
-          <div class="text-secondary small">Joining date: {% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}
+          <div class="text-secondary small">Joining date: <span id="joiningDateDisplay{{ b.id }}" class="d-inline-block">{% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span>
             <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Edit joining date" data-bs-toggle="modal" data-bs-target="#joinDateModal{{ b.id }}">
               <i class="bi bi-pencil-square"></i>
             </button>
           </div>
-          <div class="text-secondary small">Payment date: {% if b.payment_date %}{{ b.payment_date|date:"Y-m-d" }}{% else %}—{% endif %}
+          <div class="text-secondary small">Payment date: <span id="paymentDateDisplay{{ b.id }}" class="d-inline-block">{% if b.payment_date %}{{ b.payment_date|date:"Y-m-d" }}{% else %}—{% endif %}</span>
             <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Edit payment date" data-bs-toggle="modal" data-bs-target="#paymentDateModal{{ b.id }}">
               <i class="bi bi-pencil-square"></i>
             </button>
@@ -140,7 +142,7 @@
   <div class="modal fade" id="joinDateModal{{ b.id }}" tabindex="-1" aria-labelledby="joinDateLabel{{ b.id }}" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
-        <form method="post" action="{% url 'pg_booking_joining_update' b.id %}">
+  <form method="post" action="{% url 'pg_booking_joining_update' b.id %}" class="joining-date-form" data-booking-id="{{ b.id }}">
           {% csrf_token %}
           <div class="modal-header">
             <h5 class="modal-title" id="joinDateLabel{{ b.id }}">Edit Joining Date</h5>
@@ -162,7 +164,7 @@
   <div class="modal fade" id="paymentDateModal{{ b.id }}" tabindex="-1" aria-labelledby="paymentDateLabel{{ b.id }}" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
-        <form method="post" action="{% url 'pg_booking_payment_date_update' b.id %}">
+  <form method="post" action="{% url 'pg_booking_payment_date_update' b.id %}" class="payment-date-form" data-booking-id="{{ b.id }}">
           {% csrf_token %}
           <div class="modal-header">
             <h5 class="modal-title" id="paymentDateLabel{{ b.id }}">Edit Payment Date</h5>
@@ -226,8 +228,8 @@
             <div class="field field-box"><small>Food Pref</small><span>{{ b.application.food_pref|default:"—" }}</span></div>
             <div class="field field-box"><small>Marital</small><span>{{ b.application.marital_status|default:"—" }}</span></div>
             <div class="field field-box"><small>Date of application</small><span>{{ b.application.date_of_admission|default:"—" }}</span></div>
-            <div class="field field-box"><small>Joining Date</small><span>{% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
-            <div class="field field-box"><small>Payment Date</small><span>{% if b.payment_date %}{{ b.payment_date|date:"Y-m-d" }}{% elif b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
+            <div class="field field-box"><small>Joining Date</small><span id="joiningDateField{{ b.id }}">{% if b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
+            <div class="field field-box"><small>Payment Date</small><span id="paymentDateField{{ b.id }}">{% if b.payment_date %}{{ b.payment_date|date:"Y-m-d" }}{% elif b.joining_date %}{{ b.joining_date|date:"Y-m-d" }}{% elif b.start_date %}{{ b.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
           </div>
           <div class="field mt-2 field-box"><small>Address</small><div>{{ b.application.address|default:"—" }}</div></div>
           <div class="section-title">Family</div>
@@ -482,6 +484,68 @@
       anchor.after(node);
       if (window.bootstrap) new bootstrap.Toast(node).show();
     }
+
+  function attachAjaxFormHandler(selector, {dateFieldPrefix}) {
+      const forms = document.querySelectorAll(selector);
+      if (!forms.length) return;
+      forms.forEach(function(form){
+        form.addEventListener('submit', function(evt){
+          evt.preventDefault();
+          const bookingId = form.dataset.bookingId;
+          const formData = new FormData(form);
+          fetch(form.getAttribute('action'), {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            body: formData,
+            credentials: 'same-origin'
+          })
+          .then(function(res){ return res.json(); })
+          .then(function(data){
+            if (!data || !data.ok) {
+              const message = (data && (data.error || data.message)) || 'Update failed.';
+              if (window.showToast) window.showToast(message, 'danger'); else alert(message);
+              return;
+            }
+
+            const displaySpan = document.getElementById(`${dateFieldPrefix}Display${bookingId}`);
+            if (displaySpan) {
+              displaySpan.textContent = data.display || data.value || '—';
+              displaySpan.classList.remove('flash-update');
+              void displaySpan.offsetWidth;
+              displaySpan.classList.add('flash-update');
+            }
+            const modalSpan = document.getElementById(`${dateFieldPrefix}Field${bookingId}`);
+            if (modalSpan) {
+              modalSpan.textContent = data.display || data.value || '—';
+              modalSpan.classList.remove('flash-update');
+              void modalSpan.offsetWidth;
+              modalSpan.classList.add('flash-update');
+            }
+
+            const input = form.querySelector('input[type="date"]');
+            if (input && data.value_iso) {
+              input.value = data.value_iso;
+            }
+
+            const modalEl = form.closest('.modal');
+            if (modalEl && window.bootstrap) {
+              const instance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+              instance.hide();
+            }
+
+            const successMsg = data.message || 'Updated successfully.';
+            if (window.showToast) window.showToast(successMsg, 'success');
+          })
+          .catch(function(err){
+            console.error('Update failed', err);
+            if (window.showToast) window.showToast('Update failed. Please try again.', 'danger'); else alert('Update failed.');
+          });
+        });
+      });
+    }
+
+    attachAjaxFormHandler('.joining-date-form', {dateFieldPrefix: 'joiningDate'});
+    attachAjaxFormHandler('.payment-date-form', {dateFieldPrefix: 'paymentDate'});
   })();
 </script>
 {% endblock %}
