@@ -2561,37 +2561,69 @@ def tenants_export_pdf_async_progress(request, task_id):
 @login_required
 def tenants_export_pdf_async_download(request, task_id):
     """Download completed PDF and delete task"""
-    from .pdf_tasks import PDFTaskManager
+    from .pdf_tasks import PDFTaskManager, get_pdf_storage_dir
     from datetime import datetime
     import os
-    
+
     task = PDFTaskManager.get_task(task_id)
-    
+    fallback_mode = False
+
     if not task:
-        return HttpResponse('Task not found', status=404)
-    
+        # Recover from scenarios where the in-memory task dictionary is cleared (e.g., different worker)
+        parts = task_id.split('_') if task_id else []
+        fallback_user_id = None
+        fallback_pg_id = None
+        if len(parts) >= 4 and parts[0] == 'pdf':
+            try:
+                fallback_user_id = int(parts[1])
+                fallback_pg_id = int(parts[2])
+            except ValueError:
+                fallback_user_id = None
+        if fallback_user_id != request.user.id:
+            return HttpResponse('Task not found', status=404)
+        if fallback_pg_id is None or not _admin_pgs(request.user).filter(id=fallback_pg_id).exists():
+            return HttpResponse('Task not found', status=404)
+
+        fallback_file = os.path.join(get_pdf_storage_dir(), f"pdf_{task_id}.pdf")
+        if not os.path.exists(fallback_file):
+            return HttpResponse('Task not found', status=404)
+
+        pg_name = PG.objects.filter(id=fallback_pg_id).values_list('name', flat=True).first() or 'PG'
+        task = {
+            'user_id': fallback_user_id,
+            'pg_id': fallback_pg_id,
+            'pg_name': pg_name,
+            'status': 'completed',
+            'file_path': fallback_file,
+        }
+        fallback_mode = True
+
     # Verify user owns this task
     if task['user_id'] != request.user.id:
         return HttpResponse('Forbidden', status=403)
-    
+
     if task['status'] != 'completed':
         return HttpResponse('PDF not ready yet', status=400)
-    
-    if not task.get('file_path') or not os.path.exists(task['file_path']):
+
+    file_path = task.get('file_path')
+    if not file_path or not os.path.exists(file_path):
         return HttpResponse('PDF file not found', status=404)
-    
-    # Read file
-    with open(task['file_path'], 'rb') as f:
+
+    with open(file_path, 'rb') as f:
         pdf_data = f.read()
-    
-    # Delete task and file
-    PDFTaskManager.delete_task(task_id)
-    
-    # Return PDF
+
+    if fallback_mode:
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+    else:
+        PDFTaskManager.delete_task(task_id)
+
     response = HttpResponse(pdf_data, content_type='application/pdf')
     filename = f"{task['pg_name'].replace(' ', '_')}_tenants_{datetime.now().strftime('%B_%Y')}.pdf"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    
+
     return response
 
 
