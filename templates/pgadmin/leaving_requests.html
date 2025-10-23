@@ -43,7 +43,7 @@
         {% if not b.leaving_confirmed_date %}
         <div class="lr-card fade-in">
           <div class="d-flex flex-column gap-1">
-            <div class="fw-semibold small">{{ b.user.email }}</div>
+            <div class="fw-semibold small">{{ b.user.get_full_name|default:b.user.email }}</div>
             <div class="lr-meta">
               <span class="pill">Room {{ b.room.room_no }}</span>
               <span class="pill">Bed {{ b.share_no }}</span>
@@ -82,7 +82,7 @@
         <tbody>
           {% for b in bookings %}
           <tr class="{% if b.leaving_confirmed_date %}table-success{% endif %}">
-            <td class="small">{{ b.user.email }}</td>
+            <td class="small">{{ b.user.get_full_name|default:b.user.email }}</td>
             <td class="small">{{ b.room.room_no }} / {{ b.share_no }}</td>
             <td class="small">{{ b.start_date|default:b.joining_date }}</td>
             <td class="small">{{ b.leaving_date }}</td>
@@ -132,7 +132,7 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body small text-secondary">
-          <p class="mb-2">You are about to permanently delete the booking and application data for <strong>{{ b.user.email }}</strong>.</p>
+          <p class="mb-2">You are about to permanently delete the booking and application data for <strong>{{ b.user.get_full_name|default:b.user.email }}</strong>.</p>
           <ul class="mb-0 ps-3">
             <li>Booking and application records will be removed.</li>
             <li>Linked selfie, Aadhaar files will be deleted where possible.</li>
