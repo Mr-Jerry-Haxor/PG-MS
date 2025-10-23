@@ -76,7 +76,17 @@ def booking_joining_update(request, booking_id):
         return redirect(redirect_url)
     try:
         booking.joining_date = dt
-        booking.save(update_fields=['joining_date'])
+        # If payment_date is not explicitly set or equals old joining_date, update it too
+        old_payment_date = booking.payment_date
+        old_joining_date = Booking.objects.filter(pk=booking_id).values_list('joining_date', flat=True).first()
+        
+        update_fields = ['joining_date']
+        # Auto-update payment_date if it was previously synced with joining_date or not set
+        if not old_payment_date or old_payment_date == old_joining_date:
+            booking.payment_date = dt
+            update_fields.append('payment_date')
+        
+        booking.save(update_fields=update_fields)
         success_message = f'Joining date updated to {dt}.'
         if is_ajax:
             return JsonResponse({

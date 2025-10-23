@@ -135,7 +135,7 @@
                 </button>
             </div>
         </div>
-        <div class="collapse show" id="filterCollapse">
+        <div class="collapse" id="filterCollapse">
             <div class="card-body">
                 <form method="get" class="row g-3">
                     <div class="col-12 col-md-6 col-lg-3">
@@ -253,7 +253,7 @@
                                     <div>
                                         <div>{{ complaint.user.get_full_name|default:complaint.user.email }}</div>
                                         {% if complaint.booking %}
-                                        <small class="text-muted">Room {{ complaint.booking.room.room_no }}</small>
+                                        <small class="text-muted">Room {{ complaint.booking.room.room_no }}, Bed {{ complaint.booking.share_no }}</small>
                                         {% endif %}
                                     </div>
                                 </td>

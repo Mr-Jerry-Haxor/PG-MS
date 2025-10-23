@@ -467,7 +467,10 @@ def _resolve_status(expected: float, collected: float, m_first: date, due_date: 
             due_passed = True
 
     if due_passed:
-        if collected >= expected - 0.5:
+        # Use tolerance of 1 rupee to handle accumulated rounding errors
+        # from multiple pro-rated calculations
+        tolerance = 1.0
+        if collected >= expected - tolerance:
             return 'paid', 'Paid', 'status-paid'
         if collected > 0:
             return 'partial', 'Partial', 'status-partial'
@@ -488,7 +491,9 @@ def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None
         monthly = float(fees.monthly_fee) if fees else 0.0
     # Pro-rate by overlap days
     days_in_month = (m_last - m_first).days + 1
-    # Use joining_date as the primary start for pro-rating; fallback to start_date then created_at
+    # CRITICAL: Use joining_date as the primary start for pro-rating occupancy days
+    # payment_date should ONLY affect when rent is due, NOT the calculation of days stayed
+    # Fallback chain: joining_date → start_date → created_at
     start = booking.joining_date or booking.start_date or booking.created_at.date()
     end = booking.leaving_date
     stayed = _overlap_days(start, end, m_first, m_last)
@@ -641,11 +646,19 @@ def expenditure_export_pdf(request):
 
 
 def _collected_for_user_pg_month(u, pg, m_first, m_last) -> float:
-    # Count only rent/fee payments for the selected month; exclude advances and adjustments
+    # Count rent/fee payments for the selected month
     p_sum = Payment.objects.filter(
         user=u, pg=pg, status='success', type='fee', date__gte=m_first, date__lte=m_last
     ).aggregate(total=Sum('amount')).get('total') or 0
-    return float(p_sum)
+    
+    # Also include credit adjustments as collected (waivers/discounts reduce what's owed)
+    # Note: deposit_deduction is NOT included as it's a separate deduction from security deposit
+    adj_sum = Adjustment.objects.filter(
+        user=u, pg=pg, type='credit', 
+        date__gte=m_first, date__lte=m_last
+    ).aggregate(total=Sum('amount')).get('total') or 0
+    
+    return float(p_sum) + float(adj_sum)
 
 
 def _advance_paid_for_user_pg(u, pg) -> float:
@@ -2086,16 +2099,17 @@ def ledger_view(request, user_id):
             'debit': 0.0,
         })
     for a in a_qs:
-        if a.type in ('credit', 'deposit_deduction'):
+        # Credit increases tenant's balance, debit/deposit_deduction decreases it
+        if a.type == 'credit':
             credit = float(a.amount)
             debit = 0.0
-        else:
+        else:  # debit or deposit_deduction
             credit = 0.0
             debit = float(a.amount)
         items.append({
             'date': a.date,
             'type': f'adjustment/{a.type}',
-            'description': a.note or a.get_type_display(),
+            'description': a.notes or a.get_type_display(),
             'credit': credit,
             'debit': debit,
         })
@@ -2224,14 +2238,15 @@ def ledger_export_csv(request, user_id):
             'debit': 0.0,
         })
     for a in a_qs:
-        if a.type in ('credit', 'deposit_deduction'):
+        # Credit increases tenant's balance, debit/deposit_deduction decreases it
+        if a.type == 'credit':
             credit = float(a.amount); debit = 0.0
-        else:
+        else:  # debit or deposit_deduction
             credit = 0.0; debit = float(a.amount)
         entries.append({
             'date': a.date,
             'type': f'adjustment/{a.type}',
-            'description': a.note or a.get_type_display(),
+            'description': a.notes or a.get_type_display(),
             'credit': credit,
             'debit': debit,
         })

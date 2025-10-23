@@ -107,8 +107,8 @@
                         {% if complaint.booking %}
                         <div class="col-12 col-md-6 col-lg-3">
                             <div class="text-muted small">
-                                <i class="bi bi-door-open"></i> <strong>Room</strong><br>
-                                <span class="text-dark">{{ complaint.booking.room.room_no }} - Share {{ complaint.booking.share_no }}</span>
+                                <i class="bi bi-door-open"></i> <strong>Room & Bed</strong><br>
+                                <span class="text-dark">Room {{ complaint.booking.room.room_no }}, Bed {{ complaint.booking.share_no }}</span>
                             </div>
                         </div>
                         {% endif %}

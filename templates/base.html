@@ -67,6 +67,73 @@
         .table th,.table td{vertical-align:middle}
       }
       footer {background: transparent;}
+      
+      /* Scroll to top button with progress */
+      #scrollToTop {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #2563eb, #7c3aed);
+        color: white;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.2s ease;
+        z-index: 1000;
+      }
+      #scrollToTop.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+      #scrollToTop:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+      }
+      #scrollToTop:active {
+        transform: translateY(-1px);
+      }
+      #scrollToTop svg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        transform: rotate(-90deg);
+      }
+      #scrollToTop svg circle {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.3);
+        stroke-width: 3;
+      }
+      #scrollToTop svg circle.progress {
+        stroke: white;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.1s linear;
+      }
+      #scrollToTop i {
+        position: relative;
+        z-index: 1;
+        font-size: 20px;
+      }
+      @media (max-width: 576px) {
+        #scrollToTop {
+          width: 45px;
+          height: 45px;
+          bottom: 20px;
+          right: 20px;
+        }
+        #scrollToTop i {
+          font-size: 18px;
+        }
+      }
     </style>
     {% block head_extra %}{% endblock %}
   </head>
@@ -212,9 +279,61 @@
         </div>
       </div>
     </div>
+
+    <!-- Scroll to Top Button with Progress -->
+    <button id="scrollToTop" aria-label="Scroll to top">
+      <svg>
+        <circle cx="25" cy="25" r="22"></circle>
+        <circle class="progress" cx="25" cy="25" r="22"></circle>
+      </svg>
+      <i class="bi bi-arrow-up"></i>
+    </button>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', function(){
+        // Scroll to top button with progress indicator
+        const scrollBtn = document.getElementById('scrollToTop');
+        const progressCircle = scrollBtn.querySelector('circle.progress');
+        const radius = progressCircle.r.baseVal.value;
+        const circumference = 2 * Math.PI * radius;
+        
+        // Set initial state
+        progressCircle.style.strokeDasharray = circumference;
+        progressCircle.style.strokeDashoffset = circumference;
+        
+        function updateScrollProgress() {
+          const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+          const docHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+          const scrollPercent = (scrollTop / docHeight) * 100;
+          
+          // Show button after scrolling 200px
+          if (scrollTop > 200) {
+            scrollBtn.classList.add('visible');
+          } else {
+            scrollBtn.classList.remove('visible');
+          }
+          
+          // Update progress circle
+          const offset = circumference - (scrollPercent / 100) * circumference;
+          progressCircle.style.strokeDashoffset = offset;
+        }
+        
+        // Smooth scroll to top
+        scrollBtn.addEventListener('click', function() {
+          window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+          });
+        });
+        
+        // Update on scroll
+        window.addEventListener('scroll', updateScrollProgress);
+        
+        // Initial check
+        updateScrollProgress();
+
+        // Logout confirmation
         const confirmBtn = document.getElementById('confirmLogoutBtn');
         const form = document.getElementById('logoutForm');
         if (confirmBtn && form) {
