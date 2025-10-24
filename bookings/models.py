@@ -137,6 +137,7 @@ class ResidentApplication(TimeStampedModel):
 	dob = models.DateField(null=True, blank=True)
 	age = models.PositiveSmallIntegerField(null=True, blank=True)
 	phone = models.CharField(max_length=20)
+	whatsapp_number = models.CharField(max_length=20, blank=True, help_text="WhatsApp number (can be same as phone)")
 	email = models.EmailField()
 	father_name = models.CharField(max_length=255, blank=True)
 	father_phone = models.CharField(max_length=20, blank=True)

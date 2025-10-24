@@ -40,11 +40,13 @@
           <div class="field field-box"><small>DOB</small><span>{{ booking.application.dob|default:"—" }}</span></div>
           <div class="field field-box"><small>Age</small><span>{{ booking.application.age|default:"—" }}</span></div>
           <div class="field field-box"><small>Phone</small><span>{{ booking.application.phone|default:booking.user.profile.phone|default:"—" }}</span></div>
+          <div class="field field-box"><small>WhatsApp</small><span>{{ booking.application.whatsapp_number|default:"—" }}</span></div>
           <div class="field field-box"><small>Email</small><span class="text-break">{{ booking.application.email|default:booking.user.email }}</span></div>
           <div class="field field-box"><small>Food Pref</small><span>{{ booking.application.food_pref|default:"—" }}</span></div>
           <div class="field field-box"><small>Marital</small><span>{{ booking.application.marital_status|default:"—" }}</span></div>
           <div class="field field-box"><small>Date of Application</small><span>{{ booking.application.date_of_admission|default:"—" }}</span></div>
           <div class="field field-box"><small>Joining Date</small><span>{% if booking.joining_date %}{{ booking.joining_date|date:'Y-m-d' }}{% elif booking.start_date %}{{ booking.start_date|date:'Y-m-d' }}{% else %}—{% endif %}</span></div>
+          <div class="field field-box"><small>Payment Date</small><span>{% if booking.payment_date %}{{ booking.payment_date|date:'Y-m-d' }}{% elif booking.joining_date %}{{ booking.joining_date|date:'Y-m-d' }}{% elif booking.start_date %}{{ booking.start_date|date:'Y-m-d' }}{% else %}—{% endif %}</span></div>
         </div>
         <div class="field mt-2 field-box"><small>Address</small><div>{{ booking.application.address|default:"—" }}</div></div>
         <div class="section-title">Family</div>

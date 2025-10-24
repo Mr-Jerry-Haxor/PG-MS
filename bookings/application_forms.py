@@ -43,11 +43,11 @@ class ResidentApplicationForm(forms.ModelForm):
     class Meta:
         model = ResidentApplication
         fields = [
-            'name','dob','age','phone','email','father_name','father_phone','mother_name','mother_phone','address',
+            'name','dob','age','phone','whatsapp_number','email','father_name','father_phone','mother_name','mother_phone','address',
             'date_of_admission','food_pref','marital_status','education','occupation','org_name','org_address',
             'aadhaar_number','has_vehicle','vehicle_number','vehicle_model',
         ]
-        widgets = {k: forms.TextInput(attrs={"class":"form-control"}) for k in ['name','phone','email','father_name','father_phone','mother_name','mother_phone','education','org_name','aadhaar_number','vehicle_number','vehicle_model']}
+        widgets = {k: forms.TextInput(attrs={"class":"form-control"}) for k in ['name','phone','whatsapp_number','email','father_name','father_phone','mother_name','mother_phone','education','org_name','aadhaar_number','vehicle_number','vehicle_model']}
         widgets.update({
             'dob': forms.DateInput(attrs={"type":"date","class":"form-control"}),
             'age': forms.NumberInput(attrs={"class":"form-control", "readonly": "readonly"}),

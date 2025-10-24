@@ -1,11 +1,12 @@
 import io
-from datetime import timedelta
+from datetime import timedelta, date
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.db import transaction
 from django.conf import settings
 from django.utils import timezone
+from django.db.models import Q
 
 from accounts.models import Profile
 from core.audit import log
@@ -31,7 +32,17 @@ def pg_quick_booking(request, pgslug):
     from .application_forms import ResidentApplicationForm
     from .models import ResidentApplication, ApplicationStatusHistory
     pg = _pg_by_slug_or_404(pgslug)
-    has_active = Booking.objects.filter(user=request.user, room__pg=pg, status__in=[Booking.PENDING, Booking.APPROVED]).exists()
+    
+    # Check if user has an active booking (PENDING/APPROVED status and either no leaving date or leaving date in future)
+    # Allow booking if user has left (leaving_confirmed_date is set and in the past)
+    today = date.today()
+    has_active = Booking.objects.filter(
+        user=request.user, 
+        room__pg=pg, 
+        status__in=[Booking.PENDING, Booking.APPROVED]
+    ).filter(
+        Q(leaving_confirmed_date__isnull=True) | Q(leaving_confirmed_date__gt=today)
+    ).exists()
 
     context = {'pg': pg, 'has_active': has_active}
 
@@ -467,11 +478,13 @@ def request_booking(request, room_id, share_no):
             # Best-effort; if this fails, constraint will still prevent duplicate active bookings.
             pass
     # Only block if user already has a pending/approved booking in THIS PG.
-    # Users who left (COMPLETED) can book again in the same PG.
+    # Users who left (COMPLETED or leaving_confirmed_date in the past) can book again in the same PG.
     has_active = Booking.objects.filter(
         user=request.user,
         room__pg=room.pg,
         status__in=[Booking.PENDING, Booking.APPROVED],
+    ).filter(
+        Q(leaving_confirmed_date__isnull=True) | Q(leaving_confirmed_date__gt=today)
     ).exists()
     if has_active:
         messages.error(request, "You already have an active booking in this PG. You can book in another PG, but only one booking per PG is allowed.")

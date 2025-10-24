@@ -9,8 +9,19 @@
       <div class="col-md-6">{{ form.name.label_tag }} {{ form.name }}{% if form.name.errors %}<div class="text-danger small">{{ form.name.errors|striptags }}</div>{% endif %}</div>
       <div class="col-md-3">{{ form.dob.label_tag }} {{ form.dob }}{% if form.dob.errors %}<div class="text-danger small">{{ form.dob.errors|striptags }}</div>{% endif %}</div>
       <div class="col-md-3">{{ form.age.label_tag }} {{ form.age }}{% if form.age.errors %}<div class="text-danger small">{{ form.age.errors|striptags }}</div>{% endif %}</div>
-      <div class="col-md-6">{{ form.phone.label_tag }} {{ form.phone }}{% if form.phone.errors %}<div class="text-danger small">{{ form.phone.errors|striptags }}</div>{% endif %}</div>
-      <div class="col-md-6">{{ form.email.label_tag }} {{ form.email }}{% if form.email.errors %}<div class="text-danger small">{{ form.email.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-6">
+        {{ form.phone.label_tag }} {{ form.phone }}
+        {% if form.phone.errors %}<div class="text-danger small">{{ form.phone.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="col-md-6">
+        {{ form.whatsapp_number.label_tag }} {{ form.whatsapp_number }}
+        <div class="form-check form-check-inline mt-1">
+          <input class="form-check-input" type="checkbox" id="sameAsPhone">
+          <label class="form-check-label small" for="sameAsPhone">Same as contact number</label>
+        </div>
+        {% if form.whatsapp_number.errors %}<div class="text-danger small">{{ form.whatsapp_number.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="col-md-12">{{ form.email.label_tag }} {{ form.email }}{% if form.email.errors %}<div class="text-danger small">{{ form.email.errors|striptags }}</div>{% endif %}</div>
       <div class="col-12">{{ form.address.label_tag }} {{ form.address }}{% if form.address.errors %}<div class="text-danger small">{{ form.address.errors|striptags }}</div>{% endif %}</div>
     </div>
   </div>
@@ -469,6 +480,37 @@
         setSelfieEnabled(false);
       }
     }
+  })();
+
+  // WhatsApp number same as phone logic
+  (function(){
+    const phoneInput = document.getElementById('id_phone');
+    const whatsappInput = document.getElementById('id_whatsapp_number');
+    const sameAsPhoneCheckbox = document.getElementById('sameAsPhone');
+    
+    if (!phoneInput || !whatsappInput || !sameAsPhoneCheckbox) return;
+    
+    function syncWhatsApp(){
+      if (sameAsPhoneCheckbox.checked){
+        whatsappInput.value = phoneInput.value;
+        whatsappInput.setAttribute('readonly', 'readonly');
+      } else {
+        whatsappInput.removeAttribute('readonly');
+      }
+    }
+    
+    // Initialize: if WhatsApp matches phone, check the box
+    if (whatsappInput.value && whatsappInput.value === phoneInput.value){
+      sameAsPhoneCheckbox.checked = true;
+      whatsappInput.setAttribute('readonly', 'readonly');
+    }
+    
+    sameAsPhoneCheckbox.addEventListener('change', syncWhatsApp);
+    phoneInput.addEventListener('input', function(){
+      if (sameAsPhoneCheckbox.checked){
+        whatsappInput.value = phoneInput.value;
+      }
+    });
   })();
 </script>
 <!-- PDF.js for robust PDF preview -->

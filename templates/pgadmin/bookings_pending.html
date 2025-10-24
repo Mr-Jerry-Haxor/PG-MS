@@ -46,8 +46,12 @@
           <span class="badge-pill">Bed {{ b.share_no }}</span>
           <span class="badge-pill {% if b.has_application %}success{% else %}warn{% endif %}">{% if b.has_application %}Application Submitted{% else %}Application Pending{% endif %}</span>
           <span class="badge-pill">Joining {{ b.joining_date|default:"—" }}</span>
+          <span class="badge-pill">Payment {{ b.payment_date|date:"Y-m-d"|default:"—" }}</span>
         </div>
         <div class="small text-faded">Phone: {{ b.user.profile.phone|default:"—" }}</div>
+        {% if b.has_application and b.application.whatsapp_number %}
+        <div class="small text-faded">WhatsApp: {{ b.application.whatsapp_number }}</div>
+        {% endif %}
       </div>
       <div class="booking-actions mt-1">
         <a href="{% url 'pg_booking_approve' b.id %}" class="btn btn-sm btn-success">Approve</a>

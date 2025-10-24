@@ -69,9 +69,17 @@
         {% if form.phone.errors %}<div class="text-danger small">{{ form.phone.errors|striptags }}</div>{% endif %}
       </div>
       <div>
-        {{ form.email.label_tag }} {{ form.email }}
-        {% if form.email.errors %}<div class="text-danger small">{{ form.email.errors|striptags }}</div>{% endif %}
+        {{ form.whatsapp_number.label_tag }} {{ form.whatsapp_number }}
+        <div class="form-check mt-1" style="font-size:0.85rem;">
+          <input class="form-check-input" type="checkbox" id="sameAsPhoneApp">
+          <label class="form-check-label" for="sameAsPhoneApp">Same as contact number</label>
+        </div>
+        {% if form.whatsapp_number.errors %}<div class="text-danger small">{{ form.whatsapp_number.errors|striptags }}</div>{% endif %}
       </div>
+    </div>
+    <div class="mt-2">
+      {{ form.email.label_tag }} {{ form.email }}
+      {% if form.email.errors %}<div class="text-danger small">{{ form.email.errors|striptags }}</div>{% endif %}
     </div>
   </div>
   <div class="app-section">
@@ -656,6 +664,35 @@
       form.querySelectorAll('button').forEach(el => { el.disabled = true; el.setAttribute('aria-disabled','true'); });
     } catch (_) {}
   });
+
+  // WhatsApp number same as phone logic
+  const phoneInput = document.getElementById('id_phone');
+  const whatsappInput = document.getElementById('id_whatsapp_number');
+  const sameAsPhoneCheckbox = document.getElementById('sameAsPhoneApp');
+  
+  if (phoneInput && whatsappInput && sameAsPhoneCheckbox) {
+    function syncWhatsApp(){
+      if (sameAsPhoneCheckbox.checked){
+        whatsappInput.value = phoneInput.value;
+        whatsappInput.setAttribute('readonly', 'readonly');
+      } else {
+        whatsappInput.removeAttribute('readonly');
+      }
+    }
+    
+    // Initialize: if WhatsApp matches phone, check the box
+    if (whatsappInput.value && whatsappInput.value === phoneInput.value){
+      sameAsPhoneCheckbox.checked = true;
+      whatsappInput.setAttribute('readonly', 'readonly');
+    }
+    
+    sameAsPhoneCheckbox.addEventListener('change', syncWhatsApp);
+    phoneInput.addEventListener('input', function(){
+      if (sameAsPhoneCheckbox.checked){
+        whatsappInput.value = phoneInput.value;
+      }
+    });
+  }
 
   // Preview logic removed per request
   }); // DOMContentLoaded end
