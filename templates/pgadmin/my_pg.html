@@ -40,6 +40,11 @@
       {{ form.referral_amount }}
       <div class="form-text">Default credit applied when a resident refers a new tenant for this PG.</div>
     </div>
+    <div class="mb-3">
+      <label class="form-label">Notice Period (Days)</label>
+      {{ form.notice_period }}
+      <div class="form-text">Number of days notice required before a tenant can leave the PG (default: 30 days).</div>
+    </div>
     <div class="mb-3 form-check">
       {{ form.past_joining_date_allowed }}
       <label class="form-check-label">Allow past joining date for quick bookings</label>

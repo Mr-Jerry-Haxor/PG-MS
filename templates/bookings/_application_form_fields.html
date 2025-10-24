@@ -109,7 +109,7 @@
     <div class="border rounded p-3 bg-light mb-2">
       <ul class="mb-2 small">
         <li>We are not responsible for all your valuables.</li>
-        <li>30 Days notice period.</li>
+        <li>{% if pg and pg.notice_period %}{{ pg.notice_period }}{% else %}30{% endif %} Days notice period.</li>
         <li>If you fail to inform notice period to Management, your security deposit will not be refunded.</li>
       </ul>
     </div>

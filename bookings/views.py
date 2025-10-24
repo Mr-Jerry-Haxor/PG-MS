@@ -959,6 +959,7 @@ def application_fill(request, booking_id):
         "booking": booking,
         "app": app,
         "payment_day": payment_day,
+        "pg": booking.room.pg,
     })
 from django.shortcuts import render
 
