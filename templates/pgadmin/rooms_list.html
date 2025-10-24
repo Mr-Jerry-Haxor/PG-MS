@@ -31,6 +31,7 @@
     </form>
     {% endif %}
   </div>
+  <a href="{% url 'pg_room_create' %}" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1"><i class="bi bi-plus-lg"></i><span>New Room</span></a>
   <div class="d-flex align-items-center gap-2 flex-wrap">
     <div class="btn-group" role="group" aria-label="Room filters" id="roomFilters">
       <button type="button" class="btn btn-sm btn-outline-secondary {% if not active_filter %}active{% endif %}" data-room-filter="">All</button>
@@ -39,13 +40,21 @@
       <button type="button" class="btn btn-sm btn-outline-secondary {% if active_filter == 'reserved' %}active{% endif %}" data-room-filter="reserved">Reserved</button>
       <button type="button" class="btn btn-sm btn-outline-secondary {% if active_filter == 'occupied' %}active{% endif %}" data-room-filter="occupied">Occupied</button>
     </div>
-    <a href="{% url 'pg_room_create' %}" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1"><i class="bi bi-plus-lg"></i><span>New Room</span></a>
+    
+    <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+      <span class="small text-secondary">Beds:</span>
+      <div class="btn-group" role="group" aria-label="Beds filter" id="bedsFilters">
+        <!-- Dynamically populated by JavaScript -->
+      </div>
+    </div>
+    
   </div>
 </div>
 
+
 <div class="rooms-grid">
   {% for room in rooms %}
-  <div class="room-card fade-in shadow-hover" data-occupied="{{ room.occupied_count|default:0 }}" data-reserved="{{ room.reserved_count|default:0 }}" data-vacant="{{ room.vacant_count|default:0 }}" data-leaving="{{ room.leaving_count|default:0 }}">
+  <div class="room-card fade-in shadow-hover" data-occupied="{{ room.occupied_count|default:0 }}" data-reserved="{{ room.reserved_count|default:0 }}" data-vacant="{{ room.vacant_count|default:0 }}" data-leaving="{{ room.leaving_count|default:0 }}" data-beds="{{ room.total_shares }}">
       <div class="room-head">
         <div>
           <div class="fw-semibold">Room {{ room.room_no }}</div>
@@ -71,11 +80,15 @@
         <div id="vf-rows-{{ room.id }}" class="d-none">
           <table class="table table-sm mb-0">
             <thead>
-              <tr><th>Bed</th><th>Date</th></tr>
+              <tr><th>Bed</th><th>Tenant</th><th>Leaving Date</th></tr>
             </thead>
             <tbody>
               {% for s in room.vacant_from_shares %}
-                <tr><td>{{ s.share_no }}</td><td>{{ s.vacant_from|date:'Y-m-d' }}</td></tr>
+                <tr>
+                  <td>{{ s.share_no }}</td>
+                  <td>{{ s.leaving_user_name|default:"—" }}</td>
+                  <td>{{ s.vacant_from|date:'Y-m-d' }}</td>
+                </tr>
               {% endfor %}
             </tbody>
           </table>
@@ -107,39 +120,125 @@
 <script>
 // Client-side filters for rooms
 document.addEventListener('DOMContentLoaded', function(){
-  const buttons = document.querySelectorAll('#roomFilters [data-room-filter]');
+  const statusButtons = document.querySelectorAll('#roomFilters [data-room-filter]');
+  const bedsFiltersContainer = document.getElementById('bedsFilters');
   const cards = Array.from(document.querySelectorAll('.room-card'));
-  function applyFilter(f){
-    cards.forEach(card=>{
+  
+  let activeStatusFilter = '';
+  let activeBedsFilter = '';
+  
+  // Extract unique bed counts from loaded rooms
+  const bedCounts = new Set();
+  cards.forEach(card => {
+    const beds = parseInt(card.dataset.beds || '0', 10);
+    if (beds > 0) bedCounts.add(beds);
+  });
+  
+  // Dynamically create beds filter buttons
+  const sortedBeds = Array.from(bedCounts).sort((a, b) => a - b);
+  
+  if (sortedBeds.length > 0) {
+    // Add "All" button for beds filter
+    const allBtn = document.createElement('button');
+    allBtn.type = 'button';
+    allBtn.className = 'btn btn-sm btn-outline-info active';
+    allBtn.setAttribute('data-beds-filter', '');
+    allBtn.textContent = 'All';
+    bedsFiltersContainer.appendChild(allBtn);
+    
+    // Add button for each unique bed count
+    sortedBeds.forEach(count => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-sm btn-outline-info';
+      btn.setAttribute('data-beds-filter', count.toString());
+      btn.textContent = `${count} Bed${count > 1 ? 's' : ''}`;
+      bedsFiltersContainer.appendChild(btn);
+    });
+  }
+  
+  function applyFilters() {
+    cards.forEach(card => {
       const v = parseInt(card.dataset.vacant || '0', 10);
       const l = parseInt(card.dataset.leaving || '0', 10);
       const r = parseInt(card.dataset.reserved || '0', 10);
       const o = parseInt(card.dataset.occupied || '0', 10);
-      let show = true;
-      if(f === 'vacant') show = v > 0;
-      else if(f === 'leaving') show = l > 0;
-      else if(f === 'reserved') show = r > 0;
-      else if(f === 'occupied') show = o > 0;
-      card.classList.toggle('d-none', !show);
+      const beds = parseInt(card.dataset.beds || '0', 10);
+      
+      let showStatus = true;
+      if (activeStatusFilter === 'vacant') showStatus = v > 0;
+      else if (activeStatusFilter === 'leaving') showStatus = l > 0;
+      else if (activeStatusFilter === 'reserved') showStatus = r > 0;
+      else if (activeStatusFilter === 'occupied') showStatus = o > 0;
+      
+      let showBeds = true;
+      if (activeBedsFilter !== '') {
+        showBeds = beds === parseInt(activeBedsFilter, 10);
+      }
+      
+      card.classList.toggle('d-none', !(showStatus && showBeds));
     });
   }
-  buttons.forEach(btn=>{
-    btn.addEventListener('click', function(){
-      buttons.forEach(b=>b.classList.remove('active'));
+  
+  // Status filter click handlers
+  statusButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      statusButtons.forEach(b => b.classList.remove('active'));
       this.classList.add('active');
-      const f = this.getAttribute('data-room-filter') || '';
-      applyFilter(f);
+      activeStatusFilter = this.getAttribute('data-room-filter') || '';
+      applyFilters();
+      
       // Reflect in URL for shareability (no reload)
       const url = new URL(window.location);
-      if(f) url.searchParams.set('filter', f); else url.searchParams.delete('filter');
+      if (activeStatusFilter) url.searchParams.set('filter', activeStatusFilter);
+      else url.searchParams.delete('filter');
       window.history.replaceState({}, '', url);
     });
   });
-  // Initialize from URL param (or server-provided active_filter)
-  const initial = (new URL(window.location)).searchParams.get('filter') || '{{ active_filter|default:"" }}';
-  const initBtn = document.querySelector(`#roomFilters [data-room-filter="${initial}"]`) || document.querySelector('#roomFilters [data-room-filter=""]');
-  if(initBtn){ initBtn.click(); } else { applyFilter(initial); }
+  
+  // Beds filter click handlers
+  bedsFiltersContainer.addEventListener('click', function(e) {
+    if (e.target.hasAttribute('data-beds-filter')) {
+      const bedsButtons = bedsFiltersContainer.querySelectorAll('[data-beds-filter]');
+      bedsButtons.forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      activeBedsFilter = e.target.getAttribute('data-beds-filter') || '';
+      applyFilters();
+      
+      // Reflect in URL
+      const url = new URL(window.location);
+      if (activeBedsFilter) url.searchParams.set('beds', activeBedsFilter);
+      else url.searchParams.delete('beds');
+      window.history.replaceState({}, '', url);
+    }
+  });
+  
+  // Initialize from URL params
+  const urlParams = new URL(window.location).searchParams;
+  const initialStatus = urlParams.get('filter') || '{{ active_filter|default:"" }}';
+  const initialBeds = urlParams.get('beds') || '';
+  
+  // Set initial status filter
+  const initStatusBtn = document.querySelector(`#roomFilters [data-room-filter="${initialStatus}"]`) || document.querySelector('#roomFilters [data-room-filter=""]');
+  if (initStatusBtn) {
+    statusButtons.forEach(b => b.classList.remove('active'));
+    initStatusBtn.classList.add('active');
+    activeStatusFilter = initialStatus;
+  }
+  
+  // Set initial beds filter
+  if (initialBeds) {
+    const initBedsBtn = bedsFiltersContainer.querySelector(`[data-beds-filter="${initialBeds}"]`);
+    if (initBedsBtn) {
+      bedsFiltersContainer.querySelectorAll('[data-beds-filter]').forEach(b => b.classList.remove('active'));
+      initBedsBtn.classList.add('active');
+      activeBedsFilter = initialBeds;
+    }
+  }
+  
+  applyFilters();
 });
+
 document.addEventListener('DOMContentLoaded', function(){
   var modalEl = document.getElementById('vacantFromModal');
   modalEl.addEventListener('show.bs.modal', function (event) {

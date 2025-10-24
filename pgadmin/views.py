@@ -1309,12 +1309,28 @@ def rooms_list(request):
             .prefetch_related(
                 Prefetch(
                     'shares',
-                    queryset=RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT_FROM).only('id','share_no','vacant_from').order_by('vacant_from'),
+                    queryset=RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT_FROM).select_related('room').only('id','share_no','vacant_from','room').order_by('vacant_from'),
                     to_attr='vacant_from_shares',
                 )
             )
             .order_by('room_no')
         )
+        # Attach booking/user info to each vacant_from share for display
+        for room in rooms:
+            if hasattr(room, 'vacant_from_shares'):
+                for share in room.vacant_from_shares:
+                    # Find the approved booking for this share
+                    booking = Booking.objects.filter(
+                        room=room, 
+                        share_no=share.share_no, 
+                        status=Booking.APPROVED,
+                        leaving_date__isnull=False
+                    ).select_related('user').first()
+                    share.leaving_booking = booking
+                    if booking:
+                        share.leaving_user_name = booking.user.get_full_name() or booking.user.email
+                    else:
+                        share.leaving_user_name = None
     # Apply optional filter by room bed status
         only = (request.GET.get('filter') or '').strip().lower()
         if only == 'vacant':
