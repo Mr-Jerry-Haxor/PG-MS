@@ -61,18 +61,70 @@
     </div>
   </div>
   <div class="col-6 col-md-4 col-lg-2">
-    <div class="card shadow-sm border-0" style="background:var(--accent-3)">
+    <div class="card shadow-sm border-0">
       <div class="card-body">
-        <div class="text-secondary small">Vacant Beds</div>
-        <div class="display-6">{{ vacant_shares|default:"—" }}</div>
+        <div class="text-secondary small d-flex justify-content-between align-items-center mb-2">
+          <span>Complaints</span>
+          <a href="{% url 'admin_complaints' %}" class="small text-decoration-none">View</a>
+        </div>
+        <style>
+          .complaints-grid{display:grid;grid-template-columns:1fr 1px 1fr;gap:.5rem;align-items:center}
+          .complaints-grid .separator{background:#e2e8f0;height:100%}
+          .complaints-col{text-align:center}
+          .complaints-col .label{font-size:.55rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem}
+          .complaints-col .count{font-size:1.3rem;font-weight:700}
+          .complaints-col.open .count{color:#dc2626}
+          .complaints-col.progresss .count{color:#f59e0b}
+        </style>
+        <div class="complaints-grid">
+          <div class="complaints-col open">
+            <div class="label">Open</div>
+            <div class="count">{{ complaints_open|default:0 }}</div>
+          </div>
+          <div class="separator"></div>
+          <div class="complaints-col progresss">
+            <div class="label">In Progress</div>
+            <div class="count">{{ complaints_in_progress|default:0 }}</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-6 col-md-4 col-lg-2">
-    <div class="card shadow-sm border-0" style="background:#dbeafe">
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card shadow-sm border-0" style="background:linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%)">
       <div class="card-body">
-        <div class="text-secondary small">Occupied Beds</div>
-        <div class="display-6">{{ occupied_shares|default:"—" }}</div>
+        <div class="text-secondary small fw-semibold mb-2">Beds Overview</div>
+        <style>
+          .beds-table{width:100%;font-size:.85rem}
+          .beds-table td{padding:.4rem .5rem;border-bottom:1px solid #e2e8f0}
+          .beds-table tr:last-child td{border-bottom:0;font-weight:600;background:#f1f5f9;border-radius:.5rem}
+          .beds-table .label{color:#64748b}
+          .beds-table .value{text-align:right;font-weight:600}
+          .beds-table .value.vacant{color:#059669}
+          .beds-table .value.occupied{color:#2563eb}
+          .beds-table .value.leaving{color:#d97706}
+          .beds-table .value.total{color:#0f172a}
+        </style>
+        <table class="beds-table">
+          <tbody>
+            <tr>
+              <td class="label"><i class="bi bi-check-circle-fill text-success me-1"></i>Vacant</td>
+              <td class="value vacant">{{ vacant_shares|default:0 }}</td>
+            </tr>
+            <tr>
+              <td class="label"><i class="bi bi-person-fill text-primary me-1"></i>Occupied</td>
+              <td class="value occupied">{{ occupied_shares|default:0 }}</td>
+            </tr>
+            <tr>
+              <td class="label"><i class="bi bi-calendar-x text-warning me-1"></i>Leaving</td>
+              <td class="value leaving">{{ leaving_shares|default:0 }}</td>
+            </tr>
+            <tr>
+              <td class="label">Total Beds</td>
+              <td class="value total">{{ total_shares|default:0 }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -93,22 +145,30 @@
   <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0">
       <div class="card-body">
-        <div class="text-secondary small d-flex justify-content-between align-items-center">
-          <span>Leaving Pending</span>
+        <div class="text-secondary small d-flex justify-content-between align-items-center mb-2">
+          <span>Leaving</span>
           <a href="{% url 'pg_leaving_requests' %}" class="small text-decoration-none">View</a>
         </div>
-        <div class="display-6">{{ leaving_pending|default:"0" }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-4 col-lg-2">
-    <div class="card shadow-sm border-0">
-      <div class="card-body">
-        <div class="text-secondary small d-flex justify-content-between align-items-center">
-          <span>Leaving Confirmed</span>
-          <a href="{% url 'pg_leaving_requests' %}" class="small text-decoration-none">View</a>
+        <style>
+          .leaving-grid{display:grid;grid-template-columns:1fr 1px 1fr;gap:.5rem;align-items:center}
+          .leaving-grid .separator{background:#e2e8f0;height:100%}
+          .leaving-col{text-align:center}
+          .leaving-col .label{font-size:.55rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem}
+          .leaving-col .count{font-size:1.3rem;font-weight:700}
+          .leaving-col.pending .count{color:#2563eb}
+          .leaving-col.confirmed .count{color:#059669}
+        </style>
+        <div class="leaving-grid">
+          <div class="leaving-col pending">
+            <div class="label">Pending</div>
+            <div class="count">{{ leaving_pending|default:0 }}</div>
+          </div>
+          <div class="separator"></div>
+          <div class="leaving-col confirmed">
+            <div class="label">Confirmed</div>
+            <div class="count">{{ leaving_confirmed|default:0 }}</div>
+          </div>
         </div>
-        <div class="display-6">{{ leaving_confirmed|default:"0" }}</div>
       </div>
     </div>
   </div>

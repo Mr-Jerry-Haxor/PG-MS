@@ -99,6 +99,8 @@ def dashboard(request):
 		if pg:
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg=pg).count()
 			occupied = RoomShareStatus.objects.filter(status__in=[RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM], room__pg=pg).count()
+			leaving = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT_FROM, room__pg=pg).count()
+			total = RoomShareStatus.objects.filter(room__pg=pg).count()
 			pending = Booking.objects.filter(status=Booking.PENDING, room__pg=pg).count()
 			# Leaving stats (approved bookings with a leaving_date)
 			leaving_qs = Booking.objects.filter(room__pg=pg, status=Booking.APPROVED, leaving_date__isnull=False)
@@ -113,6 +115,8 @@ def dashboard(request):
 		else:
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg__admins__user=request.user).count()
 			occupied = RoomShareStatus.objects.filter(status__in=[RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM], room__pg__admins__user=request.user).count()
+			leaving = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT_FROM, room__pg__admins__user=request.user).count()
+			total = RoomShareStatus.objects.filter(room__pg__admins__user=request.user).count()
 			pending = Booking.objects.filter(status=Booking.PENDING, room__pg__admins__user=request.user).count()
 			leaving_qs = Booking.objects.filter(room__pg__admins__user=request.user, status=Booking.APPROVED, leaving_date__isnull=False)
 			leaving_pending = leaving_qs.filter(leaving_confirmed_date__isnull=True).count()
@@ -126,9 +130,11 @@ def dashboard(request):
 		
 		# Get complaints count for admin
 		if pg:
-			complaints_open = Complaint.objects.filter(pg=pg, status__in=[Complaint.OPEN, Complaint.IN_PROGRESS]).count()
+			complaints_open = Complaint.objects.filter(pg=pg, status=Complaint.OPEN).count()
+			complaints_in_progress = Complaint.objects.filter(pg=pg, status=Complaint.IN_PROGRESS).count()
 		else:
-			complaints_open = Complaint.objects.filter(pg__admins__user=request.user, status__in=[Complaint.OPEN, Complaint.IN_PROGRESS]).count()
+			complaints_open = Complaint.objects.filter(pg__admins__user=request.user, status=Complaint.OPEN).count()
+			complaints_in_progress = Complaint.objects.filter(pg__admins__user=request.user, status=Complaint.IN_PROGRESS).count()
 		
 		ctx.update({
 			"vacant_beds": vacant,
@@ -139,11 +145,14 @@ def dashboard(request):
 			"month_income": income,
 			"month_expense": expense,
 			"complaints_open": complaints_open,
+			"complaints_in_progress": complaints_in_progress,
 			"pg": pg,
 			"pgs": list(pgs_qs),
 			# Legacy aliases maintained until template migration completes everywhere
 			"vacant_shares": vacant,
 			"occupied_shares": occupied,
+			"leaving_shares": leaving,
+			"total_shares": total,
 		})
 	return render(request, 'dashboard.html', ctx)
 
