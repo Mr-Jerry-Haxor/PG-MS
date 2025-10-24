@@ -1331,16 +1331,6 @@ def rooms_list(request):
                         share.leaving_user_name = booking.user.get_full_name() or booking.user.email
                     else:
                         share.leaving_user_name = None
-    # Apply optional filter by room bed status
-        only = (request.GET.get('filter') or '').strip().lower()
-        if only == 'vacant':
-            rooms = rooms.filter(vacant_count__gt=0)
-        elif only == 'leaving':
-            rooms = rooms.filter(leaving_count__gt=0)
-        elif only == 'reserved':
-            rooms = rooms.filter(reserved_count__gt=0)
-        elif only == 'occupied':
-            rooms = rooms.filter(occupied_count__gt=0)
     else:
         rooms = []
     return render(request, 'pgadmin/rooms_list.html', {"pg": pg, "rooms": rooms, "pgs": list(_admin_pgs(request.user)), "active_filter": (request.GET.get('filter') or '')})
