@@ -46,7 +46,6 @@ class ResidentApplicationForm(forms.ModelForm):
             'name','dob','age','phone','email','father_name','father_phone','mother_name','mother_phone','address',
             'date_of_admission','food_pref','marital_status','education','occupation','org_name','org_address',
             'aadhaar_number','has_vehicle','vehicle_number','vehicle_model',
-            'decl_valuables','decl_notice','decl_deposit','decl_truth'
         ]
         widgets = {k: forms.TextInput(attrs={"class":"form-control"}) for k in ['name','phone','email','father_name','father_phone','mother_name','mother_phone','education','org_name','aadhaar_number','vehicle_number','vehicle_model']}
         widgets.update({
@@ -59,10 +58,6 @@ class ResidentApplicationForm(forms.ModelForm):
             'occupation': forms.Select(attrs={"class":"form-select"}),
             'org_address': forms.Textarea(attrs={"class":"form-control", "rows":3}),
             'has_vehicle': forms.CheckboxInput(attrs={"class":"form-check-input"}),
-            'decl_valuables': forms.CheckboxInput(attrs={"class":"form-check-input"}),
-            'decl_notice': forms.CheckboxInput(attrs={"class":"form-check-input"}),
-            'decl_deposit': forms.CheckboxInput(attrs={"class":"form-check-input"}),
-            'decl_truth': forms.CheckboxInput(attrs={"class":"form-check-input"}),
         })
 
     def clean_aadhaar_pdf(self):

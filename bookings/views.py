@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from accounts.models import Profile
 from core.audit import log
-from core.drive import drive_upload
+from core.drive import drive_upload, drive_delete
 from core.models import Notification
 from django.core.mail import send_mail
 from django.db import IntegrityError
@@ -129,6 +129,23 @@ def pg_quick_booking(request, pgslug):
             for er in errs:
                 errors.append(f"{fld}: {er}")
 
+    # Validate payment day selection
+    payment_day_raw = request.POST.get('payment_day', '')
+    if not payment_day_raw:
+        errors.append('Payment day is required.')
+    else:
+        try:
+            payment_day = int(payment_day_raw)
+            if payment_day < 1 or payment_day > 31:
+                errors.append('Payment day must be between 1 and 31.')
+        except (ValueError, TypeError):
+            errors.append('Invalid payment day.')
+
+    # Validate declaration checkbox
+    decl_agreed = request.POST.get('decl_agreed')
+    if decl_agreed != 'on':
+        errors.append('You must agree to the declaration.')
+
     # Enforce mandatory files: selfie and Aadhaar/other must be provided
     selfie_file = request.FILES.get('selfie')
     aadhaar_in_form = form.cleaned_data.get('aadhaar_pdf') if hasattr(form, 'cleaned_data') else None
@@ -151,6 +168,23 @@ def pg_quick_booking(request, pgslug):
     # All validations passed; create booking and application inside a transaction
     try:
         with transaction.atomic():
+            # Calculate payment_date from joining_date + selected payment day
+            payment_day_raw = request.POST.get('payment_day', '')
+            payment_date_calculated = joining_date  # Default to joining_date
+            if payment_day_raw:
+                try:
+                    payment_day = int(payment_day_raw)
+                    if 1 <= payment_day <= 31:
+                        # Build payment_date in the same month as joining_date
+                        # If the day doesn't exist in that month (e.g., Feb 31), use last day of month
+                        from calendar import monthrange
+                        year, month = joining_date.year, joining_date.month
+                        max_day = monthrange(year, month)[1]
+                        actual_day = min(payment_day, max_day)
+                        payment_date_calculated = joining_date.replace(day=actual_day)
+                except (ValueError, TypeError):
+                    pass  # Fall back to joining_date
+
             booking_obj = Booking.objects.create(
                 user=request.user,
                 room=room,
@@ -158,7 +192,7 @@ def pg_quick_booking(request, pgslug):
                 share_no=share_no,
                 status=Booking.PENDING,
                 joining_date=joining_date,
-                payment_date=joining_date,
+                payment_date=payment_date_calculated,
             )
             # Reserve share when applicable
             if rs.status in [RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]:
@@ -171,6 +205,11 @@ def pg_quick_booking(request, pgslug):
             inst.pg = pg
             inst.room = room
             inst.date_of_admission = joining_date
+            # Set all declaration fields to True (user agreed to combined declaration)
+            inst.decl_valuables = True
+            inst.decl_notice = True
+            inst.decl_deposit = True
+            inst.decl_truth = True
 
             # Files handling (same rules as application_fill)
             selfie_file = request.FILES.get('selfie')
@@ -685,12 +724,52 @@ def application_fill(request, booking_id):
         return redirect('dashboard')
     if request.method == 'POST':
         form = ResidentApplicationForm(request.POST, request.FILES, instance=app)
+        
+        # Validate payment day and declaration checkbox
+        payment_day_raw = request.POST.get('payment_day', '')
+        decl_agreed = request.POST.get('decl_agreed')
+        
+        if not payment_day_raw:
+            messages.error(request, "Payment day is required.")
+            return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+        
+        try:
+            payment_day = int(payment_day_raw)
+            if payment_day < 1 or payment_day > 31:
+                messages.error(request, "Payment day must be between 1 and 31.")
+                return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+        except (ValueError, TypeError):
+            messages.error(request, "Invalid payment day.")
+            return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+        
+        if decl_agreed != 'on':
+            messages.error(request, "You must agree to the declaration.")
+            return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+        
         if form.is_valid():
             inst = form.save(commit=False)
             inst.user = request.user
             inst.booking = booking
             inst.pg = booking.room.pg
             inst.room = booking.room
+            # Set all declaration fields to True (user agreed to combined declaration)
+            inst.decl_valuables = True
+            inst.decl_notice = True
+            inst.decl_deposit = True
+            inst.decl_truth = True
+            
+            # Update booking's payment_date based on selected payment_day
+            # Calculate payment_date from booking's joining_date + selected day-of-month
+            if booking.joining_date:
+                from calendar import monthrange
+                year, month = booking.joining_date.year, booking.joining_date.month
+                max_day = monthrange(year, month)[1]
+                actual_day = min(payment_day, max_day)
+                new_payment_date = booking.joining_date.replace(day=actual_day)
+                if booking.payment_date != new_payment_date:
+                    booking.payment_date = new_payment_date
+                    booking.save(update_fields=['payment_date'])
+            
             # Enforce selfie mandatory (either newly uploaded or already existing)
             if not ((app and app.selfie_url) or request.FILES.get('selfie')):
                 messages.error(request, "Selfie is required. Capture or upload a clear face photo.")
@@ -725,20 +804,38 @@ def application_fill(request, booking_id):
                 folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
                 if pdfs:
                     # Take the first/only PDF
+                    # When modifying: delete old images if switching from images to PDF
+                    old_url_1 = app.aadhaar_file_url if app else None
+                    old_url_2 = getattr(app, 'aadhaar_file_url_2', None) if app else None
+                    
                     f = pdfs[0]
                     up = drive_upload(f, f"aadhaar_{request.user.id}.pdf", folder)
                     if up:
                         _fid, preview = up
                         inst.aadhaar_file_url = preview
                         inst.aadhaar_file_url_2 = ''
+                        # Delete old files if they're different
+                        if old_url_1 and old_url_1 != preview:
+                            try:
+                                drive_delete(old_url_1)
+                            except Exception:
+                                pass
+                        if old_url_2:
+                            try:
+                                drive_delete(old_url_2)
+                            except Exception:
+                                pass
                 elif imgs:
                     # Upload up to two images as front/back
-                    # Reset back-side URL when replacing with images (avoid keeping stale back image)
-                    inst.aadhaar_file_url_2 = ''
+                    # When modifying: if user uploads fewer images than before, delete old ones
+                    old_url_1 = app.aadhaar_file_url if app else None
+                    old_url_2 = getattr(app, 'aadhaar_file_url_2', None) if app else None
+                    
                     def _pick_ext(nm: str):
                         if nm.endswith('.png'): return '.png'
                         if nm.endswith('.webp'): return '.webp'
                         return '.jpg'
+                    
                     # First image
                     f1 = imgs[0]
                     ext1 = _pick_ext((getattr(f1, 'name', '') or '').lower())
@@ -746,14 +843,36 @@ def application_fill(request, booking_id):
                     if up1:
                         _fid1, preview1 = up1
                         inst.aadhaar_file_url = preview1
-                    # Optional second image
+                        # Delete old first image if it's different
+                        if old_url_1 and old_url_1 != preview1:
+                            try:
+                                drive_delete(old_url_1)
+                            except Exception:
+                                pass  # Non-fatal: deletion failure shouldn't block the update
+                    
+                    # Second image handling
                     if len(imgs) > 1:
+                        # User uploaded 2 images
                         f2 = imgs[1]
                         ext2 = _pick_ext((getattr(f2, 'name', '') or '').lower())
                         up2 = drive_upload(f2, f"aadhaar_{request.user.id}_back{ext2}", folder)
                         if up2:
                             _fid2, preview2 = up2
                             inst.aadhaar_file_url_2 = preview2
+                            # Delete old second image if it's different
+                            if old_url_2 and old_url_2 != preview2:
+                                try:
+                                    drive_delete(old_url_2)
+                                except Exception:
+                                    pass
+                    else:
+                        # User uploaded only 1 image - clear and delete old second image
+                        inst.aadhaar_file_url_2 = ''
+                        if old_url_2:
+                            try:
+                                drive_delete(old_url_2)
+                            except Exception:
+                                pass  # Non-fatal
             else:
                 if app:
                     inst.aadhaar_file_url = app.aadhaar_file_url
@@ -829,7 +948,18 @@ def application_fill(request, booking_id):
                 'date_of_admission': booking.start_date or booking.joining_date,
             }
             form = ResidentApplicationForm(initial=initial)
-    return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+    
+    # Calculate payment_day from booking's payment_date for display
+    payment_day = None
+    if booking.payment_date:
+        payment_day = booking.payment_date.day
+    
+    return render(request, 'bookings/application_fill.html', {
+        "form": form,
+        "booking": booking,
+        "app": app,
+        "payment_day": payment_day,
+    })
 from django.shortcuts import render
 
 # Create your views here.

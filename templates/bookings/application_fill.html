@@ -179,7 +179,7 @@
             <button class="btn btn-warning d-none d-flex align-items-center gap-1" type="button" id="btnRetakeSelfie" aria-label="Retake photo"><i class="bi bi-arrow-counterclockwise"></i><span class="d-sm-inline">Retake</span></button>
           </div>
           <input type="file" name="selfie" id="selfieInput" class="d-none" accept="image/*" />
-          <div class="selfie-hint text-center">Center face • Good lighting • No mask</div>
+          <div class="selfie-hint text-center">Center face • Good lighting • No mask • Plain background</div>
           {% if app and app.selfie_url %}
           <div class="form-text">If you don't capture a new selfie, the existing photo will be kept.</div>
           {% endif %}
@@ -221,12 +221,34 @@
       </div>
     {% endif %}
   </div>
+  <div class="app-section">
+    <h2>Payment Date</h2>
+    <div class="mb-2">
+      <label class="form-label">Preferred Monthly Payment Date (Day of Month)</label>
+      <select name="payment_day" id="payment_day" class="form-select" required>
+        <option value="">Select a day…</option>
+        {% for i in "x"|rjust:"31" %}
+          <option value="{{ forloop.counter }}"{% if payment_day == forloop.counter %} selected{% endif %}>{{ forloop.counter }}{% if forloop.counter == 1 %}st{% elif forloop.counter == 2 %}nd{% elif forloop.counter == 3 %}rd{% else %}th{% endif %} of the month</option>
+        {% endfor %}
+      </select>
+      <div class="form-text">This is the date each month when you will pay the PG's monthly fee.</div>
+    </div>
+  </div>
   <div class="app-section declarations">
-    <h2>Declarations</h2>
-    <div class="form-check">{{ form.decl_valuables }} <label class="form-check-label">We are not responsible for all your valuables.</label></div>
-    <div class="form-check">{{ form.decl_notice }} <label class="form-check-label">30 Days notice Period</label></div>
-    <div class="form-check">{{ form.decl_deposit }} <label class="form-check-label">If you fail to Inform notice period to Management, Your security deposit will not be refunded.</label></div>
-    <div class="form-check">{{ form.decl_truth }} <label class="form-check-label">I here by declare that all the above furnished is true and correct to the best of my knowledge</label></div>
+    <h2>Declaration</h2>
+    <div class="border rounded p-3 bg-light mb-2">
+      <ul class="mb-2 small">
+        <li>We are not responsible for all your valuables.</li>
+        <li>30 Days notice period.</li>
+        <li>If you fail to inform notice period to Management, your security deposit will not be refunded.</li>
+      </ul>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="decl_agreed" id="decl_agreed" required{% if app %} checked{% endif %}>
+      <label class="form-check-label" for="decl_agreed">
+        I hereby declare that all the above furnished is true and correct to the best of my knowledge.
+      </label>
+    </div>
   </div>
   {% if not app or app.status != 'confirmed' %}
   <div class="sticky-submit text-center mt-3">
