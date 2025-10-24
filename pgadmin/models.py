@@ -165,8 +165,7 @@ class Complaint(TimeStampedModel):
 		"""Return icon class for category"""
 		return {
 			self.MAINTENANCE: 'bi-tools',
-			self.CLEANLINESS: 'bi-spray',
-			self.FOOD: 'bi-egg-fried',
+			self.CLEANLINESS: 'bi-stars',
 			self.WIFI: 'bi-wifi',
 			self.ELECTRICITY: 'bi-lightning-charge',
 			self.WATER: 'bi-droplet',
