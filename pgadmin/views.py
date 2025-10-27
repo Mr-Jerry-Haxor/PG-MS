@@ -3819,12 +3819,11 @@ def leaving_requests(request):
         messages.error(request, "You must be a PG Admin.")
         return redirect('dashboard')
     
-    pg_qs = _admin_pgs(request.user)
-    if not pg_qs.exists():
+    pg = _active_pg(request)
+    if not pg:
         messages.error(request, "No PG assigned.")
         return redirect('dashboard')
     
-    pg = pg_qs.first()
     today = date.today()
     
     # Get ALL leave requests - filtering is now handled client-side
@@ -3838,6 +3837,7 @@ def leaving_requests(request):
     
     context = {
         'pg': pg,
+        'pgs': list(_admin_pgs(request.user)),
         'leave_requests': leave_requests,
         'today': today,
     }

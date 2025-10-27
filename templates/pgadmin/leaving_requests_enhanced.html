@@ -15,6 +15,22 @@
     </a>
   </div>
 
+  <!-- PG Selector (shows PGs where current user is admin) -->
+  <div class="lr-toolbar stack-sm mb-3">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <h2 class="mb-0 h6 text-uppercase text-secondary">Leaving Requests</h2>
+      {% if pgs and pgs|length > 1 %}
+      <form method="get" class="m-0">
+        <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for p in pgs %}
+          <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
   <!-- Filters -->
   <div class="card shadow-sm mb-3">
     <div class="card-body py-2">
