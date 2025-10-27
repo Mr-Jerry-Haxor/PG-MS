@@ -27,15 +27,15 @@
   </div>
 {% endif %}
 <div class="field-grid">
-  <div class="field field-box"><small>Name</small><span class="fw-semibold d-block">{{ sd.application.name|default:sd.occupant.first_name }} {{ sd.occupant.last_name }}</span></div>
+  <div class="field field-box"><small>Name</small><span class="fw-semibold d-block">{% if sd.application.name %}{{ sd.application.name }}{% elif sd.occupant %}{{ sd.occupant.first_name }} {{ sd.occupant.last_name }}{% else %}—{% endif %}</span></div>
   <div class="field field-box"><small>DOB</small><span>{{ sd.application.dob|default:"—" }}</span></div>
   <div class="field field-box"><small>Age</small><span>{{ sd.application.age|default:"—" }}</span></div>
-  <div class="field field-box"><small>Phone</small><span>{{ sd.application.phone|default:sd.occupant.profile.phone|default:"—" }}</span></div>
-  <div class="field field-box"><small>Email</small><span class="text-break">{{ sd.application.email|default:sd.occupant.email }}</span></div>
+  <div class="field field-box"><small>Phone</small><span>{% if sd.application.phone %}{{ sd.application.phone }}{% elif sd.occupant and sd.occupant.profile.phone %}{{ sd.occupant.profile.phone }}{% else %}—{% endif %}</span></div>
+  <div class="field field-box"><small>Email</small><span class="text-break">{% if sd.application.email %}{{ sd.application.email }}{% elif sd.occupant %}{{ sd.occupant.email }}{% else %}—{% endif %}</span></div>
   <div class="field field-box"><small>Food Pref</small><span>{{ sd.application.food_pref|default:"—" }}</span></div>
   <div class="field field-box"><small>Marital</small><span>{{ sd.application.marital_status|default:"—" }}</span></div>
   <div class="field field-box"><small>Date of Admission</small><span>{{ sd.application.date_of_admission|default:"—" }}</span></div>
-  <div class="field field-box"><small>Joining Date</small><span>{% if sd.booking.joining_date %}{{ sd.booking.joining_date|date:"Y-m-d" }}{% elif sd.booking.start_date %}{{ sd.booking.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
+  <div class="field field-box"><small>Joining Date</small><span>{% if sd.booking and sd.booking.joining_date %}{{ sd.booking.joining_date|date:"Y-m-d" }}{% elif sd.booking and sd.booking.start_date %}{{ sd.booking.start_date|date:"Y-m-d" }}{% else %}—{% endif %}</span></div>
 </div>
 <div class="field mt-2 field-box"><small>Address</small><div>{{ sd.application.address|default:"—" }}</div></div>
 <div class="section-title">Family</div>
