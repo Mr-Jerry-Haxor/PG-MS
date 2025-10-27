@@ -1,0 +1,7 @@
+1. Investigate missing delete button on pg/leaving page
+2. Restore delete button with confirmation modal for confirmed leaves (done)
+3. Update swap modal warning logic for occupied beds in pg/tenants (done)
+4. Add scroll handling to swap modal for large content (done)
+5. Show advance amount in tenants export PDF (done)
+6. Add booking approval modal with application confirmation & advance capture (done)
+7. Auto-send receipts for every payment with detailed email (done)

@@ -18,6 +18,11 @@
     {% if user.is_authenticated and user.profile.is_pg_admin and pg %}
       <span class="badge bg-light text-dark">{{ pg.name }}</span>
     {% endif %}
+    {% if user.is_authenticated and not user.profile.is_pg_admin %}
+      <a href="{% url 'my_payments' %}" class="btn btn-outline-primary btn-sm" style="font-size: 0.85rem;">
+        <i class="bi bi-receipt"></i> My Payments
+      </a>
+    {% endif %}
     {% if user.is_authenticated and has_active_booking and not user.profile.is_pg_admin %}
       <button type="button" class="btn btn-warning btn-sm text-dark" data-bs-toggle="modal" data-bs-target="#raiseComplaintModal" style="font-size: 0.85rem;">
         <i class="bi bi-exclamation-circle"></i> Raise Complaint
@@ -93,7 +98,17 @@
   <div class="col-12 col-md-6 col-lg-4">
     <div class="card shadow-sm border-0" style="background:linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%)">
       <div class="card-body">
-        <div class="text-secondary small fw-semibold mb-2">Beds Overview</div>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="text-secondary small fw-semibold">Beds Overview</div>
+          {% if user.is_authenticated and user.profile.is_pg_admin %}
+          <form method="post" action="{% url 'pg_sync_bed_statuses' %}" class="d-inline" onsubmit="return confirm('Sync bed statuses based on current bookings?');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-primary" style="font-size:0.7rem;padding:0.25rem 0.5rem;" title="Refresh bed statuses based on bookings">
+              <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+          </form>
+          {% endif %}
+        </div>
         <style>
           .beds-table{width:100%;font-size:.85rem}
           .beds-table td{padding:.4rem .5rem;border-bottom:1px solid #e2e8f0}
@@ -101,6 +116,7 @@
           .beds-table .label{color:#64748b}
           .beds-table .value{text-align:right;font-weight:600}
           .beds-table .value.vacant{color:#059669}
+          .beds-table .value.reserved{color:#0ea5e9}
           .beds-table .value.occupied{color:#2563eb}
           .beds-table .value.leaving{color:#d97706}
           .beds-table .value.total{color:#0f172a}
@@ -110,6 +126,10 @@
             <tr>
               <td class="label"><i class="bi bi-check-circle-fill text-success me-1"></i>Vacant</td>
               <td class="value vacant">{{ vacant_shares|default:0 }}</td>
+            </tr>
+            <tr>
+              <td class="label"><i class="bi bi-calendar-check text-info me-1"></i>Reserved</td>
+              <td class="value reserved">{{ reserved_shares|default:0 }}</td>
             </tr>
             <tr>
               <td class="label"><i class="bi bi-person-fill text-primary me-1"></i>Occupied</td>
@@ -391,6 +411,9 @@
             <div class="text-secondary small">Approved on {{ b.updated_at|date:"Y-m-d" }} • Joining {{ b.joining_date|default:"—" }}</div>
             <div class="mt-1 d-flex flex-wrap gap-2">
               <span class="badge bg-success-subtle text-dark border">Approved</span>
+              {% if b.booking_type == 'daywise' %}
+                <span class="badge bg-info-subtle text-dark border">Day-wise</span>
+              {% endif %}
               {% if b.leaving_date %}
                 {% if b.leaving_date < today %}
                   <span class="badge bg-danger-subtle text-danger border">Left ({{ b.leaving_date }})</span>
@@ -401,6 +424,14 @@
                 {% endif %}
               {% endif %}
             </div>
+            {% if b.booking_type == 'daywise' %}
+            <div class="text-secondary small mt-2">
+              <strong>Check-in:</strong> {{ b.joining_date }} {% if b.start_time %}at {{ b.start_time|date:"g:i A" }}{% endif %} •
+              <strong>Check-out:</strong> {{ b.leaving_date|default:"—" }} {% if b.end_time %}at {{ b.end_time|date:"g:i A" }}{% endif %}
+              <div class="mt-1"><strong>Purpose:</strong> {{ b.purpose|default:"—" }}</div>
+              <div class="mt-1"><strong>Application:</strong> {% if b.application %}{{ b.application.status|title }}{% else %}—{% endif %}</div>
+            </div>
+            {% endif %}
           </div>
           <div class="d-flex flex-wrap gap-2">
             <a href="{% url 'booking_detail' b.id %}" class="btn btn-outline-secondary btn-sm">Details</a>
@@ -408,13 +439,19 @@
               <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#myAppModal{{ b.id }}">View Application</button>
             {% endif %}
             {% if not b.leaving_date %}
-              <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#leaveModal{{ b.id }}">Leave PG</button>
+              <a href="{% url 'initiate_leave_request' b.id %}" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-box-arrow-right me-1"></i>Leave PG
+              </a>
               {# Application edit is allowed only if not confirmed #}
               {% if not b.application %}
                 <a href="{% url 'application_fill' b.id %}" class="btn btn-success btn-sm">Fill Application</a>
               {% elif b.application.status != 'confirmed' %}
                 <a href="{% url 'application_fill' b.id %}" class="btn btn-primary btn-sm">Modify Application</a>
               {% endif %}
+            {% elif b.leaving_date and not b.leaving_confirmed_date %}
+              <button class="btn btn-warning btn-sm cancel-leave-btn" data-booking-id="{{ b.id }}">
+                <i class="bi bi-x-circle me-1"></i>Cancel Leave Request
+              </button>
             {% endif %}
           </div>
         </div>
@@ -431,7 +468,37 @@
   {% endif %}
 </div>
 
-<!-- Per-booking Leave Modals -->
+<!-- Cancel Leave Request Script -->
+<script>
+function cancelLeaveRequest(bookingId) {
+  if (confirm('Are you sure you want to cancel your leave request?')) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/b/leave/cancel/${bookingId}/`;
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrfmiddlewaretoken';
+    csrfInput.value = csrfToken;
+    form.appendChild(csrfInput);
+    
+    document.body.appendChild(form);
+    form.submit();
+  }
+}
+
+// Event listener for cancel leave buttons
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.cancel-leave-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      cancelLeaveRequest(this.dataset.bookingId);
+    });
+  });
+});
+</script>
+
+<!-- Per-booking Leave Modals (OLD - Keep for backward compatibility) -->
 {% for b in my_approved_bookings %}
   {% if not b.leaving_date %}
   <div class="modal fade" id="leaveModal{{ b.id }}" tabindex="-1" aria-labelledby="leaveModalLabel{{ b.id }}" aria-hidden="true">
@@ -625,6 +692,13 @@
             <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
             <div class="text-secondary small">Applied on {{ b.created_at|date:"Y-m-d" }} • Joining {{ b.joining_date|default:"—" }}</div>
             <div class="badge bg-warning-subtle text-dark border">Pending</div>
+            {% if b.booking_type == 'daywise' %}
+              <div class="text-secondary small mt-1">
+                <strong>Check-in:</strong> {{ b.joining_date }} {% if b.start_time %}at {{ b.start_time|date:"g:i A" }}{% endif %} •
+                <strong>Check-out:</strong> {{ b.leaving_date|default:"—" }} {% if b.end_time %}at {{ b.end_time|date:"g:i A" }}{% endif %}
+                <div class="mt-1"><strong>Purpose:</strong> {{ b.purpose|default:"—" }}</div>
+              </div>
+            {% endif %}
           </div>
           <div class="d-flex gap-2">
             <a href="{% url 'booking_detail' b.id %}" class="btn btn-outline-secondary btn-sm">Details</a>

@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Approve Day-wise Booking • {{ pg.name }}{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+  <div class="row">
+    <div class="col-lg-8 mx-auto">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <a href="{% url 'pg_bookings_pending' %}" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-arrow-left"></i> Back
+        </a>
+        <h2 class="h4 mb-0">Approve Day-wise Booking</h2>
+      </div>
+
+      <!-- Booking Details Card -->
+      <div class="card mb-4">
+        <div class="card-header bg-light">
+          <h5 class="mb-0"><i class="bi bi-calendar-day"></i> Booking Details</h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <strong>Guest Name:</strong><br>
+              {{ booking.application.name|default:"N/A" }}
+            </div>
+            <div class="col-md-6">
+              <strong>Mobile:</strong><br>
+              {{ booking.application.phone|default:"N/A" }}
+            </div>
+            <div class="col-md-6">
+              <strong>Emergency Contact:</strong><br>
+              {{ booking.application.emergency_contact|default:"N/A" }}
+            </div>
+            <div class="col-md-6">
+              <strong>Check-in:</strong><br>
+              {{ booking.joining_date }} {% if booking.start_time %}at {{ booking.start_time|date:"g:i A" }}{% endif %}
+            </div>
+            <div class="col-md-6">
+              <strong>Check-out:</strong><br>
+              {{ booking.leaving_date }} {% if booking.end_time %}at {{ booking.end_time|date:"g:i A" }}{% endif %}
+            </div>
+            {% if booking_summary %}
+            <div class="col-md-6">
+              <strong>Duration:</strong><br>
+              {{ booking_summary.human }} <br/>
+              <small class="text-muted">({{ booking_summary.total_hours }} hours total)</small>
+            </div>
+            {% endif %}
+            <div class="col-12">
+              <strong>Purpose of Stay:</strong><br>
+              {{ booking.purpose|default:"Not specified" }}
+            </div>
+            {% if booking.application.selfie_url %}
+            <div class="col-md-6">
+              <strong>Selfie:</strong><br>
+              <a href="{{ booking.application.selfie_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-image"></i> View Selfie
+              </a>
+            </div>
+            {% endif %}
+            {% if booking.application.aadhaar_file_url %}
+            <div class="col-md-6">
+              <strong>Aadhaar Document:</strong><br>
+              <a href="{{ booking.application.aadhaar_file_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-file-earmark-text"></i> View Aadhaar
+              </a>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Room Assignment Form -->
+      <div class="card">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0"><i class="bi bi-door-open"></i> Assign Room & Approve</h5>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{% url 'pg_booking_approve' booking.id %}">
+            {% csrf_token %}
+            
+            <div class="mb-3">
+              <label for="room_select" class="form-label fw-bold">Select Room & Bed</label>
+              {% if vacant_shares %}
+                <select name="room_id" id="room_select" class="form-select" required onchange="updateBedOptions()">
+                  <option value="">-- Select Room --</option>
+                  {% for item in vacant_shares %}
+                    <option value="{{ item.room_id }}" data-share="{{ item.share_no }}" data-room-no="{{ item.room.room_no }}">
+                      Room {{ item.room.room_no }} - Bed {{ item.share_no }} 
+                      ({{ item.share.get_status_display }})
+                    </option>
+                  {% endfor %}
+                </select>
+                <input type="hidden" name="share_no" id="share_no_input">
+              {% else %}
+                <div class="alert alert-warning">
+                  <i class="bi bi-exclamation-triangle"></i> No suitable beds available for the requested booking period. Please free up a bed or check the booking dates.
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">Payment Details</label>
+              <div class="input-group mb-2">
+                <span class="input-group-text">₹</span>
+                <input type="number" name="payment_amount" class="form-control" placeholder="Payment Amount" step="0.01" min="0">
+              </div>
+              <div class="form-check">
+                <input type="checkbox" name="payment_received" class="form-check-input" id="payment_received">
+                <label class="form-check-label" for="payment_received">
+                  Payment Received
+                </label>
+              </div>
+            </div>
+
+            <div class="alert alert-info">
+              <i class="bi bi-info-circle"></i> 
+              <strong>Note:</strong> Approving this booking will immediately mark the selected bed as occupied.
+            </div>
+
+            <div class="d-flex gap-2 justify-content-end">
+              <a href="{% url 'pg_bookings_pending' %}" class="btn btn-secondary">Cancel</a>
+              {% if vacant_shares %}
+                <button type="submit" class="btn btn-success">
+                  <i class="bi bi-check-circle"></i> Approve & Assign Room
+                </button>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function updateBedOptions() {
+  const select = document.getElementById('room_select');
+  const selectedOption = select.options[select.selectedIndex];
+  const shareNo = selectedOption.getAttribute('data-share');
+  document.getElementById('share_no_input').value = shareNo || '';
+}
+</script>
+{% endblock %}

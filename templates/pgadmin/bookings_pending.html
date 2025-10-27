@@ -13,6 +13,7 @@
   .badge-pill{background:#f1f5f9;color:#475569;padding:.25rem .55rem;font-weight:600;border-radius:1rem;font-size:.6rem;border:1px solid #e2e8f0}
   .badge-pill.success{background:#ecfdf5;color:#047857;border-color:#bbf7d0}
   .badge-pill.warn{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+  .badge-pill.daywise{background:#dbeafe;color:#1e40af;border-color:#93c5fd}
   .booking-actions{display:flex;flex-wrap:wrap;gap:.45rem}
   .booking-actions .btn{flex:1 1 auto;min-width:100px}
   @media(max-width:600px){.booking-actions .btn{min-width:calc(50% - .45rem)}}
@@ -36,40 +37,195 @@
   </div>
 </div>
 
+<!-- All Bookings (Unified) -->
+{% if bookings %}
 <div class="bookings-grid">
   {% for b in bookings %}
-    <div class="booking-card fade-in shadow-hover">
-      <div class="booking-head">
-        <div class="user-line fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }} <span class="text-faded">({{ b.user.email }})</span></div>
-        <div class="meta">
-          <span class="badge-pill">Room {{ b.room.room_no }}</span>
-          <span class="badge-pill">Bed {{ b.share_no }}</span>
-          <span class="badge-pill {% if b.has_application %}success{% else %}warn{% endif %}">{% if b.has_application %}Application Submitted{% else %}Application Pending{% endif %}</span>
-          <span class="badge-pill">Joining {{ b.joining_date|default:"—" }}</span>
-          <span class="badge-pill">Payment {{ b.payment_date|date:"Y-m-d"|default:"—" }}</span>
+    {% if b.booking_type == 'daywise' %}
+      {# Day-wise Booking Card #}
+      <div class="booking-card fade-in shadow-hover" style="border-left: 4px solid #0d6efd;">
+        <div class="booking-head">
+          <div class="user-line fw-semibold">
+            {{ b.application.name|default:"Guest" }} 
+            <span class="text-faded">({{ b.application.phone|default:"N/A" }})</span>
+          </div>
+          <div class="meta">
+            <span class="badge-pill daywise">Day-wise</span>
+            <span class="badge-pill">{{ b.joining_date }} {% if b.start_time %}{{ b.start_time|date:"g A" }}{% endif %}</span>
+            <span class="badge-pill">to {{ b.leaving_date }} {% if b.end_time %}{{ b.end_time|date:"g A" }}{% endif %}</span>
+            {% if b.assigned_by %}
+              <span class="badge-pill success">Room {{ b.room.room_no }} / Bed {{ b.share_no }}</span>
+            {% else %}
+              <span class="badge-pill warn">Room Not Assigned</span>
+            {% endif %}
+          </div>
+          {% if b.application and b.application.emergency_contact %}
+          <div class="small text-faded">Emergency: {{ b.application.emergency_contact }}</div>
+          {% endif %}
+          {% if b.purpose %}
+          <div class="small"><strong>Purpose:</strong> {{ b.purpose|truncatewords:15 }}</div>
+          {% endif %}
+          {% if b.created_at %}
+          <div class="small text-faded">Requested: {{ b.created_at|date:"M d, Y g:i A" }}</div>
+          {% endif %}
         </div>
-        <div class="small text-faded">Phone: {{ b.user.profile.phone|default:"—" }}</div>
-        {% if b.has_application and b.application.whatsapp_number %}
-        <div class="small text-faded">WhatsApp: {{ b.application.whatsapp_number }}</div>
-        {% endif %}
+        <div class="booking-actions mt-1">
+          <a href="{% url 'pg_booking_approve' b.id %}" class="btn btn-sm btn-success">
+            <i class="bi bi-check-circle"></i> Approve & Assign Room
+          </a>
+          <a href="{% url 'pg_booking_reject' b.id %}" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-x-circle"></i> Reject
+          </a>
+          {% if b.has_application and b.application %}
+            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">
+              <i class="bi bi-eye"></i> View Details
+            </button>
+          {% endif %}
+        </div>
       </div>
-      <div class="booking-actions mt-1">
-        <a href="{% url 'pg_booking_approve' b.id %}" class="btn btn-sm btn-success">Approve</a>
-        <a href="{% url 'pg_booking_reject' b.id %}" class="btn btn-sm btn-outline-danger">Reject</a>
-        {% if b.has_application %}
-          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View Application</button>
-        {% else %}
-          <a href="{% url 'pg_application_email_send' b.id %}" class="btn btn-sm btn-outline-primary">Send Link</a>
-        {% endif %}
+    {% else %}
+      {# Regular Booking Card #}
+      <div class="booking-card fade-in shadow-hover">
+        <div class="booking-head">
+          <div class="user-line fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }} <span class="text-faded">({{ b.user.email }})</span></div>
+          <div class="meta">
+            <span class="badge-pill">Regular</span>
+            <span class="badge-pill">Room {{ b.room.room_no }}</span>
+            <span class="badge-pill">Bed {{ b.share_no }}</span>
+            <span class="badge-pill {% if b.has_application %}success{% else %}warn{% endif %}">{% if b.has_application %}Application Submitted{% else %}Application Pending{% endif %}</span>
+            <span class="badge-pill">Joining {{ b.joining_date|default:"—" }}</span>
+            <span class="badge-pill">Payment {{ b.payment_date|date:"Y-m-d"|default:"—" }}</span>
+          </div>
+          <div class="small text-faded">Phone: {{ b.user.profile.phone|default:"—" }}</div>
+          {% if b.has_application and b.application.whatsapp_number %}
+          <div class="small text-faded">WhatsApp: {{ b.application.whatsapp_number }}</div>
+          {% endif %}
+        </div>
+        <div class="booking-actions mt-1">
+          <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#approveModal{{ b.id }}">Approve</button>
+          <a href="{% url 'pg_booking_reject' b.id %}" class="btn btn-sm btn-outline-danger">Reject</a>
+          {% if b.has_application %}
+            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View Application</button>
+          {% else %}
+            <a href="{% url 'pg_application_email_send' b.id %}" class="btn btn-sm btn-outline-primary">Send Link</a>
+          {% endif %}
+        </div>
       </div>
-    </div>
-  {% empty %}
-    <div class="empty-state">No pending bookings.</div>
+
+      <div class="modal fade" id="approveModal{{ b.id }}" tabindex="-1" aria-labelledby="approveModalLabel{{ b.id }}" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <form method="post" action="{% url 'pg_booking_approve' b.id %}">
+              {% csrf_token %}
+              <div class="modal-header">
+                <h5 class="modal-title" id="approveModalLabel{{ b.id }}">Confirm Booking</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <p class="small text-secondary mb-2">Approve booking for <strong>{{ b.user.get_full_name|default:b.user.email }}</strong> in Room {{ b.room.room_no }}, Bed {{ b.share_no }}.</p>
+                {% if b.has_application and b.application %}
+                <div class="form-check form-switch mb-3">
+                  <input class="form-check-input" type="checkbox" role="switch" id="confirmApplication{{ b.id }}" name="confirm_application" checked>
+                  <label class="form-check-label" for="confirmApplication{{ b.id }}">Also mark the resident application as confirmed</label>
+                  <div class="form-text">Current application status: {{ b.application.get_status_display }}</div>
+                </div>
+                {% else %}
+                <div class="alert alert-warning small" role="alert">
+                  Resident application is still pending. You can approve the booking now and confirm the application later.
+                </div>
+                {% endif %}
+
+                <hr class="my-3">
+
+                {% if b.advance_paid %}
+                <div class="alert alert-info small" role="alert">
+                  Currently recorded advance: ₹{{ b.advance_paid }}
+                </div>
+                {% endif %}
+
+                <div class="form-check">
+                  <input class="form-check-input advance-toggle" type="checkbox" id="collectAdvance{{ b.id }}" name="collect_advance" data-target="#advanceFields{{ b.id }}">
+                  <label class="form-check-label" for="collectAdvance{{ b.id }}"><strong>Record advance amount received</strong></label>
+                </div>
+                <div class="mt-3 ms-2 d-none" id="advanceFields{{ b.id }}">
+                  <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="advanceAmount{{ b.id }}">Advance Amount (₹)</label>
+                      <input type="number" class="form-control form-control-sm" id="advanceAmount{{ b.id }}" name="advance_amount" step="0.01" min="0">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="advanceMode{{ b.id }}">Mode of Payment</label>
+                      <select class="form-select form-select-sm" id="advanceMode{{ b.id }}" name="advance_mode">
+                        <option value="upi" selected>UPI</option>
+                        <option value="cash">Cash</option>
+                        <option value="bank">Bank Transfer</option>
+                      </select>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label" for="advanceNotes{{ b.id }}">Notes (Optional)</label>
+                      <textarea class="form-control form-control-sm" id="advanceNotes{{ b.id }}" name="advance_notes" rows="2" placeholder="Any additional notes about this payment..."></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-success">Approve Booking</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endif %}
   {% endfor %}
 </div>
+{% else %}
+  <div class="empty-state">No pending bookings.</div>
+{% endif %}
+
 {% for b in bookings %}
   {% if b.has_application and b.application %}
     {% include 'pgadmin/_application_modal.html' with booking=b pg=pg referral_options=referral_options %}
   {% endif %}
 {% endfor %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const syncMap = new Map();
+
+  document.querySelectorAll('.advance-toggle').forEach(function (checkbox) {
+    const targetSelector = checkbox.getAttribute('data-target');
+    const container = document.querySelector(targetSelector);
+    if (!container) return;
+    const amountInput = container.querySelector('input[name="advance_amount"]');
+
+    const sync = function () {
+      const isChecked = checkbox.checked;
+      container.classList.toggle('d-none', !isChecked);
+      if (amountInput) {
+        amountInput.toggleAttribute('required', isChecked);
+        if (!isChecked) {
+          amountInput.value = '';
+        }
+      }
+    };
+
+    checkbox.addEventListener('change', sync);
+    sync();
+    syncMap.set(checkbox, { container, amountInput, sync });
+  });
+
+  document.querySelectorAll('.modal').forEach(function (modal) {
+    modal.addEventListener('hidden.bs.modal', function () {
+      modal.querySelectorAll('.advance-toggle').forEach(function (checkbox) {
+        checkbox.checked = false;
+        const meta = syncMap.get(checkbox);
+        if (meta) {
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+  });
+});
+</script>
 {% endblock %}

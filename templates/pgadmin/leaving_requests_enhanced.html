@@ -1,0 +1,802 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Leave Requests • {{ pg.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid my-4">
+  <form id="csrfTokenHolder" class="d-none">
+    {% csrf_token %}
+  </form>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0"><i class="bi bi-box-arrow-right me-2"></i>Leave Requests - {{ pg.name }}</h1>
+    <a href="{% url 'pg_tenants' %}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Back to Tenants
+    </a>
+  </div>
+
+  <!-- Filters -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="fw-semibold text-muted" style="font-size: 0.75rem;">FILTERS:</span>
+        
+        <!-- Status Filters -->
+        <div class="btn-group btn-group-sm" role="group" id="statusFilterGroup">
+          <button type="button" class="btn btn-outline-primary filter-btn active" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="all">All</button>
+          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="pending">Pending</button>
+          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="confirmed">Confirmed</button>
+          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="completed">Completed</button>
+        </div>
+        
+        <span class="text-muted" style="font-size: 0.875rem;">|</span>
+        
+        <!-- Advance Filters -->
+        <div class="btn-group btn-group-sm" role="group" id="advanceFilterGroup">
+          <button type="button" class="btn btn-outline-success filter-btn active" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="all">All Advance</button>
+          <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="eligible">Eligible</button>
+          <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="not-eligible">Not Eligible</button>
+          <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="pending">Pending Return</button>
+          <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="returned">Returned</button>
+        </div>
+        
+        <span class="text-muted" style="font-size: 0.875rem;">|</span>
+        
+        <!-- Booking Type Filters -->
+        <div class="btn-group btn-group-sm" role="group" id="bookingTypeFilterGroup">
+          <button type="button" class="btn btn-outline-info filter-btn active" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="all">All Types</button>
+          <button type="button" class="btn btn-outline-info filter-btn" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="regular">Regular</button>
+          <button type="button" class="btn btn-outline-info filter-btn" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="daywise">Day-wise</button>
+        </div>
+        
+        <span class="text-muted" style="font-size: 0.875rem;">|</span>
+        
+        <!-- Reset Button -->
+        <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size: 0.75rem;" id="resetFilters">
+          <i class="bi bi-arrow-clockwise me-1"></i>Reset
+        </button>
+        
+        <!-- Count Display -->
+        <span class="ms-auto badge bg-secondary" style="font-size: 0.75rem;" id="filterCount">Showing: <span id="visibleCount">0</span> of <span id="totalCount">0</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leave Requests Table -->
+  {% if leave_requests %}
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <!-- Horizontal Scroll Notice for Mobile -->
+      <div class="alert alert-info m-3 mb-0 d-md-none">
+        <i class="bi bi-info-circle me-2"></i>
+        <small>Swipe left/right to view all columns</small>
+      </div>
+      
+      <!-- Desktop Table with Horizontal Scroll -->
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" style="min-width: 1000px;">
+          <thead class="table-light">
+            <tr>
+              <th>Tenant</th>
+              <th>Room/Bed</th>
+              <th>Initiated</th>
+              <th>Leave Date</th>
+              <th>Reason</th>
+              <th>Advance</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for booking in leave_requests %}
+            <tr id="leaveRow{{ booking.id }}" class="leave-row" 
+                data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_confirmed_date >= today %}confirmed{% else %}completed{% endif %}"
+                data-advance="{% if booking.advance_returned %}returned{% elif not booking.advance_eligible %}not-eligible{% elif booking.leaving_confirmed_date %}pending{% else %}eligible{% endif %}"
+                data-booking-type="{% if booking.booking_type == 'daywise' %}daywise{% else %}regular{% endif %}">
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#appModal{{ booking.id }}" aria-label="View application for {{ booking.user.get_full_name }}">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                  <div class="fw-semibold">
+                    {{ booking.user.get_full_name }}
+                    {% if booking.booking_type == 'daywise' %}
+                    <span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem;">Day-wise</span>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="small text-muted">{{ booking.user.email }}</div>
+                {% if booking.user.profile.phone %}
+                <div class="small text-muted">{{ booking.user.profile.phone }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge bg-primary">Room {{ booking.room.room_no }}</span>
+                <span class="badge bg-secondary">Bed {{ booking.share_no }}</span>
+              </td>
+              <td>
+                {% if booking.leaving_initiated_at %}
+                  <div>{{ booking.leaving_initiated_at|date:"M d, Y" }}</div>
+                  <div class="small text-muted">{{ booking.leaving_initiated_at|date:"g:i A" }}</div>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <span id="leaveDate{{ booking.id }}" class="fw-semibold">{{ booking.leaving_date|date:"M d, Y" }}</span>
+                {% if not booking.leaving_confirmed_date %}
+                <button class="btn btn-sm btn-link p-0 ms-1 edit-leave-date-btn" data-booking-id="{{ booking.id }}" data-leaving-date="{{ booking.leaving_date|date:'Y-m-d' }}" title="Edit date">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                {% endif %}
+                {% if booking.leaving_confirmed_date %}
+                <div><span class="badge bg-success">Confirmed</span></div>
+                {% endif %}
+              </td>
+              <td>
+                {% if booking.leaving_reason %}
+                  <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#reasonModal{{ booking.id }}">
+                    View Reason
+                  </button>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if booking.advance_eligible %}
+                  <span class="badge bg-success mb-1">✓ Eligible</span>
+                  {% if booking.advance_returned %}
+                    <div class="small">
+                      <span class="badge bg-info">Returned</span><br>
+                      <span class="text-muted">₹{{ booking.advance_returned_amount }}</span>
+                      <button class="btn btn-sm btn-link p-0 ms-1 edit-advance-amount-btn" data-booking-id="{{ booking.id }}" data-current-amount="{{ booking.advance_returned_amount }}" data-advance-paid="{{ booking.advance_paid }}" title="Edit amount">
+                        <i class="bi bi-pencil"></i>
+                      </button><br>
+                      <span class="text-muted small">{{ booking.advance_returned_at|date:"M d, Y" }}</span>
+                    </div>
+                  {% elif booking.leaving_confirmed_date %}
+                    <button class="btn btn-sm btn-outline-primary mark-advance-returned-btn" data-booking-id="{{ booking.id }}" data-advance-paid="{{ booking.advance_paid }}" data-is-eligible="true">
+                      Mark Returned
+                    </button>
+                  {% endif %}
+                {% else %}
+                  <span class="badge bg-secondary mb-1">✗ Not Eligible</span>
+                  {% if booking.advance_returned %}
+                    <div class="small">
+                      <span class="badge bg-info">Returned</span><br>
+                      <span class="text-muted">₹{{ booking.advance_returned_amount }}</span>
+                      <button class="btn btn-sm btn-link p-0 ms-1 edit-advance-amount-btn" data-booking-id="{{ booking.id }}" data-current-amount="{{ booking.advance_returned_amount }}" data-advance-paid="{{ booking.advance_paid }}" title="Edit amount">
+                        <i class="bi bi-pencil"></i>
+                      </button><br>
+                      <span class="text-muted small">{{ booking.advance_returned_at|date:"M d, Y" }}</span>
+                    </div>
+                  {% elif booking.leaving_confirmed_date %}
+                    <button class="btn btn-sm btn-outline-secondary mark-advance-returned-btn" data-booking-id="{{ booking.id }}" data-advance-paid="{{ booking.advance_paid }}" data-is-eligible="false">
+                      Mark Returned
+                    </button>
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex flex-column gap-1">
+                  {% if not booking.leaving_confirmed_date %}
+                    <button class="btn btn-sm btn-success confirm-leave-btn" data-booking-id="{{ booking.id }}">
+                      <i class="bi bi-check-circle me-1"></i>Confirm
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger reject-leave-btn" data-booking-id="{{ booking.id }}">
+                      <i class="bi bi-x-circle me-1"></i>Reject
+                    </button>
+                  {% else %}
+                    <span class="badge bg-success">Confirmed</span>
+                    {% if booking.leaving_confirmed_date >= today %}
+                      <button class="btn btn-sm btn-outline-warning mt-1 show-recontinue-btn" data-booking-id="{{ booking.id }}">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Re-Continue
+                      </button>
+                    {% endif %}
+                    <button class="btn btn-sm btn-outline-danger delete-booking-btn" data-bs-toggle="modal" data-bs-target="#deleteModal{{ booking.id }}">
+                      <i class="bi bi-trash me-1"></i>Delete Data
+                    </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            
+            <!-- Reason Modal -->
+            {% if booking.leaving_reason %}
+            <div class="modal fade" id="reasonModal{{ booking.id }}" tabindex="-1">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Leave Reason - {{ booking.user.get_full_name }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <p>{{ booking.leaving_reason }}</p>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            {% if booking.leaving_confirmed_date %}
+            <div class="modal fade" id="deleteModal{{ booking.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ booking.id }}" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel{{ booking.id }}">Delete Resident Data</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="alert alert-warning d-flex align-items-start">
+                      <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                      <div>
+                        Deleting this resident will permanently remove their booking, application, and stored documents.
+                      </div>
+                    </div>
+                    <ul class="small text-muted mb-0 ps-3">
+                      <li>Booking and application records are permanently deleted.</li>
+                      <li>Linked identity files are removed where possible.</li>
+                      <li>This action cannot be undone.</li>
+                    </ul>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep Data</button>
+                    <form method="post" action="{% url 'pg_leaving_delete' booking.id %}" class="m-0">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-danger">Delete Permanently</button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="card shadow-sm">
+    <div class="card-body text-center py-5">
+      <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+      <p class="text-muted mt-3">No leave requests found matching the selected filters.</p>
+    </div>
+  </div>
+  {% endif %}
+  
+  {# Application modals: include each booking's application modal so the eye button opens it #}
+  {% for booking in leave_requests %}
+    {% if booking.application %}
+      {% include 'pgadmin/_application_modal.html' with booking=booking pg=pg %}
+    {% endif %}
+  {% endfor %}
+</div>
+
+<!-- Edit Leave Date Modal -->
+<div class="modal fade" id="editLeaveDateModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Leave Date</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="date" class="form-control" id="newLeaveDateInput">
+        <input type="hidden" id="editBookingId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveLeaveDate()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mark Advance Returned Modal -->
+<div class="modal fade" id="markAdvanceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Mark Advance as Returned</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Amount Returned (₹)</label>
+          <input type="number" class="form-control" id="advanceAmount" step="0.01" min="0">
+          <div class="form-text" id="advanceHelpText">Original advance: ₹<span id="originalAdvance">0</span></div>
+        </div>
+        <input type="hidden" id="advanceBookingId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveAdvanceReturn()">Mark as Returned</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Advance Amount Modal -->
+<div class="modal fade" id="editAdvanceAmountModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Advance Returned Amount</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Amount Returned (₹)</label>
+          <input type="number" class="form-control" id="editAdvanceAmount" step="0.01" min="0">
+          <div class="form-text">Original advance paid: ₹<span id="editOriginalAdvance">0</span></div>
+          <div class="form-text text-muted">Current returned amount: ₹<span id="currentReturnedAmount">0</span></div>
+        </div>
+        <input type="hidden" id="editAdvanceBookingId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveEditedAdvanceAmount()">Update Amount</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function getCsrfToken() {
+  return document.querySelector('[name=csrfmiddlewaretoken]').value;
+}
+
+function confirmLeave(bookingId) {
+  if (!confirm('Confirm this leave request?')) return;
+  
+  fetch(`/pg/leave/${bookingId}/confirm/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': getCsrfToken(),
+      'Content-Type': 'application/json'
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      location.reload();
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    alert('Error confirming leave: ' + error);
+  });
+}
+
+function rejectLeave(bookingId) {
+  if (!confirm('Are you sure you want to reject this leave request?')) return;
+  
+  fetch(`/pg/leave/${bookingId}/reject/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': getCsrfToken(),
+      'Content-Type': 'application/json'
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      location.reload();
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    alert('Error rejecting leave: ' + error);
+  });
+}
+
+function editLeaveDate(bookingId, currentDate) {
+  document.getElementById('editBookingId').value = bookingId;
+  document.getElementById('newLeaveDateInput').value = currentDate;
+  document.getElementById('newLeaveDateInput').min = new Date().toISOString().split('T')[0];
+  
+  const modal = new bootstrap.Modal(document.getElementById('editLeaveDateModal'));
+  modal.show();
+}
+
+function saveLeaveDate() {
+  const bookingId = document.getElementById('editBookingId').value;
+  const newDate = document.getElementById('newLeaveDateInput').value;
+  
+  if (!newDate) {
+    alert('Please select a date');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('new_date', newDate);
+  
+  fetch(`/pg/leave/${bookingId}/edit-date/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': getCsrfToken()
+    },
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      location.reload();
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    alert('Error updating date: ' + error);
+  });
+}
+
+function markAdvanceReturned(bookingId, advancePaid, isEligible) {
+  document.getElementById('advanceBookingId').value = bookingId;
+  document.getElementById('originalAdvance').textContent = advancePaid;
+  
+  // For eligible: pre-fill with full advance amount
+  // For not eligible: pre-fill with 0 and show advance paid instead of "original advance"
+  if (isEligible === 'true' || isEligible === true) {
+    document.getElementById('advanceAmount').value = 0;
+    document.getElementById('advanceHelpText').innerHTML = 'Advance paid: ₹<span id="originalAdvance">' + advancePaid + '</span>';
+  } else {
+    document.getElementById('advanceAmount').value = 0;
+    document.getElementById('advanceHelpText').innerHTML = 'Advance paid: ₹<span id="originalAdvance">' + advancePaid + '</span> (Not eligible for return)';
+  }
+  
+  const modal = new bootstrap.Modal(document.getElementById('markAdvanceModal'));
+  modal.show();
+}
+
+function saveAdvanceReturn() {
+  const bookingId = document.getElementById('advanceBookingId').value;
+  const amount = document.getElementById('advanceAmount').value;
+  
+  if (!amount || parseFloat(amount) <= 0) {
+    alert('Please enter a valid amount');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('amount', amount);
+  
+  fetch(`/pg/leave/${bookingId}/mark-advance-returned/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': getCsrfToken()
+    },
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      location.reload();
+    } else if (data.warning) {
+      if (confirm(data.message)) {
+        // User confirmed despite warning - resubmit
+        saveAdvanceReturn();
+      }
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    alert('Error marking advance: ' + error);
+  });
+}
+
+function editAdvanceAmount(bookingId, currentAmount, advancePaid) {
+  document.getElementById('editAdvanceBookingId').value = bookingId;
+  document.getElementById('editAdvanceAmount').value = currentAmount;
+  document.getElementById('editOriginalAdvance').textContent = advancePaid;
+  document.getElementById('currentReturnedAmount').textContent = currentAmount;
+  
+  const modal = new bootstrap.Modal(document.getElementById('editAdvanceAmountModal'));
+  modal.show();
+}
+
+function saveEditedAdvanceAmount() {
+  const bookingId = document.getElementById('editAdvanceBookingId').value;
+  const amount = document.getElementById('editAdvanceAmount').value;
+  
+  if (!amount || parseFloat(amount) < 0) {
+    alert('Please enter a valid amount');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('amount', amount);
+  
+  fetch(`/pg/leave/${bookingId}/edit-advance-amount/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': getCsrfToken()
+    },
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      location.reload();
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    alert('Error updating advance amount: ' + error);
+  });
+}
+
+function showReContinue(bookingId) {
+  // Fetch re-continue options
+  fetch(`/pg/leave/${bookingId}/re-continue/`, {
+    method: 'GET',
+    headers: {
+      'X-CSRFToken': getCsrfToken()
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      showReContinueModal(bookingId, data);
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    alert('Error loading re-continue options: ' + error);
+  });
+}
+
+function showReContinueModal(bookingId, data) {
+  let modalHtml = `
+    <div class="modal fade" id="reContinueModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Re-Continue - Cancel Leave</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted">Select an option to allow the tenant to continue staying:</p>
+            
+            <!-- Same Room Option -->
+            <div class="card mb-3">
+              <div class="card-body">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="reContinueOption" id="sameRoomOption" value="same" ${data.same_room_available ? '' : 'disabled'}>
+                  <label class="form-check-label" for="sameRoomOption">
+                    <strong>Continue in Same Room</strong> (Room ${data.current_room}, Bed ${data.current_share})
+                  </label>
+                </div>
+                ${!data.same_room_available ? `
+                  <div class="alert alert-warning mt-2 small mb-0">
+                    <strong>Not available due to conflicts:</strong>
+                    <ul class="mb-0 mt-1">
+                      ${data.same_room_conflicts.map(c => `<li>${c.detail}</li>`).join('')}
+                    </ul>
+                  </div>
+                ` : '<div class="text-success small mt-1"><i class="bi bi-check-circle"></i> No conflicts - available</div>'}
+              </div>
+            </div>
+            
+            <!-- Change Room Option -->
+            <div class="card">
+              <div class="card-body">
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="radio" name="reContinueOption" id="changeRoomOption" value="change">
+                  <label class="form-check-label" for="changeRoomOption">
+                    <strong>Change Room</strong>
+                  </label>
+                </div>
+                <div id="roomSelectionDiv" style="display: none;">
+                  ${data.vacant_rooms.length > 0 ? `
+                    <select class="form-select" id="newRoomSelect">
+                      <option value="">Select a room/bed...</option>
+                      ${data.vacant_rooms.map(r => `<option value="${r.room_id}-${r.share_no}">Room ${r.room_no}, Bed ${r.share_no}</option>`).join('')}
+                    </select>
+                  ` : '<div class="alert alert-warning small mb-0">No vacant rooms available</div>'}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="submitReContinue(${bookingId})">Confirm Re-Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Remove existing modal if any
+  const existingModal = document.getElementById('reContinueModal');
+  if (existingModal) existingModal.remove();
+  
+  // Add modal to body
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  
+  // Show modal
+  const modal = new bootstrap.Modal(document.getElementById('reContinueModal'));
+  modal.show();
+  
+  // Handle radio button change
+  document.getElementById('changeRoomOption').addEventListener('change', function() {
+    document.getElementById('roomSelectionDiv').style.display = this.checked ? 'block' : 'none';
+  });
+  
+  document.getElementById('sameRoomOption').addEventListener('change', function() {
+    document.getElementById('roomSelectionDiv').style.display = 'none';
+  });
+}
+
+function submitReContinue(bookingId) {
+  const selectedOption = document.querySelector('input[name="reContinueOption"]:checked');
+  
+  if (!selectedOption) {
+    alert('Please select an option');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('option', selectedOption.value);
+  
+  if (selectedOption.value === 'change') {
+    const roomSelect = document.getElementById('newRoomSelect');
+    if (!roomSelect || !roomSelect.value) {
+      alert('Please select a room');
+      return;
+    }
+    const [roomId, shareNo] = roomSelect.value.split('-');
+    formData.append('new_room_id', roomId);
+    formData.append('new_share_no', shareNo);
+  }
+  
+  fetch(`/pg/leave/${bookingId}/re-continue/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': getCsrfToken()
+    },
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      location.reload();
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    alert('Error processing re-continue: ' + error);
+  });
+}
+
+// Event listeners for buttons with data attributes
+document.addEventListener('DOMContentLoaded', function() {
+  // Edit leave date buttons
+  document.querySelectorAll('.edit-leave-date-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      editLeaveDate(this.dataset.bookingId, this.dataset.leavingDate);
+    });
+  });
+  
+  // Mark advance returned buttons
+  document.querySelectorAll('.mark-advance-returned-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      markAdvanceReturned(this.dataset.bookingId, this.dataset.advancePaid, this.dataset.isEligible);
+    });
+  });
+  
+  // Edit advance amount buttons
+  document.querySelectorAll('.edit-advance-amount-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      editAdvanceAmount(this.dataset.bookingId, this.dataset.currentAmount, this.dataset.advancePaid);
+    });
+  });
+  
+  // Confirm leave buttons
+  document.querySelectorAll('.confirm-leave-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      confirmLeave(this.dataset.bookingId);
+    });
+  });
+  
+  // Reject leave buttons
+  document.querySelectorAll('.reject-leave-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      rejectLeave(this.dataset.bookingId);
+    });
+  });
+  
+  // Re-continue buttons
+  document.querySelectorAll('.show-recontinue-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      showReContinue(this.dataset.bookingId);
+    });
+  });
+  
+  // Client-side filtering
+  const filterState = {
+    status: 'all',
+    advance: 'all',
+    'booking-type': 'all'
+  };
+  
+  function applyFilters() {
+    const rows = document.querySelectorAll('.leave-row');
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+      const rowStatus = row.dataset.status;
+      const rowAdvance = row.dataset.advance;
+      const rowBookingType = row.dataset.bookingType;
+      const statusMatch = filterState.status === 'all' || rowStatus === filterState.status;
+      const advanceMatch = filterState.advance === 'all' || rowAdvance === filterState.advance;
+      const bookingTypeMatch = filterState['booking-type'] === 'all' || rowBookingType === filterState['booking-type'];
+      
+      if (statusMatch && advanceMatch && bookingTypeMatch) {
+        row.style.display = '';
+        visibleCount++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+    
+    // Update count
+    document.getElementById('visibleCount').textContent = visibleCount;
+    document.getElementById('totalCount').textContent = rows.length;
+  }
+  
+  // Filter button click handlers
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const filterType = this.dataset.filterType;
+      const filterValue = this.dataset.filterValue;
+      
+      // Remove active class from siblings
+      this.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      
+      // Add active class to clicked button
+      this.classList.add('active');
+      
+      // Update filter state
+      filterState[filterType] = filterValue;
+      
+      // Apply filters
+      applyFilters();
+    });
+  });
+  
+  // Reset filters button
+  document.getElementById('resetFilters').addEventListener('click', function() {
+    // Reset filter state
+    filterState.status = 'all';
+    filterState.advance = 'all';
+    filterState['booking-type'] = 'all';
+    
+    // Reset active buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.dataset.filterValue === 'all') {
+        btn.classList.add('active');
+      }
+    });
+    
+    // Apply filters
+    applyFilters();
+  });
+  
+  // Initial count update
+  applyFilters();
+});
+</script>
+
+{% endblock %}
+

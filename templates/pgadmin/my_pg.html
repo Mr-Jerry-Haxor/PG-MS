@@ -41,6 +41,11 @@
       <div class="form-text">Default credit applied when a resident refers a new tenant for this PG.</div>
     </div>
     <div class="mb-3">
+      <label class="form-label">Day-wise Booking Fee (₹/day)</label>
+      {{ form.daywise_fee }}
+      <div class="form-text">Fee charged per day for day-wise/short-term bookings. Leave as 0 if day-wise bookings are not offered.</div>
+    </div>
+    <div class="mb-3">
       <label class="form-label">Notice Period (Days)</label>
       {{ form.notice_period }}
       <div class="form-text">Number of days notice required before a tenant can leave the PG (default: 30 days).</div>

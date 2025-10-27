@@ -13,4 +13,8 @@ urlpatterns = [
     path('pg/<slug:pgslug>/', views.pg_quick_booking, name='pg_quick_booking'),
     path('pg/<slug:pgslug>/api/rooms/', views.pg_quick_rooms, name='pg_quick_rooms'),
     path('pg/<slug:pgslug>/api/rooms/<int:room_id>/shares/', views.pg_quick_shares, name='pg_quick_shares'),
+    # Leave PG functionality
+    path('leave/request/<int:booking_id>/', views.initiate_leave_request, name='initiate_leave_request'),
+    path('leave/cancel/<int:booking_id>/', views.cancel_leave_request, name='cancel_leave_request'),
 ]
+

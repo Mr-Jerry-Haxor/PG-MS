@@ -42,8 +42,20 @@
       {% for b in bookings %}
         {% if not b.leaving_confirmed_date %}
         <div class="lr-card fade-in">
-          <div class="d-flex flex-column gap-1">
-            <div class="fw-semibold small">{{ b.user.get_full_name|default:b.user.email }}</div>
+          <div class="d-flex flex-direction column gap-1">
+            {% if b.application %}
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-info" 
+                        data-bs-toggle="modal" 
+                        data-bs-target="#appModal{{ b.id }}"
+                        aria-label="View application for {{ b.user.get_full_name|default:b.user.email }}">
+                  <i class="bi bi-info-circle"></i>
+                </button>
+                <div class="fw-semibold small">{{ b.user.get_full_name|default:b.user.email }}</div>
+              </div>
+            {% else %}
+              <div class="fw-semibold small">{{ b.user.get_full_name|default:b.user.email }}</div>
+            {% endif %}
             <div class="lr-meta">
               <span class="pill">Room {{ b.room.room_no }}</span>
               <span class="pill">Bed {{ b.share_no }}</span>
@@ -82,7 +94,21 @@
         <tbody>
           {% for b in bookings %}
           <tr class="{% if b.leaving_confirmed_date %}table-success{% endif %}">
-            <td class="small">{{ b.user.get_full_name|default:b.user.email }}</td>
+            <td class="small">
+              {% if b.application %}
+                <div class="d-flex align-items-center gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-info" 
+                          data-bs-toggle="modal" 
+                          data-bs-target="#appModal{{ b.id }}"
+                          aria-label="View application for {{ b.user.get_full_name|default:b.user.email }}">
+                    <i class="bi bi-info-circle"></i>
+                  </button>
+                  <span style="font-size:0.7rem">{{ b.user.get_full_name|default:b.user.email }}</span>
+                </div>
+              {% else %}
+                {{ b.user.get_full_name|default:b.user.email }}
+              {% endif %}
+            </td>
             <td class="small">{{ b.room.room_no }} / {{ b.share_no }}</td>
             <td class="small">{{ b.start_date|default:b.joining_date }}</td>
             <td class="small">{{ b.leaving_date }}</td>
@@ -151,4 +177,12 @@
   </div>
   {% endif %}
 {% endfor %}
+
+{# Application Modals #}
+{% for b in bookings %}
+  {% if b.application %}
+    {% include 'pgadmin/_application_modal.html' with booking=b pg=pg %}
+  {% endif %}
+{% endfor %}
+
 {% endblock %}

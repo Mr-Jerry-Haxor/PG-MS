@@ -34,12 +34,29 @@ urlpatterns = [
     path('leaving/<int:booking_id>/confirm/', views.leaving_confirm, name='pg_leaving_confirm'),
     path('leaving/<int:booking_id>/reject/', views.leaving_reject, name='pg_leaving_reject'),
     path('leaving/<int:booking_id>/delete/', views.leaving_delete, name='pg_leaving_delete'),
+    # Enhanced leave management
+    path('leave/requests/', views.leaving_requests, name='pg_leaving_requests_enhanced'),
+    path('leave/<int:booking_id>/confirm/', views.confirm_leave, name='pg_confirm_leave'),
+    path('leave/<int:booking_id>/reject/', views.reject_leave, name='pg_reject_leave'),
+    path('leave/<int:booking_id>/edit-date/', views.edit_leave_date, name='pg_edit_leave_date'),
+    path('leave/<int:booking_id>/mark-advance-returned/', views.mark_advance_returned, name='pg_mark_advance_returned'),
+    path('leave/<int:booking_id>/edit-advance-amount/', views.edit_advance_returned_amount, name='pg_edit_advance_amount'),
+    # Re-continue feature
+    path('leave/<int:booking_id>/re-continue/', views.re_continue_booking, name='pg_re_continue'),
+    # Future swap feature
+    path('swap/create/<int:booking_id>/', views.create_future_swap, name='pg_create_future_swap'),
+    path('swap/<int:swap_id>/approve/', views.approve_future_swap, name='pg_approve_future_swap'),
+    path('swap/<int:swap_id>/reject/', views.reject_future_swap, name='pg_reject_future_swap'),
+    path('swap/<int:swap_id>/execute/', views.execute_swap, name='pg_execute_swap'),
     path('applications/<int:app_id>/confirm/', views.application_confirm, name='pg_application_confirm'),
     path('applications/<int:app_id>/reject/', views.application_reject, name='pg_application_reject'),
     path('applications/<int:app_id>/refill/', views.application_refill_request, name='pg_application_refill'),
     path('applications/<int:app_id>/referral/', views.application_update_referral, name='pg_application_referral'),
     path('applications/<int:app_id>/pdf/', views.application_pdf, name='pg_application_pdf'),
     path('referrals/', views.pg_referrals, name='pg_referrals'),
+    
+    # Bed status sync
+    path('sync-bed-statuses/', views.sync_bed_statuses, name='pg_sync_bed_statuses'),
     
     # Complaint management
     path('complaints/', complaint_views.admin_complaints, name='admin_complaints'),

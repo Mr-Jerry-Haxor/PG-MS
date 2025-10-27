@@ -33,6 +33,16 @@
       <label class="form-label">Date</label>
       {{ form.date }}
     </div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label">From Date <span class="text-muted small">(Billing period start)</span></label>
+        {{ form.from_date }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">To Date <span class="text-muted small">(Billing period end)</span></label>
+        {{ form.to_date }}
+      </div>
+    </div>
     <div class="row g-3">
       <div class="col-md-4">
         <label class="form-label">Status</label>
@@ -54,4 +64,40 @@
     <button class="btn btn-primary mt-3" type="submit">Save</button>
   </div>
 </form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const dateInput = document.querySelector('#id_date');
+  const fromDateInput = document.querySelector('#id_from_date');
+  const toDateInput = document.querySelector('#id_to_date');
+  
+  // Auto-populate from_date and to_date when payment date changes
+  if (dateInput && fromDateInput && toDateInput) {
+    dateInput.addEventListener('change', function() {
+      const paymentDate = new Date(this.value);
+      if (!isNaN(paymentDate.getTime())) {
+        // from_date = payment_date
+        fromDateInput.value = this.value;
+        
+        // to_date = payment_date + 1 month - 1 day
+        const toDate = new Date(paymentDate);
+        toDate.setMonth(toDate.getMonth() + 1);
+        toDate.setDate(toDate.getDate() - 1);
+        
+        // Format as YYYY-MM-DD
+        const year = toDate.getFullYear();
+        const month = String(toDate.getMonth() + 1).padStart(2, '0');
+        const day = String(toDate.getDate()).padStart(2, '0');
+        toDateInput.value = `${year}-${month}-${day}`;
+      }
+    });
+    
+    // Trigger once if date is already set (for editing existing payments)
+    if (dateInput.value && !fromDateInput.value && !toDateInput.value) {
+      dateInput.dispatchEvent(new Event('change'));
+    }
+  }
+});
+</script>
 {% endblock %}
+

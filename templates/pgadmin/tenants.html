@@ -1,6 +1,19 @@
 {% extends 'base.html' %}
 {% block title %}My PG Tenants • PG-MS{% endblock %}
 {% block content %}
+<style>
+  /* Keep the swap modal scrollable when content grows */
+  .swap-modal .modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  @media (max-width: 576px) {
+    .swap-modal .modal-body {
+      max-height: 60vh;
+    }
+  }
+</style>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="d-flex align-items-center gap-2">
     <h1 class="h4 mb-0">My PG Tenants</h1>
@@ -216,6 +229,8 @@
       const roomsSel = modal.querySelector('select[name="room_id"]');
       const bedsSel = modal.querySelector('select[name="share_no"]');
       const submitBtn = modal.querySelector('button[type="submit"]');
+      const swapWithOccupiedCheckbox = modal.querySelector('.swap-with-occupied-checkbox');
+      
       if (!roomsSel || !bedsSel) return;
       if (submitBtn) submitBtn.disabled = true;
       roomsSel.innerHTML = '<option value="">Loading rooms…</option>';
@@ -227,7 +242,12 @@
         roomsSel.innerHTML = '<option value="">No rooms available</option>';
         return;
       }
-      fetch(endpoint, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+      
+      // Add include_occupied parameter if checkbox is checked
+      const includeOccupied = swapWithOccupiedCheckbox && swapWithOccupiedCheckbox.checked;
+      const fetchUrl = includeOccupied ? `${endpoint}?include_occupied=true` : endpoint;
+      
+      fetch(fetchUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
           if (!data || !data.ok){
@@ -244,16 +264,38 @@
           let added = 0;
           rooms.forEach(room => {
             const vacant = room.vacant_count || 0;
-            if (vacant < 1) return;
+            const vacantFrom = room.vacant_from_count || 0;
+            const occupied = room.occupied_count || 0;
+            const totalAvailable = includeOccupied ? (vacant + vacantFrom + occupied) : (vacant + vacantFrom);
+            if (totalAvailable < 1) return;
             const opt = document.createElement('option');
             opt.value = room.id;
-            const vacantText = vacant === 1 ? '1 vacant bed' : `${vacant} vacant beds`;
-            opt.textContent = `Room ${room.room_no} — ${vacantText}`;
+            let roomText = `Room ${room.room_no} — `;
+            
+            if (includeOccupied) {
+              // Show all types
+              const parts = [];
+              if (vacant > 0) parts.push(`${vacant} vacant`);
+              if (vacantFrom > 0) parts.push(`${vacantFrom} vacant from`);
+              if (occupied > 0) parts.push(`${occupied} occupied`);
+              roomText += parts.length > 0 ? parts.join(', ') : 'No available beds';
+            } else {
+              // Original logic for vacant and vacant_from only
+              if (vacant > 0 && vacantFrom > 0) {
+                roomText += `${vacant} vacant, ${vacantFrom} vacant from`;
+              } else if (vacant > 0) {
+                roomText += vacant === 1 ? '1 vacant bed' : `${vacant} vacant beds`;
+              } else {
+                roomText += vacantFrom === 1 ? '1 bed (vacant from)' : `${vacantFrom} beds (vacant from)`;
+              }
+            }
+            
+            opt.textContent = roomText;
             roomsSel.appendChild(opt);
             added += 1;
           });
           if (added === 0){
-            roomsSel.innerHTML = '<option value="">No vacant rooms</option>';
+            roomsSel.innerHTML = '<option value="">No available rooms</option>';
           } else {
             roomsSel.disabled = false;
           }
@@ -263,11 +305,50 @@
           showToast('Could not load rooms. Please retry.', 'danger');
         });
     }
+    function storeSwapInfoDefaults(el){
+      if (!el || el.dataset.swapDefaults === '1') return;
+      const titleEl = el.querySelector('h6');
+      const textEl = el.querySelector('p');
+      const listEl = el.querySelector('ul');
+      el.dataset.swapDefaults = '1';
+      el.dataset.defaultClass = el.className;
+      el.dataset.defaultTitle = titleEl ? titleEl.innerHTML : '';
+      el.dataset.defaultText = textEl ? textEl.textContent : '';
+      el.dataset.defaultList = listEl ? listEl.innerHTML : '';
+    }
+    function restoreSwapInfo(el){
+      if (!el) return;
+      const titleEl = el.querySelector('h6');
+      const textEl = el.querySelector('p');
+      const listEl = el.querySelector('ul');
+      if (el.dataset.defaultClass) el.className = el.dataset.defaultClass;
+      if (titleEl && el.dataset.defaultTitle !== undefined) titleEl.innerHTML = el.dataset.defaultTitle;
+      if (textEl && el.dataset.defaultText !== undefined) textEl.textContent = el.dataset.defaultText;
+      if (listEl && el.dataset.defaultList !== undefined) listEl.innerHTML = el.dataset.defaultList;
+      el.classList.add('d-none');
+      const checkbox = el.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = false;
+    }
+    function attachConfirmHandler(checkbox, handler){
+      if (!checkbox || !checkbox.parentNode) return null;
+      const clone = checkbox.cloneNode(true);
+      checkbox.parentNode.replaceChild(clone, checkbox);
+      clone.addEventListener('change', handler);
+      return clone;
+    }
     function loadSwapBeds(modal, roomId){
       const bedsSel = modal.querySelector('select[name="share_no"]');
+      const roomsSel = modal.querySelector('select[name="room_id"]');
       const submitBtn = modal.querySelector('button[type="submit"]');
+      const bookingId = modal.dataset.bookingId;
+  const swapInfo = modal.querySelector(`#swapInfo${bookingId}`);
+      const swapWithOccupiedCheckbox = modal.querySelector('.swap-with-occupied-checkbox');
+      storeSwapInfoDefaults(swapInfo);
+      restoreSwapInfo(swapInfo);
+      
       if (!bedsSel) return;
       if (submitBtn) submitBtn.disabled = true;
+      
       bedsSel.innerHTML = '<option value="">Loading beds…</option>';
       bedsSel.disabled = true;
       const template = modal.dataset.sharesEndpointTemplate || '';
@@ -275,8 +356,13 @@
         bedsSel.innerHTML = '<option value="">Unable to load beds</option>';
         return;
       }
+      
+      // Add include_occupied parameter if checkbox is checked
+      const includeOccupied = swapWithOccupiedCheckbox && swapWithOccupiedCheckbox.checked;
       const shareUrl = template.replace(/\/0\/shares\/$/, `/${roomId}/shares/`);
-      fetch(shareUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+      const fetchUrl = includeOccupied ? `${shareUrl}?include_occupied=true` : shareUrl;
+      
+      fetch(fetchUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
         .then(r => r.json())
         .then(data => {
           if (!data || !data.ok){
@@ -286,17 +372,110 @@
           }
           const shares = data.shares || [];
           if (!shares.length){
-            bedsSel.innerHTML = '<option value="">No vacant beds</option>';
+            bedsSel.innerHTML = '<option value="">No available beds</option>';
             return;
           }
           bedsSel.innerHTML = '<option value="">Select a bed…</option>';
           shares.forEach(share => {
             const opt = document.createElement('option');
             opt.value = share.share_no;
-            opt.textContent = `Bed ${share.share_no}`;
+            opt.dataset.status = share.status;
+            opt.dataset.vacantFrom = share.vacant_from || '';
+            opt.dataset.occupantName = share.occupant_name || '';
+            opt.dataset.occupantPhone = share.occupant_phone || '';
+            
+            let bedText = `Bed ${share.share_no}`;
+            if (share.status === 'vacant_from' && share.vacant_from) {
+              bedText += ` (Vacant from ${share.vacant_from})`;
+              if (share.occupant_name) {
+                bedText += ` - ${share.occupant_name}`;
+              }
+            } else if (share.status === 'vacant_from') {
+              bedText += ' (Occupied - Leaving Soon)';
+              if (share.occupant_name) {
+                bedText += ` - ${share.occupant_name}`;
+              }
+            } else if (share.status === 'occupied') {
+              bedText += ' (Occupied)';
+              if (share.occupant_name) {
+                bedText += ` - ${share.occupant_name}`;
+              }
+            }
+            opt.textContent = bedText;
             bedsSel.appendChild(opt);
           });
           bedsSel.disabled = false;
+          
+          // Remove existing change listener if any to prevent duplicates
+          const newBedsSel = bedsSel.cloneNode(false);
+          while (bedsSel.firstChild) {
+            newBedsSel.appendChild(bedsSel.firstChild);
+          }
+          bedsSel.parentNode.replaceChild(newBedsSel, bedsSel);
+          
+          // Add change listener to bed selection to show swap info
+          newBedsSel.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const status = selectedOption?.dataset?.status || '';
+            const occupantNameRaw = selectedOption?.dataset?.occupantName || '';
+            const occupantPhone = selectedOption?.dataset?.occupantPhone || '';
+            const currentRoomNo = modal.dataset.currentRoomNo || '';
+            const currentShare = modal.dataset.currentShare || '';
+            const safeName = occupantNameRaw || (status === 'occupied' ? 'the other tenant' : 'the leaving tenant');
+            const phoneDetail = occupantPhone ? ` (Phone: ${occupantPhone})` : '';
+
+            restoreSwapInfo(swapInfo);
+
+            if (!selectedOption || !this.value) {
+              if (submitBtn) submitBtn.disabled = true;
+              return;
+            }
+
+            if (status === 'vacant_from' || status === 'occupied') {
+              if (swapInfo) {
+                const swapInfoTitle = swapInfo.querySelector('h6');
+                const swapInfoText = swapInfo.querySelector('p');
+                const swapInfoList = swapInfo.querySelector('ul');
+
+                if (swapInfo.dataset.defaultClass) swapInfo.className = swapInfo.dataset.defaultClass;
+
+                if (status === 'occupied') {
+                  swapInfo.classList.remove('alert-warning');
+                  swapInfo.classList.add('alert-danger');
+                  if (swapInfoTitle) swapInfoTitle.innerHTML = '<i class="bi bi-arrow-left-right me-2"></i>Exchange Swap (Occupied Bed)';
+                  if (swapInfoText) swapInfoText.textContent = 'This bed is currently occupied by another tenant. Confirm the exchange to swap both residents.';
+                  if (swapInfoList) {
+                    swapInfoList.innerHTML = `
+                      <li><strong>${safeName}</strong>${phoneDetail} will move to <strong>Room ${currentRoomNo}, Bed ${currentShare}</strong></li>
+                      <li>The current tenant will move to the selected bed</li>
+                      <li>Notify both tenants and align on timing before confirming.</li>
+                    `;
+                  }
+                } else {
+                  if (swapInfoTitle) swapInfoTitle.innerHTML = '<i class="bi bi-arrow-left-right me-2"></i>Exchange Swap (Leaving Tenant)';
+                  if (swapInfoText) swapInfoText.textContent = 'This bed is occupied by a leaving tenant. Selecting this option will exchange the beds for the notice period.';
+                  if (swapInfoList) {
+                    swapInfoList.innerHTML = `
+                      <li>The current tenant will move to the selected bed</li>
+                      <li><strong>${safeName}</strong>${phoneDetail} will complete their stay in <strong>Room ${currentRoomNo}, Bed ${currentShare}</strong></li>
+                      <li>Confirm only after coordinating the move-out schedule.</li>
+                    `;
+                  }
+                }
+
+                swapInfo.classList.remove('d-none');
+                const confirmBox = attachConfirmHandler(swapInfo.querySelector('input[type="checkbox"]'), function() {
+                  if (submitBtn) submitBtn.disabled = !this.checked;
+                });
+                if (confirmBox) confirmBox.checked = false;
+              }
+
+              if (submitBtn) submitBtn.disabled = true;
+              return;
+            }
+
+            if (submitBtn) submitBtn.disabled = !(roomsSel.value && this.value);
+          });
         })
         .catch(() => {
           bedsSel.innerHTML = '<option value="">Failed to load beds</option>';
@@ -323,8 +502,24 @@
       const roomsSel = modal.querySelector('select[name="room_id"]');
       const bedsSel = modal.querySelector('select[name="share_no"]');
       const submitBtn = modal.querySelector('button[type="submit"]');
+      const swapWithOccupiedCheckbox = modal.querySelector('.swap-with-occupied-checkbox');
+      
       modal.addEventListener('show.bs.modal', () => loadSwapRooms(modal));
+      
+      // Reload rooms when swap-with-occupied checkbox is toggled
+      swapWithOccupiedCheckbox?.addEventListener('change', () => {
+        const swapInfo = modal.querySelector(`#swapInfo${modal.dataset.bookingId}`);
+        restoreSwapInfo(swapInfo);
+        loadSwapRooms(modal);
+        // Reset bed selection
+        bedsSel.innerHTML = '<option value="">Select a room first</option>';
+        bedsSel.disabled = true;
+        if (submitBtn) submitBtn.disabled = true;
+      });
+      
       roomsSel?.addEventListener('change', () => {
+        const swapInfo = modal.querySelector(`#swapInfo${modal.dataset.bookingId}`);
+        restoreSwapInfo(swapInfo);
         const roomId = roomsSel.value;
         if (!roomId){
           bedsSel.innerHTML = '<option value="">Select a room first</option>';

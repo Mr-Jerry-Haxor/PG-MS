@@ -6,11 +6,41 @@
   <div class="card-body">
     <div><strong>User:</strong> {{ booking.user.email }}</div>
   <div><strong>Room:</strong> {{ booking.room.room_no }} • Bed {{ booking.share_no }}</div>
+    <div><strong>Type:</strong> {{ booking.booking_type|title }}</div>
     <div><strong>Status:</strong> {{ booking.status|title }}</div>
-    <div><strong>Start:</strong> {{ booking.start_date|default:"—" }}</div>
-    <div><strong>Leaving:</strong> {{ booking.leaving_date|default:"—" }}</div>
+    <div><strong>Start Date:</strong> {{ booking.joining_date|default:booking.start_date|default:"—" }}</div>
+    <div><strong>Leaving Date:</strong> {{ booking.leaving_date|default:"—" }}</div>
+    {% if booking.booking_type == 'daywise' %}
+    <hr />
+    <h5 class="h6">Day-wise Details</h5>
+    <div><strong>Check-in Time:</strong> {% if booking.start_time %}{{ booking.start_time|date:"g:i A" }}{% else %}—{% endif %}</div>
+    <div><strong>Check-out Time:</strong> {% if booking.end_time %}{{ booking.end_time|date:"g:i A" }}{% else %}—{% endif %}</div>
+    <div><strong>Purpose:</strong> {{ booking.purpose|default:"—" }}</div>
+    <div><strong>Payment Received:</strong> {{ booking.payment_received|yesno:"Yes,No" }}</div>
+    {% if booking.payment_amount %}<div><strong>Payment Amount:</strong> ₹{{ booking.payment_amount }}</div>{% endif %}
+    {% endif %}
   </div>
 </div>
+{% if booking.application %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body">
+    <h5 class="h6">Application / Documents</h5>
+    <div><strong>Applicant Name:</strong> {{ booking.application.name }}</div>
+    <div><strong>Phone:</strong> {{ booking.application.phone }}</div>
+    <div><strong>Emergency Contact:</strong> {{ booking.application.emergency_contact|default:"—" }}</div>
+    <div><strong>Application Status:</strong> {{ booking.application.status|title }}</div>
+    {% if booking.application.selfie_url %}
+      <div class="mt-2"><a href="{{ booking.application.selfie_url }}" target="_blank" class="btn btn-sm btn-outline-primary">View Selfie</a></div>
+    {% endif %}
+    {% if booking.application.aadhaar_file_url %}
+      <div class="mt-2"><a href="{{ booking.application.aadhaar_file_url }}" target="_blank" class="btn btn-sm btn-outline-primary">View Aadhaar</a></div>
+    {% endif %}
+    {% if booking.application.aadhaar_file_url_2 %}
+      <div class="mt-2"><a href="{{ booking.application.aadhaar_file_url_2 }}" target="_blank" class="btn btn-sm btn-outline-primary">View Aadhaar (2)</a></div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 <h2 class="h6 text-secondary">Timeline</h2>
 <ul class="list-group list-group-flush">
   {% for e in events %}

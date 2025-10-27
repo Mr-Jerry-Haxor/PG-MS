@@ -29,6 +29,12 @@ def _pg_by_slug_or_404(slug: str):
 
 @login_required
 def pg_quick_booking(request, pgslug):
+    """
+    Unified quick booking view supporting three booking types:
+    1. Day-wise booking - Short-term stay without room assignment (admin assigns later)
+    2. Book now - Traditional immediate booking with room selection
+    3. Book for future - Future-dated booking showing vacant and vacant_from rooms
+    """
     from .application_forms import ResidentApplicationForm
     from .models import ResidentApplication, ApplicationStatusHistory
     pg = _pg_by_slug_or_404(pgslug)
@@ -58,7 +64,693 @@ def pg_quick_booking(request, pgslug):
             'email': request.user.email,
         }
         context['form'] = ResidentApplicationForm(initial=initial)
-        return render(request, 'bookings/quick_booking.html', context)
+        # Use the new template with modal for 3 booking types
+        return render(request, 'bookings/quick_booking_new.html', context)
+
+    # POST: Determine which booking type was submitted
+    booking_type = request.POST.get('booking_type', '').strip().lower()
+    
+    if booking_type == 'daywise':
+        return handle_daywise_booking(request, pg, has_active)
+    elif booking_type == 'future':
+        return handle_future_booking(request, pg, has_active)
+    elif booking_type == 'booknow':
+        return handle_booknow_booking(request, pg, has_active, context)
+    else:
+        messages.error(request, "Invalid booking type selected.")
+        return redirect('pg_quick_booking', pgslug=pg.slug)
+
+
+def handle_daywise_booking(request, pg, has_active):
+    """
+    Handle day-wise booking submission:
+    - No room assignment (admin assigns later)
+    - Creates Booking with booking_type='daywise' and status='pending'
+    - Creates ResidentApplication with guest details
+    - Uploads selfie/aadhaar to Google Drive and stores URLs
+    """
+    from .models import Booking, ResidentApplication
+    import base64
+    errors = []
+    
+    # Day-wise bookings don't conflict with regular bookings
+    # They're short-term stays, so users can have day-wise booking even with active regular booking
+    
+    # Extract form data
+    name = request.POST.get('daywise_name', '').strip()
+    mobile = request.POST.get('daywise_mobile', '').strip()
+    emergency_contact = request.POST.get('daywise_emergency', '').strip()
+    start_date_raw = request.POST.get('daywise_start_date', '').strip()
+    end_date_raw = request.POST.get('daywise_end_date', '').strip()
+    start_time_raw = request.POST.get('daywise_start_time', '').strip()
+    end_time_raw = request.POST.get('daywise_end_time', '').strip()
+    purpose = request.POST.get('daywise_purpose', '').strip()
+    selfie_data = request.POST.get('daywise_selfie_data', '').strip()
+    
+    # Validate required fields
+    if not name:
+        errors.append("Name is required for day-wise booking.")
+    if not mobile:
+        errors.append("Mobile number is required.")
+    if not emergency_contact:
+        errors.append("Emergency contact is required.")
+    if not start_date_raw:
+        errors.append("Start date is required.")
+    if not end_date_raw:
+        errors.append("End date is required.")
+    if not purpose:
+        errors.append("Purpose of stay is required.")
+    if not selfie_data:
+        errors.append("Selfie capture is required.")
+    
+    # Validate dates
+    start_date = parse_date(start_date_raw) if start_date_raw else None
+    end_date = parse_date(end_date_raw) if end_date_raw else None
+    if not start_date:
+        errors.append("Invalid start date.")
+    if not end_date:
+        errors.append("Invalid end date.")
+    if start_date and end_date and end_date < start_date:
+        errors.append("End date must be on or after start date.")
+    
+    # Validate time formats
+    from datetime import time as dt_time
+    start_time = None
+    end_time = None
+    if start_time_raw:
+        try:
+            h, m = map(int, start_time_raw.split(':'))
+            # Enforce hour-only times (minutes must be 0)
+            if m != 0:
+                errors.append("Start time must be on the hour (minutes must be 00).")
+            start_time = dt_time(h, m)
+        except:
+            errors.append("Invalid start time format.")
+    if end_time_raw:
+        try:
+            h, m = map(int, end_time_raw.split(':'))
+            # Enforce hour-only times (minutes must be 0)
+            if m != 0:
+                errors.append("End time must be on the hour (minutes must be 00).")
+            end_time = dt_time(h, m)
+        except:
+            errors.append("Invalid end time format.")
+    
+    # Validate Aadhaar documents (at least one required)
+    aadhaar_doc1 = request.FILES.get('daywise_aadhaar1')
+    aadhaar_doc2 = request.FILES.get('daywise_aadhaar2')
+    if not aadhaar_doc1:
+        errors.append("At least one Aadhaar document is required.")
+    
+    if errors:
+        for error in errors:
+            messages.error(request, error)
+        return redirect('pg_quick_booking', pgslug=pg.slug)
+    
+    try:
+        with transaction.atomic():
+            # Use the actual logged-in user for day-wise bookings
+            # This allows users to see their day-wise bookings in their dashboard
+            booking_user = request.user if request.user.is_authenticated else None
+            
+            if not booking_user:
+                messages.error(request, "You must be logged in to create a booking.")
+                return redirect('pg_quick_booking', pgslug=pg.slug)
+            
+            # Get first room for temporary assignment (admin will reassign)
+            temp_room = pg.rooms.first()
+            if not temp_room:
+                messages.error(request, "No rooms available in this PG.")
+                return redirect('pg_quick_booking', pgslug=pg.slug)
+            
+            # Create Booking with booking_type='daywise'
+            booking = Booking.objects.create(
+                user=booking_user,  # Use actual user instead of system_user
+                room=temp_room,
+                pg=pg,
+                share_no=1,  # Temporary, will be set during approval
+                booking_type=Booking.DAYWISE,
+                status=Booking.PENDING,
+                joining_date=start_date,  # start_date → joining_date
+                leaving_date=end_date,    # end_date → leaving_date
+                start_time=start_time,
+                end_time=end_time,
+                purpose=purpose,
+                payment_received=False,
+            )
+            
+            # Process and upload selfie to Google Drive
+            selfie_url = ''
+            if selfie_data and selfie_data.startswith('data:image'):
+                try:
+                    format_part, img_str = selfie_data.split(';base64,')
+                    ext = format_part.split('/')[-1]
+                    img_data = base64.b64decode(img_str)
+                    filename = f'daywise_selfie_{booking.id}.{ext}'
+                    
+                    # Upload to Google Drive using core.drive.drive_upload
+                    try:
+                        from io import BytesIO as _BytesIO
+                        from core.drive import drive_upload as _drive_upload
+                        folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', '') or None
+                        buf = _BytesIO(img_data)
+                        up = _drive_upload(buf, filename, folder)
+                        selfie_url = up[1] if up else ''
+                    except Exception as _e:
+                        print(f"Selfie upload failed (drive): {_e}")
+                except Exception as e:
+                    # Non-fatal but log
+                    print(f"Selfie upload failed: {e}")
+            
+            # Upload Aadhaar documents to Google Drive
+            aadhaar_url_1 = ''
+            aadhaar_url_2 = ''
+            if aadhaar_doc1:
+                try:
+                    from io import BytesIO as _BytesIO
+                    from core.drive import drive_upload as _drive_upload
+                    folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '') or None
+                    buf1 = _BytesIO(aadhaar_doc1.read())
+                    up1 = _drive_upload(buf1, f'daywise_aadhaar1_{booking.id}_{aadhaar_doc1.name}', folder)
+                    aadhaar_url_1 = up1[1] if up1 else ''
+                except Exception as e:
+                    print(f"Aadhaar doc 1 upload failed (drive): {e}")
+            
+            if aadhaar_doc2:
+                try:
+                    from io import BytesIO as _BytesIO
+                    from core.drive import drive_upload as _drive_upload
+                    folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '') or None
+                    buf2 = _BytesIO(aadhaar_doc2.read())
+                    up2 = _drive_upload(buf2, f'daywise_aadhaar2_{booking.id}_{aadhaar_doc2.name}', folder)
+                    aadhaar_url_2 = up2[1] if up2 else ''
+                except Exception as e:
+                    print(f"Aadhaar doc 2 upload failed (drive): {e}")
+            
+            # Create ResidentApplication linked to the booking user
+            ResidentApplication.objects.create(
+                user=booking_user,
+                booking=booking,
+                pg=pg,
+                room=temp_room,
+                status=ResidentApplication.SUBMITTED,
+                name=name,
+                phone=mobile,
+                emergency_contact=emergency_contact,
+                email=(booking_user.email or f'daywise_{booking.id}@guest.local'),
+                selfie_url=selfie_url,
+                aadhaar_file_url=aadhaar_url_1,
+                aadhaar_file_url_2=aadhaar_url_2,
+            )
+            
+            # Notify PG admins
+            try:
+                admin_profiles = list(pg.admins.select_related('user').all())
+                admin_url = request.build_absolute_uri(reverse('pg_bookings_pending'))
+                for ap in admin_profiles:
+                    Notification.objects.create(
+                        user=ap.user,
+                        title="Day-Wise Booking Request",
+                        message=(
+                            f"New day-wise booking request from {name} ({mobile}) "
+                            f"for {start_date} to {end_date}. Review and assign room: {admin_url}"
+                        ),
+                    )
+                # Email notification
+                admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
+                if admin_emails:
+                    send_mail(
+                        subject="PG-MS: Day-Wise Booking Request",
+                        message=(
+                            f"A new day-wise booking request has been submitted.\n\n"
+                            f"PG: {pg.name}\n"
+                            f"Guest: {name}\n"
+                            f"Mobile: {mobile}\n"
+                            f"Period: {start_date} to {end_date}\n"
+                            f"Purpose: {purpose}\n\n"
+                            f"Review and assign room: {admin_url}\n"
+                        ),
+                        from_email=None,
+                        recipient_list=admin_emails,
+                        fail_silently=True,
+                    )
+            except Exception:
+                pass
+            
+            messages.success(request, "Day-wise booking request submitted successfully. You'll be notified once a room is assigned.")
+            return redirect('dashboard')
+            
+    except Exception as ex:
+        messages.error(request, f"Failed to create day-wise booking: {str(ex)}")
+        return redirect('pg_quick_booking', pgslug=pg.slug)
+
+
+def handle_future_booking(request, pg, has_active):
+    """
+    Handle future booking submission:
+    - Shows rooms with VACANT or VACANT_FROM status
+    - Requires joining date >= vacant_from date
+    - Creates regular Booking with PENDING status
+    """
+    from .application_forms import ResidentApplicationForm
+    from .models import ResidentApplication, ApplicationStatusHistory
+    
+    errors = []
+    if has_active:
+        errors.append("You can't book another room in the same PG.")
+    
+    # Extract form data
+    room_id = request.POST.get('future_room_id')
+    share_no_raw = request.POST.get('future_share_no')
+    joining_raw = request.POST.get('future_joining_date', '')
+    name = request.POST.get('future_name', '').strip()
+    phone = request.POST.get('future_phone', '').strip()
+    
+    # Validate basic fields
+    if not name:
+        errors.append("Name is required.")
+    if not phone:
+        errors.append("Phone number is required.")
+    
+    room = None
+    rs = None
+    try:
+        room = Room.objects.get(pk=room_id, pg=pg)
+    except Exception:
+        errors.append('Invalid room selection.')
+    
+    try:
+        share_no = int(share_no_raw) if share_no_raw is not None else None
+    except Exception:
+        share_no = None
+        errors.append('Invalid share selection.')
+    
+    if room and share_no is not None:
+        rs = RoomShareStatus.objects.filter(room=room, share_no=share_no).first()
+        if not rs:
+            errors.append('Share not found for room.')
+    
+    # Validate joining date
+    today = timezone.now().date()
+    if not joining_raw:
+        errors.append('Joining date is required.')
+    joining_date = parse_date(joining_raw) if joining_raw else None
+    if joining_date is None:
+        errors.append('Enter a valid joining date.')
+    else:
+        # For future bookings, joining date must be in the future (can be today or later)
+        if joining_date < today:
+            errors.append('Joining date must be today or in the future for future bookings.')
+        # Optional: Set a maximum future date (e.g., 60 days from today)
+        from datetime import timedelta
+        max_future_date = today + timedelta(days=60)
+        if joining_date > max_future_date:
+            errors.append(f'Joining date cannot be more than 60 days in the future (max: {max_future_date}).')
+    
+    # Validate share availability for the joining date
+    if rs and joining_date:
+        can_book_on_date = False
+        if rs.status == RoomShareStatus.VACANT:
+            can_book_on_date = True
+        elif rs.status == RoomShareStatus.VACANT_FROM:
+            # Joining date must be >= vacant_from date
+            can_book_on_date = (not rs.vacant_from) or (rs.vacant_from <= joining_date)
+        
+        if not can_book_on_date:
+            errors.append('Selected share is not available for the chosen joining date.')
+    
+    if errors:
+        for error in errors:
+            messages.error(request, error)
+        return redirect('pg_quick_booking', pgslug=pg.slug)
+    
+    try:
+        with transaction.atomic():
+            # Create booking with PENDING status
+            booking_obj = Booking.objects.create(
+                user=request.user,
+                room=room,
+                pg=pg,
+                share_no=share_no,
+                status=Booking.PENDING,
+                joining_date=joining_date,
+                payment_date=joining_date,  # Default to joining date
+            )
+            
+            # Reserve share (status will be RESERVED, not OCCUPIED until joining date)
+            if rs.status in [RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]:
+                rs.status = RoomShareStatus.RESERVED
+                rs.save(update_fields=['status'])
+            
+            # Update user profile phone if provided
+            try:
+                from accounts.models import Profile as _Profile
+                if phone:
+                    prof, _ = _Profile.objects.get_or_create(user=request.user)
+                    if prof.phone != phone:
+                        prof.phone = phone
+                        prof.save(update_fields=['phone'])
+            except Exception:
+                pass
+            
+            # Notify admins
+            try:
+                admin_url = request.build_absolute_uri(reverse('pg_resident_applications'))
+                admin_profiles = list(pg.admins.select_related('user').all())
+                for ap in admin_profiles:
+                    Notification.objects.create(
+                        user=ap.user,
+                        title="Future Booking Request",
+                        message=(
+                            f"{name} ({phone}) submitted a future booking request for Room {room.room_no} Share {share_no}, "
+                            f"joining on {joining_date}. Review: {admin_url}"
+                        ),
+                    )
+                admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
+                if admin_emails:
+                    send_mail(
+                        subject="PG-MS: Future Booking Request",
+                        message=(
+                            f"A future booking request has been submitted.\n\n"
+                            f"PG: {pg.name}\n"
+                            f"Room: {room.room_no} | Share: {share_no}\n"
+                            f"Guest: {name}\n"
+                            f"Phone: {phone}\n"
+                            f"Joining Date: {joining_date}\n\n"
+                            f"Review and approve: {admin_url}\n"
+                        ),
+                        from_email=None,
+                        recipient_list=admin_emails,
+                        fail_silently=True,
+                    )
+            except Exception:
+                pass
+            
+            messages.success(request, f'Future booking request submitted for {joining_date}. You will receive further instructions after approval.')
+            return redirect('dashboard')
+            
+    except IntegrityError:
+        messages.error(request, "You already have an active booking in this PG.")
+        return redirect('pg_quick_booking', pgslug=pg.slug)
+    except Exception as ex:
+        messages.error(request, f'Failed to create future booking: {str(ex)}')
+        return redirect('pg_quick_booking', pgslug=pg.slug)
+
+
+def handle_booknow_booking(request, pg, has_active, context):
+    """
+    Handle traditional 'book now' booking submission (existing flow)
+    - Same logic as previous pg_quick_booking POST handling
+    - Enforces ±7 days joining date window from today
+    """
+    from .application_forms import ResidentApplicationForm
+    from .models import ResidentApplication, ApplicationStatusHistory
+    from datetime import timedelta
+    
+    # POST: process booking + application in one go; show errors inline on same page
+    errors = []
+    if has_active:
+        errors.append("You can't book another room in the same PG.")
+
+    room_id = request.POST.get('room_id')
+    share_no_raw = request.POST.get('share_no')
+    joining_raw = request.POST.get('joining_date', '')
+    room = None
+    rs = None
+    try:
+        room = Room.objects.get(pk=room_id, pg=pg)
+    except Exception:
+        errors.append('Invalid room selection.')
+    try:
+        share_no = int(share_no_raw) if share_no_raw is not None else None
+    except Exception:
+        share_no = None
+        errors.append('Invalid share selection.')
+    if room and share_no is not None:
+        rs = RoomShareStatus.objects.filter(room=room, share_no=share_no).first()
+        if not rs:
+            errors.append('Share not found for room.')
+
+    today = timezone.now().date()
+    if not joining_raw:
+        errors.append('Joining date is required.')
+    joining_date = parse_date(joining_raw) if joining_raw else None
+    if joining_date is None:
+        errors.append('Enter a valid joining date.')
+    else:
+        # Book Now: joining date must be within ±7 days window from today
+        if getattr(pg, 'past_joining_date_allowed', False):
+            # Allow 7 days in the past to 7 days in the future
+            min_date = today - timedelta(days=7)
+            max_date = today + timedelta(days=7)
+            if joining_date < min_date or joining_date > max_date:
+                errors.append(f'For Book Now, joining date must be between {min_date} and {max_date} (±7 days from today).')
+        else:
+            # Only allow today to 7 days in the future
+            max_date = today + timedelta(days=7)
+            if joining_date < today:
+                errors.append('Joining date cannot be in the past.')
+            elif joining_date > max_date:
+                errors.append(f'For Book Now, joining date must be within 7 days from today (by {max_date}).')
+
+    # Prepare application form data (ensure date_of_admission mirrors joining_date)
+    data = request.POST.copy()
+    if not data.get('date_of_admission'):
+        data['date_of_admission'] = joining_date.isoformat() if joining_date else ''
+    # Always enforce email to be current user's email (readonly in form)
+    data['email'] = request.user.email
+    form = ResidentApplicationForm(data, request.FILES)
+
+    # Enforce DOB must be before 2010-01-01
+    dob_raw = data.get('dob')
+    if dob_raw:
+        try:
+            dob_val = parse_date(dob_raw)
+            if dob_val and dob_val >= timezone.datetime(2010,1,1).date():
+                errors.append('Date of Birth must be before the year 2010.')
+        except Exception:
+            pass
+
+    # Validate share availability
+    if rs:
+        # Determine whether the share is available at the requested joining_date
+        can_book_on_date = False
+        if joining_date:
+            if rs.status == RoomShareStatus.VACANT:
+                can_book_on_date = True
+            elif rs.status == RoomShareStatus.VACANT_FROM:
+                # If vacant_from is not set or is on/before the joining_date, it's selectable
+                can_book_on_date = (not rs.vacant_from) or (rs.vacant_from <= joining_date)
+
+        if not can_book_on_date:
+            current = (
+                Booking.objects.filter(room=room, share_no=share_no, status=Booking.APPROVED)
+                .order_by('-created_at').first()
+            )
+            # If there's no current booking or leaving date doesn't free it before requested joining_date, reject
+            if not current or not current.leaving_date or not (joining_date and joining_date > current.leaving_date):
+                errors.append('Selected share is not yet available for the chosen date.')
+
+    # Validate application form last, accumulate errors
+    if not form.is_valid():
+        # Collect field errors into errors list (brief)
+        for fld, errs in form.errors.items():
+            for er in errs:
+                errors.append(f"{fld}: {er}")
+
+    # Validate payment day selection
+    payment_day_raw = request.POST.get('payment_day', '')
+    if not payment_day_raw:
+        errors.append('Payment day is required.')
+    else:
+        try:
+            payment_day = int(payment_day_raw)
+            if payment_day < 1 or payment_day > 31:
+                errors.append('Payment day must be between 1 and 31.')
+        except (ValueError, TypeError):
+            errors.append('Invalid payment day.')
+
+    # Validate declaration checkbox
+    decl_agreed = request.POST.get('decl_agreed')
+    if decl_agreed != 'on':
+        errors.append('You must agree to the declaration.')
+
+    # Enforce mandatory files: selfie and Aadhaar/other must be provided
+    selfie_file = request.FILES.get('selfie')
+    aadhaar_in_form = form.cleaned_data.get('aadhaar_pdf') if hasattr(form, 'cleaned_data') else None
+    if not selfie_file:
+        errors.append('Selfie photo is required.')
+    if not aadhaar_in_form:
+        # Either no files or validation failed; add explicit error
+        errors.append('Aadhaar/Document upload is required.')
+
+    if errors:
+        context.update({
+            'errors': errors,
+            'form': form,
+            'selected_room_id': room_id,
+            'selected_share_no': share_no_raw,
+            'joining_date_value': joining_raw,
+        })
+        return render(request, 'bookings/quick_booking_new.html', context)
+
+    # All validations passed; create booking and application inside a transaction
+    try:
+        with transaction.atomic():
+            # Calculate payment_date from joining_date + selected payment day
+            payment_day_raw = request.POST.get('payment_day', '')
+            payment_date_calculated = joining_date  # Default to joining_date
+            if payment_day_raw:
+                try:
+                    payment_day = int(payment_day_raw)
+                    if 1 <= payment_day <= 31:
+                        # Build payment_date in the same month as joining_date
+                        # If the day doesn't exist in that month (e.g., Feb 31), use last day of month
+                        from calendar import monthrange
+                        year, month = joining_date.year, joining_date.month
+                        max_day = monthrange(year, month)[1]
+                        actual_day = min(payment_day, max_day)
+                        payment_date_calculated = joining_date.replace(day=actual_day)
+                except (ValueError, TypeError):
+                    pass  # Fall back to joining_date
+
+            booking_obj = Booking.objects.create(
+                user=request.user,
+                room=room,
+                pg=pg,
+                share_no=share_no,
+                status=Booking.PENDING,
+                joining_date=joining_date,
+                payment_date=payment_date_calculated,
+            )
+            # Reserve share when applicable
+            if rs.status in [RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]:
+                rs.status = RoomShareStatus.RESERVED
+                rs.save(update_fields=['status'])
+
+            inst = form.save(commit=False)
+            inst.user = request.user
+            inst.booking = booking_obj
+            inst.pg = pg
+            inst.room = room
+            inst.date_of_admission = joining_date
+            # Set all declaration fields to True (user agreed to combined declaration)
+            inst.decl_valuables = True
+            inst.decl_notice = True
+            inst.decl_deposit = True
+            inst.decl_truth = True
+
+            # Files handling (same rules as application_fill)
+            selfie_file = request.FILES.get('selfie')
+            aadhaar_files = form.cleaned_data.get('aadhaar_pdf') or []
+            if selfie_file:
+                up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
+                if up:
+                    _fid, preview = up
+                    inst.selfie_url = preview
+            if aadhaar_files:
+                imgs, pdfs = [], []
+                for f in aadhaar_files:
+                    name = (getattr(f, 'name', '') or '').lower()
+                    ctype = getattr(f, 'content_type', '') or ''
+                    if ctype == 'application/pdf' or name.endswith('.pdf'):
+                        pdfs.append(f)
+                    elif ctype.startswith('image/') or any(name.endswith(ext) for ext in ('.jpg','.jpeg','.png','.webp')):
+                        imgs.append(f)
+                folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
+                if pdfs:
+                    f = pdfs[0]
+                    up = drive_upload(f, f"aadhaar_{request.user.id}.pdf", folder)
+                    if up:
+                        _fid, preview = up
+                        inst.aadhaar_file_url = preview
+                        inst.aadhaar_file_url_2 = ''
+                elif imgs:
+                    inst.aadhaar_file_url_2 = ''
+                    def _pick_ext(nm: str):
+                        if nm.endswith('.png'): return '.png'
+                        if nm.endswith('.webp'): return '.webp'
+                        return '.jpg'
+                    f1 = imgs[0]
+                    ext1 = _pick_ext((getattr(f1, 'name', '') or '').lower())
+                    up1 = drive_upload(f1, f"aadhaar_{request.user.id}_front{ext1}", folder)
+                    if up1:
+                        _fid1, preview1 = up1
+                        inst.aadhaar_file_url = preview1
+                    if len(imgs) > 1:
+                        f2 = imgs[1]
+                        ext2 = _pick_ext((getattr(f2, 'name', '') or '').lower())
+                        up2 = drive_upload(f2, f"aadhaar_{request.user.id}_back{ext2}", folder)
+                        if up2:
+                            _fid2, preview2 = up2
+                            inst.aadhaar_file_url_2 = preview2
+
+            inst.status = ResidentApplication.SUBMITTED
+            inst.save()
+            ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Submitted by user')
+
+            # Persist phone number to the user's Profile
+            try:
+                from accounts.models import Profile as _Profile
+                phone_norm = (form.cleaned_data.get('phone') or '').strip()
+                if phone_norm:
+                    prof, _ = _Profile.objects.get_or_create(user=request.user)
+                    if prof.phone != phone_norm:
+                        prof.phone = phone_norm
+                        prof.save(update_fields=['phone'])
+            except Exception:
+                # Non-fatal: failure to update phone shouldn't block booking
+                pass
+
+            # Notify admins (best-effort)
+            try:
+                admin_url = request.build_absolute_uri(reverse('pg_resident_applications'))
+                admin_profiles = list(pg.admins.select_related('user').all())
+                for ap in admin_profiles:
+                    Notification.objects.create(
+                        user=ap.user,
+                        title="Resident Application Submitted",
+                        message=(
+                            f"{inst.user.email} submitted an application for Room {room.room_no} Share {share_no}. "
+                            f"Review and confirm: {admin_url}"
+                        ),
+                    )
+                admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
+                if admin_emails:
+                    send_mail(
+                        subject="PG-MS: Resident Application Submitted",
+                        message=(
+                            f"A resident application was submitted and awaits your confirmation.\n\n"
+                            f"PG: {pg.name}\n"
+                            f"Room: {room.room_no} | Share: {share_no}\n"
+                            f"Applicant: {inst.name or inst.user.get_full_name() or inst.user.email}\n"
+                            f"Email: {inst.user.email}\n\n"
+                            f"View and confirm here: {admin_url}\n"
+                        ),
+                        from_email=None,
+                        recipient_list=admin_emails,
+                        fail_silently=True,
+                    )
+            except Exception:
+                pass
+    except IntegrityError:
+        errors.append("You already have an active booking in this PG.")
+    except Exception as ex:
+        errors.append('Failed to create booking/application. Please try again.')
+
+    if errors:
+        context.update({
+            'errors': errors,
+            'form': form,
+            'selected_room_id': room_id,
+            'selected_share_no': share_no_raw,
+            'joining_date_value': joining_raw,
+        })
+        return render(request, 'bookings/quick_booking_new.html', context)
+
+    messages.success(request, 'Booking request and application submitted.')
+    return redirect('dashboard')
+
 
     # POST: process booking + application in one go; show errors inline on same page
     errors = []
@@ -344,23 +1036,31 @@ def pg_quick_rooms(request, pgslug):
     )
     # Only include rooms that have at least one share that is VACANT or VACANT_FROM (even if future-dated)
     today = timezone.now().date()
+    include_vacant_from = request.GET.get('include_vacant_from', 'false').lower() == 'true'
+    
     def share_is_available(rs: RoomShareStatus):
-        return (rs.status == RoomShareStatus.VACANT) or (rs.status == RoomShareStatus.VACANT_FROM)
+        if rs.status == RoomShareStatus.VACANT:
+            return True
+        if include_vacant_from and rs.status == RoomShareStatus.VACANT_FROM:
+            return True
+        return False
+    
     data = []
     for r in rooms:
-        available_shares = [s.share_no for s in r.shares.all() if share_is_available(s)]
+        available_shares = [s for s in r.shares.all() if share_is_available(s)]
         if available_shares:
             total_shares = r.shares.count()
             data.append({
                 'id': r.id,
                 'room_no': r.room_no,
-                'vacant_beds': available_shares,
+                'vacant_beds': [s.share_no for s in available_shares],
                 'bed_count': total_shares,
+                'available_count': len(available_shares),
                 # Legacy aliases retained for clients still using share terminology
-                'vacant_shares': available_shares,
+                'vacant_shares': [s.share_no for s in available_shares],
                 'share_count': total_shares,
             })
-    return JsonResponse({'rooms': data})
+    return JsonResponse({'ok': True, 'rooms': data})
 
 
 @login_required
@@ -368,24 +1068,34 @@ def pg_quick_shares(request, pgslug, room_id):
     pg = _pg_by_slug_or_404(pgslug)
     room = get_object_or_404(Room, pk=room_id, pg=pg)
     today = timezone.now().date()
+    include_vacant_from = request.GET.get('include_vacant_from', 'false').lower() == 'true'
     shares = RoomShareStatus.objects.filter(room=room).order_by('share_no')
     result = []
     for s in shares:
-        # selectable if vacant now or vacancy date reached
-        selectable = (
-            s.status == RoomShareStatus.VACANT or (
-                s.status == RoomShareStatus.VACANT_FROM and (not s.vacant_from or s.vacant_from <= today)
-            )
-        )
-        result.append({
-            'bed_no': s.share_no,
-            'share_no': s.share_no,
-            'available_from': s.vacant_from.isoformat() if s.vacant_from else None,
-            'status': s.status,
-            'selectable': selectable,
-        })
+        # Include based on include_vacant_from parameter
+        if s.status == RoomShareStatus.VACANT:
+            include_this = True
+            selectable = True
+        elif s.status == RoomShareStatus.VACANT_FROM:
+            include_this = include_vacant_from
+            selectable = (not s.vacant_from or s.vacant_from <= today)
+        else:
+            include_this = False
+            selectable = False
+        
+        if include_this:
+            result.append({
+                'bed_no': s.share_no,
+                'share_no': s.share_no,
+                'available_from': s.vacant_from.isoformat() if s.vacant_from else None,
+                'vacant_from': s.vacant_from.isoformat() if s.vacant_from else None,
+                'status': s.status,
+                'selectable': selectable,
+            })
+    
     selectable_beds = [x['share_no'] for x in result if x['selectable']]
     return JsonResponse({
+        'ok': True,
         'room_id': room.id,
         'vacant_beds': selectable_beds,
         'beds': result,
@@ -997,3 +1707,193 @@ def my_application(request):
     # Redirect to existing application form page, tagging source for redirect-back
     from django.urls import reverse
     return redirect(f"{reverse('application_fill', args=[booking.id])}?from=self")
+
+
+# ============================================================================
+# LEAVE PG FUNCTIONALITY
+# ============================================================================
+
+@login_required
+def initiate_leave_request(request, booking_id):
+    """User initiates leave request with notice period validation"""
+    from .forms import LeaveRequestForm
+    from dateutil.relativedelta import relativedelta
+    import calendar
+    
+    booking = get_object_or_404(
+        Booking.objects.select_related('room', 'room__pg'),
+        id=booking_id,
+        user=request.user,
+        status=Booking.APPROVED
+    )
+    
+    # Check if already has pending leave request
+    if booking.leaving_date and not booking.leaving_confirmed_date:
+        messages.warning(request, "You already have a pending leave request. Please wait for confirmation or cancel it first.")
+        return redirect('dashboard')
+    
+    # Check if already confirmed leaving
+    if booking.leaving_confirmed_date:
+        messages.info(request, "Your leave request has already been confirmed.")
+        return redirect('dashboard')
+    
+    pg = booking.room.pg
+    notice_period = getattr(pg, 'notice_period', 30)  # Default 30 days
+    today = date.today()
+    
+    # Calculate next payment date
+    payment_day = booking.payment_date.day if booking.payment_date else today.day
+    next_month = today + relativedelta(months=1)
+    # Handle month-end cases (e.g., Jan 31 -> Feb 28/29)
+    max_day = calendar.monthrange(next_month.year, next_month.month)[1]
+    next_payment_date = next_month.replace(day=min(payment_day, max_day))
+    
+    # Calculate notice period compliance for next payment date
+    days_until_next_payment = (next_payment_date - today).days
+    next_payment_eligible = days_until_next_payment >= notice_period
+    
+    if request.method == 'POST':
+        form = LeaveRequestForm(request.POST, booking=booking)
+        if form.is_valid():
+            leaving_date = form.cleaned_data['leaving_date']
+            leaving_reason = form.cleaned_data['leaving_reason']
+            acknowledge_no_advance = form.cleaned_data.get('acknowledge_no_advance', False)
+            
+            # Validate leaving date
+            if leaving_date < today:
+                messages.error(request, "Leave date cannot be in the past.")
+                return render(request, 'bookings/leave_request.html', {
+                    'form': form,
+                    'booking': booking,
+                    'next_payment_date': next_payment_date,
+                    'notice_period': notice_period,
+                    'today': today
+                })
+            
+            if booking.joining_date and leaving_date <= booking.joining_date:
+                messages.error(request, "Leave date must be after your joining date.")
+                return render(request, 'bookings/leave_request.html', {
+                    'form': form,
+                    'booking': booking,
+                    'next_payment_date': next_payment_date,
+                    'notice_period': notice_period,
+                    'today': today
+                })
+            
+            # Calculate notice period compliance
+            days_diff = (leaving_date - today).days
+            advance_eligible = days_diff >= notice_period
+            
+            # If not eligible, require acknowledgment
+            if not advance_eligible and not acknowledge_no_advance:
+                messages.error(request, "You must acknowledge that no advance will be returned for early leaving.")
+                return render(request, 'bookings/leave_request.html', {
+                    'form': form,
+                    'booking': booking,
+                    'next_payment_date': next_payment_date,
+                    'notice_period': notice_period,
+                    'today': today
+                })
+            
+            # Save leave request
+            booking.leaving_date = leaving_date
+            booking.leaving_reason = leaving_reason
+            booking.leaving_initiated_at = timezone.now()
+            booking.advance_eligible = advance_eligible
+            booking.save(update_fields=[
+                'leaving_date', 'leaving_reason', 'leaving_initiated_at', 'advance_eligible'
+            ])
+            
+            # Create notification for PG admin
+            pg_admins = PGAdmin.objects.filter(pg=pg).select_related('user')
+            for pg_admin in pg_admins:
+                Notification.objects.create(
+                    user=pg_admin.user,
+                    title="Leave Request Received",
+                    message=f"{booking.user.get_full_name()} has requested to leave Room {booking.room.room_no}, Bed {booking.share_no} on {leaving_date.strftime('%B %d, %Y')}."
+                )
+            
+            # Audit log
+            log(
+                actor=request.user,
+                action='leave_initiated',
+                target_type='Booking',
+                target_id=booking.id,
+                message=f"Leave request initiated for {leaving_date}",
+                meta={
+                    'leaving_date': leaving_date.isoformat(),
+                    'advance_eligible': advance_eligible,
+                    'reason': leaving_reason[:100] if leaving_reason else None
+                }
+            )
+            
+            messages.success(request, f"Leave request submitted successfully for {leaving_date.strftime('%B %d, %Y')}. Waiting for PG admin confirmation.")
+            return redirect('dashboard')
+    else:
+        form = LeaveRequestForm(booking=booking)
+    
+    context = {
+        'form': form,
+        'booking': booking,
+        'pg': pg,
+        'next_payment_date': next_payment_date,
+        'next_payment_eligible': next_payment_eligible,
+        'notice_period': notice_period,
+        'today': today,
+        'payment_day': payment_day,
+    }
+    
+    return render(request, 'bookings/leave_request.html', context)
+
+
+@login_required
+def cancel_leave_request(request, booking_id):
+    """User cancels their pending leave request"""
+    booking = get_object_or_404(
+        Booking,
+        id=booking_id,
+        user=request.user,
+        status=Booking.APPROVED
+    )
+    
+    # Can only cancel if not yet confirmed
+    if booking.leaving_confirmed_date:
+        messages.error(request, "Cannot cancel - leave has already been confirmed by PG admin.")
+        return redirect('dashboard')
+    
+    if not booking.leaving_date:
+        messages.info(request, "No pending leave request to cancel.")
+        return redirect('dashboard')
+    
+    # Clear leave request
+    old_leaving_date = booking.leaving_date
+    booking.leaving_date = None
+    booking.leaving_reason = ''
+    booking.leaving_initiated_at = None
+    booking.advance_eligible = True
+    booking.save(update_fields=[
+        'leaving_date', 'leaving_reason', 'leaving_initiated_at', 'advance_eligible'
+    ])
+    
+    # Notify PG admin
+    pg_admins = PGAdmin.objects.filter(pg=booking.room.pg).select_related('user')
+    for pg_admin in pg_admins:
+        Notification.objects.create(
+            user=pg_admin.user,
+            title="Leave Request Cancelled",
+            message=f"{booking.user.get_full_name()} has cancelled their leave request for Room {booking.room.room_no}, Bed {booking.share_no} (was scheduled for {old_leaving_date})."
+        )
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='leave_cancelled',
+        target_type='Booking',
+        target_id=booking.id,
+        message=f"Leave request cancelled (was scheduled for {old_leaving_date})",
+        meta={'cancelled_date': old_leaving_date.isoformat()}
+    )
+    
+    messages.success(request, "Leave request cancelled successfully.")
+    return redirect('dashboard')
+

@@ -28,7 +28,7 @@ class Fees(TimeStampedModel):
 class Payment(TimeStampedModel):
 	STATUS_CHOICES = [('success', 'Success'), ('failed', 'Failed'), ('pending', 'Pending')]
 	MODE_CHOICES = [('cash', 'Cash'), ('upi', 'UPI'), ('bank', 'Bank Transfer')]
-	TYPE_CHOICES = [('fee', 'Fee'), ('advance', 'Advance')]
+	TYPE_CHOICES = [('fee', 'Fee'), ('advance', 'Advance'), ('daywise', 'Day-wise')]
 
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='payments')
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='payments')
@@ -38,6 +38,8 @@ class Payment(TimeStampedModel):
 	mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='upi')
 	type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='fee')
 	notes = models.TextField(blank=True)
+	from_date = models.DateField(null=True, blank=True, help_text='Billing period start date')
+	to_date = models.DateField(null=True, blank=True, help_text='Billing period end date')
 
 	def __str__(self):
 		return f"{self.user} - {self.pg} - {self.amount}"
@@ -48,6 +50,15 @@ class Expenditure(TimeStampedModel):
 		('electricity', 'Electricity'),
 		('groceries', 'Groceries'),
 		('maintenance', 'Maintenance'),
+		('advance_return', 'Advance Return'),
+		('rent', 'Rent'),
+		('vegetables', 'Vegetables'),
+		('gas_bill', 'Gas Bill'),
+		('drinking_water_bill', 'Drinking Water Bill'),
+		('municipal_water_bill', 'Municipal Water Bill'),
+		('milk', 'Milk'),
+		('chicken', 'Chicken'),
+		('paneer', 'Paneer'),
 		('other', 'Other'),
 	]
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='expenditures')
@@ -55,6 +66,8 @@ class Expenditure(TimeStampedModel):
 	amount = models.DecimalField(max_digits=10, decimal_places=2)
 	date = models.DateField()
 	notes = models.TextField(blank=True)
+	# Optional reference to booking for advance returns (nullable to keep expenditure even if booking deleted)
+	booking = models.ForeignKey('bookings.Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='expenditures')
 
 	def __str__(self):
 		return f"{self.pg} - {self.category} - {self.amount}"

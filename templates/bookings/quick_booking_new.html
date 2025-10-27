@@ -1,0 +1,656 @@
+{% extends 'base.html' %}
+{% block title %}Quick Booking • {{ pg.name }}{% endblock %}
+
+{% block content %}
+<h1 class="h4 mb-3">Book a Room — {{ pg.name }}</h1>
+
+<!-- Display Errors -->
+{% if errors %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+  <h6 class="alert-heading"><i class="bi bi-exclamation-triangle-fill me-2"></i>Please fix the following errors:</h6>
+  <ul class="mb-0">
+    {% for error in errors %}
+      <li>{{ error }}</li>
+    {% endfor %}
+  </ul>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+
+<!-- {% if pg.past_joining_date_allowed %}
+<div class="alert alert-info mb-3">
+  <i class="bi bi-info-circle"></i> <strong>Note:</strong> This PG allows booking with past joining dates for "Book Now" option.
+</div>
+{% endif %} -->
+
+<!-- Booking Type Selection Modal -->
+<div class="modal fade" id="bookingTypeModal" tabindex="-1" aria-labelledby="bookingTypeModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bookingTypeModalLabel">Select Booking Type</h5>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <!-- Day-wise Booking -->
+          <div class="col-md-4">
+            <div class="card h-100 booking-type-card" data-type="daywise" style="cursor: pointer;">
+              <div class="card-body text-center">
+                <i class="bi bi-calendar-day fs-1 text-primary"></i>
+                <h5 class="card-title mt-3">Day-wise Booking</h5>
+                <p class="card-text small text-muted">Short-term stay (hours/days)</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Book Now -->
+          <div class="col-md-4">
+            <div class="card h-100 booking-type-card" data-type="booknow" style="cursor: pointer;">
+              <div class="card-body text-center">
+                <i class="bi bi-door-open fs-1 text-success"></i>
+                <h5 class="card-title mt-3">Book Now</h5>
+                <p class="card-text small text-muted">Move in immediately</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Book for Future -->
+          <div class="col-md-4">
+            <div class="card h-100 booking-type-card" data-type="future" style="cursor: pointer;">
+              <div class="card-body text-center">
+                <i class="bi bi-calendar-check fs-1 text-info"></i>
+                <h5 class="card-title mt-3">Book for Future</h5>
+                <p class="card-text small text-muted">Reserve for later date</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Day-wise Booking Form -->
+<div id="daywiseForm" style="display:none;">
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0"><i class="bi bi-calendar-day me-2"></i>Day-wise Booking</h5>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetBookingType()">Change Type</button>
+      </div>
+      
+      <form method="post" enctype="multipart/form-data" action="{% url 'pg_quick_booking' pg.slug %}">
+        {% csrf_token %}
+        <input type="hidden" name="booking_type" value="daywise">
+        
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="daywise_name" data-daywise-required="true">
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Mobile Number <span class="text-danger">*</span></label>
+            <input type="tel" class="form-control" name="daywise_mobile" pattern="[0-9]{10}" data-daywise-required="true">
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Emergency Contact Number <span class="text-danger">*</span></label>
+            <input type="tel" class="form-control" name="daywise_emergency" pattern="[0-9]{10}" data-daywise-required="true">
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Selfie <span class="text-danger">*</span></label>
+            <div id="cameraContainer" class="mb-2">
+              <video id="video" width="100%" style="max-width:320px; display:none;" autoplay></video>
+              <canvas id="canvas" style="display:none;"></canvas>
+              <img id="selfiePreview" style="max-width:320px; width:100%; display:none;" />
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" id="startCamera">
+              <i class="bi bi-camera"></i> Start Camera
+            </button>
+            <button type="button" class="btn btn-sm btn-success" id="captureBtn" style="display:none;">
+              <i class="bi bi-camera-fill"></i> Capture
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" id="retakeBtn" style="display:none;">
+              <i class="bi bi-arrow-clockwise"></i> Retake
+            </button>
+            <input type="hidden" name="daywise_selfie_data" id="selfieData" data-daywise-required="true">
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Aadhaar Document <span class="text-danger">*</span></label>
+            <input type="file" class="form-control" name="daywise_aadhaar1" accept="image/*,.pdf" data-daywise-required="true">
+            <small class="form-text text-muted">Upload first image(front side) or PDF</small>
+          </div>
+          
+          <div class="col-12">
+            <label class="form-label">Aadhaar Document 2</label>
+            <small class="form-text text-muted">(Optional when complete aadhar uploaded in Document 1)</small>
+            <input type="file" class="form-control" name="daywise_aadhaar2" accept="image/*">
+            <small class="form-text text-muted">Upload second image(back side),if not using PDF</small>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Start Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" name="daywise_start_date" id="daywiseStartDate" data-daywise-required="true">
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Start Time <span class="text-danger">*</span></label>
+            <select class="form-select" name="daywise_start_time" id="daywiseStartTime" data-daywise-required="true">
+              <option value="">Select time</option>
+            </select>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">End Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" name="daywise_end_date" id="daywiseEndDate" data-daywise-required="true" min="">
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">End Time <span class="text-danger">*</span></label>
+            <select class="form-select" name="daywise_end_time" id="daywiseEndTime" data-daywise-required="true">
+              <option value="">Select time</option>
+            </select>
+          </div>
+
+          <!-- based on start date-time and end date-time calculate days and hours and display in a summary --> 
+          <div id="bookingSummary" class="mt-3" style="display:none;">
+            <h6>Booking Summary</h6>
+            <p id="summaryDetails"></p>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Purpose <span class="text-danger">*</span></label>
+            <textarea class="form-control" name="daywise_purpose" rows="3" data-daywise-required="true"></textarea>
+          </div>
+          
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">Submit Day-wise Booking</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Book for Future Form -->
+<div id="futureForm" style="display:none;">
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0"><i class="bi bi-calendar-check me-2"></i>Book for Future</h5>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetBookingType()">Change Type</button>
+      </div>
+      
+      <form method="post" action="{% url 'pg_quick_booking' pg.slug %}">
+        {% csrf_token %}
+        <input type="hidden" name="booking_type" value="future">
+        
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Room <span class="text-danger">*</span></label>
+            <select class="form-select" name="future_room_id" id="futureRoomSelect" data-future-required="true">
+              <option value="">Loading rooms...</option>
+            </select>
+            <small class="form-text text-muted">Shows vacant and vacant-from beds</small>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Bed <span class="text-danger">*</span></label>
+            <select class="form-select" name="future_share_no" id="futureShareSelect" disabled data-future-required="true">
+              <option value="">Select a room first</option>
+            </select>
+            <small class="form-text text-muted" id="bedAvailabilityHint"></small>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Joining Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" name="future_joining_date" id="futureJoiningDate" data-future-required="true">
+            <small class="form-text text-muted" id="joiningDateHint">Select your move-in date</small>
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" name="future_name" value="{{ user.get_full_name }}" data-future-required="true">
+          </div>
+          
+          <div class="col-md-6">
+            <label class="form-label">Phone Number <span class="text-danger">*</span></label>
+            <input type="tel" class="form-control" name="future_phone" value="{{ user.profile.phone|default:'' }}" pattern="[0-9]{10}" data-future-required="true">
+          </div>
+          
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">Submit Future Booking</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Book Now Form (existing flow) -->
+<div id="booknowForm" style="display:none;">
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0"><i class="bi bi-door-open me-2"></i>Book Now</h5>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetBookingType()">Change Type</button>
+      </div>
+      
+  <form method="post" enctype="multipart/form-data" action="{% url 'pg_quick_booking' pg.slug %}" data-booking-type="booknow" data-past-allowed="{{ pg.past_joining_date_allowed|yesno:'1,0' }}">
+        {% csrf_token %}
+        <input type="hidden" name="booking_type" value="booknow">
+        
+        {% include 'bookings/_booknow_form.html' %}
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+.booking-type-card {
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.booking-type-card:hover {
+  border-color: #0d6efd;
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+#video, #canvas, #selfiePreview {
+  border: 2px solid #dee2e6;
+  border-radius: 0.375rem;
+}
+</style>
+
+<!-- Small helper to expose server-side flags to JS without embedding template tags inside scripts -->
+<input type="hidden" id="qbHasErrors" value="{{ errors|length|default:0 }}">
+<input type="hidden" id="qbBookingType" value="{{ request.POST.booking_type|default:'' }}">
+<input type="hidden" id="qbRoomsUrl" value="{% url 'pg_quick_rooms' pg.slug %}?include_vacant_from=true">
+<input type="hidden" id="qbSharesUrlTemplate" value="{% url 'pg_quick_shares' pg.slug 0 %}">
+
+<script>
+// Show modal on page load (unless there are errors from a previous submission)
+document.addEventListener('DOMContentLoaded', function() {
+  const hasErrorsEl = document.getElementById('qbHasErrors');
+  const hasErrors = hasErrorsEl ? (parseInt(hasErrorsEl.value || '0', 10) > 0) : false;
+  
+  // If there are errors, don't show modal and show the appropriate form based on what was submitted
+  if (hasErrors) {
+    // Check which form was submitted by reading the hidden input (avoids template tags inside JS)
+    const bookingTypeEl = document.getElementById('qbBookingType');
+    const bookingType = bookingTypeEl ? bookingTypeEl.value || '' : '';
+    if (bookingType) {
+      selectBookingType(bookingType);
+    } else {
+      // If we can't determine type, show modal anyway
+      const modal = new bootstrap.Modal(document.getElementById('bookingTypeModal'));
+      modal.show();
+    }
+  } else {
+    // No errors, show modal normally
+    const modal = new bootstrap.Modal(document.getElementById('bookingTypeModal'));
+    modal.show();
+  }
+  
+  // Handle booking type selection
+  document.querySelectorAll('.booking-type-card').forEach(card => {
+    card.addEventListener('click', function() {
+      const type = this.dataset.type;
+      selectBookingType(type);
+      const modal = bootstrap.Modal.getInstance(document.getElementById('bookingTypeModal'));
+      if (modal) modal.hide();
+    });
+  });
+  
+  // Date validation for day-wise booking
+  const startDateInput = document.getElementById('daywiseStartDate');
+  const endDateInput = document.getElementById('daywiseEndDate');
+
+  if (startDateInput && endDateInput) {
+      // Set minimum dates for daywise booking (ensure default min is yesterday)
+      const _now = new Date();
+      const minStart = new Date(_now);
+      minStart.setDate(minStart.getDate() - 1); // allow yesterday
+      startDateInput.min = minStart.toISOString().split('T')[0];
+
+    // Ensure end date has no max and its min follows start date
+    endDateInput.removeAttribute('max');
+
+    startDateInput.addEventListener('change', function() {
+      if (this.value) {
+        endDateInput.min = this.value;
+      } else {
+        endDateInput.removeAttribute('min');
+      }
+      // Remove any restrictive max so end can be any future date
+      endDateInput.removeAttribute('max');
+    });
+  }
+
+  // Populate hourly time select options for day-wise booking (5 AM to 11 PM)
+  const startTimeInput = document.getElementById('daywiseStartTime');
+  const endTimeInput = document.getElementById('daywiseEndTime');
+
+  function padHour(n) { return n < 10 ? '0' + n : '' + n; }
+  function formatTimeLabel(hour) {
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const dispHour = ((hour + 11) % 12) + 1; // 0 -> 12, 13 -> 1
+    return `${dispHour}:00 ${ampm}`;
+  }
+
+  if (startTimeInput && endTimeInput) {
+    for (let h = 5; h <= 23; h++) {
+      const value = padHour(h) + ':00';
+      const optStart = document.createElement('option');
+      optStart.value = value;
+      optStart.textContent = formatTimeLabel(h);
+      startTimeInput.appendChild(optStart);
+
+      const optEnd = document.createElement('option');
+      optEnd.value = value;
+      optEnd.textContent = formatTimeLabel(h);
+      endTimeInput.appendChild(optEnd);
+    }
+  }
+  
+  // Booking summary calculation for day-wise booking
+  const bookingSummary = document.getElementById('bookingSummary');
+  const summaryDetails = document.getElementById('summaryDetails');
+
+  function parseLocalDateTime(dateStr, timeStr) {
+    if (!dateStr) return null;
+    // If time is missing, default to 00:00
+    const t = timeStr || '00:00';
+    // Build YYYY-MM-DDTHH:MM (local) and create Date
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return null;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const tp = t.split(':');
+    const hour = parseInt(tp[0] || '0', 10);
+    const minute = parseInt(tp[1] || '0', 10);
+    return new Date(year, month, day, hour, minute, 0, 0);
+  }
+
+  function humanDuration(ms) {
+    if (ms <= 0) return '0 minutes';
+    const totalMinutes = Math.floor(ms / 60000);
+    const days = Math.floor(totalMinutes / (60 * 24));
+    const hours = Math.floor((totalMinutes - days * 24 * 60) / 60);
+    const minutes = totalMinutes - days * 24 * 60 - hours * 60;
+    const parts = [];
+    if (days) parts.push(days + (days === 1 ? ' day' : ' days'));
+    if (hours) parts.push(hours + (hours === 1 ? ' hour' : ' hours'));
+    if (minutes) parts.push(minutes + (minutes === 1 ? ' minute' : ' minutes'));
+    return parts.join(' ');
+  }
+
+  function updateBookingSummary() {
+    if (!summaryDetails || !bookingSummary) return;
+    const sd = startDateInput ? startDateInput.value : '';
+    const st = startTimeInput ? startTimeInput.value : '';
+    const ed = endDateInput ? endDateInput.value : '';
+    const et = endTimeInput ? endTimeInput.value : '';
+    if (!sd || !ed) {
+      bookingSummary.style.display = 'none';
+      summaryDetails.textContent = '';
+      return;
+    }
+    const startDT = parseLocalDateTime(sd, st);
+    const endDT = parseLocalDateTime(ed, et);
+    if (!startDT || !endDT) {
+      bookingSummary.style.display = 'none';
+      summaryDetails.textContent = '';
+      return;
+    }
+    const diff = endDT - startDT;
+    if (diff < 0) {
+      bookingSummary.style.display = 'block';
+      summaryDetails.innerHTML = '<span class="text-danger">End date/time must be on or after start date/time.</span>';
+      return;
+    }
+    const human = humanDuration(diff);
+    const totalHours = (diff / (1000 * 60 * 60)).toFixed(2);
+    bookingSummary.style.display = 'block';
+    summaryDetails.innerHTML = `<strong>Duration:</strong> ${human} <br/><small class="text-muted">(${totalHours} hours total)</small>`;
+  }
+
+  // Attach listeners
+  [startDateInput, endDateInput, startTimeInput, endTimeInput].forEach(el => {
+    if (!el) return;
+    el.addEventListener('change', updateBookingSummary);
+    el.addEventListener('input', updateBookingSummary);
+  });
+  
+  // Selfie capture
+  setupSelfieCapture();
+  
+  // Future booking room/bed selection
+  if (document.getElementById('futureRoomSelect')) {
+    loadFutureRooms();
+  }
+});
+
+function selectBookingType(type) {
+  // Hide all forms and disable their required fields
+  const daywiseForm = document.getElementById('daywiseForm');
+  const futureForm = document.getElementById('futureForm');
+  const booknowForm = document.getElementById('booknowForm');
+  
+  // Helper function to disable required fields
+  function disableRequiredFields(form, prefix) {
+    const selector = `[data-${prefix}-required="true"]`;
+    form.querySelectorAll(selector).forEach(field => {
+      field.removeAttribute('required');
+    });
+  }
+  
+  // Helper function to enable required fields
+  function enableRequiredFields(form, prefix) {
+    const selector = `[data-${prefix}-required="true"]`;
+    form.querySelectorAll(selector).forEach(field => {
+      field.setAttribute('required', '');
+    });
+  }
+  
+  // Hide all forms and disable their requirements
+  daywiseForm.style.display = 'none';
+  disableRequiredFields(daywiseForm, 'daywise');
+  
+  futureForm.style.display = 'none';
+  disableRequiredFields(futureForm, 'future');
+  
+  booknowForm.style.display = 'none';
+  // booknow form uses the included template with standard required attributes
+  booknowForm.querySelectorAll('[required]').forEach(field => {
+    field.removeAttribute('required');
+    field.dataset.booknowRequired = 'true';
+  });
+  
+  // Show selected form and enable its requirements
+  if (type === 'daywise') {
+    daywiseForm.style.display = 'block';
+    enableRequiredFields(daywiseForm, 'daywise');
+  } else if (type === 'future') {
+    futureForm.style.display = 'block';
+    enableRequiredFields(futureForm, 'future');
+    
+    // Set date range for future booking: today to 60 days from today
+    const today = new Date();
+    const maxFutureDate = new Date(today);
+    maxFutureDate.setDate(maxFutureDate.getDate() + 60);
+    
+    const joiningInput = document.getElementById('futureJoiningDate');
+    if (joiningInput) {
+      joiningInput.min = today.toISOString().split('T')[0];
+      joiningInput.max = maxFutureDate.toISOString().split('T')[0];
+      // Don't auto-fill - let user choose their future date
+    }
+  } else if (type === 'booknow') {
+    booknowForm.style.display = 'block';
+    booknowForm.querySelectorAll('[data-booknow-required="true"]').forEach(field => {
+      field.setAttribute('required', '');
+    });
+    // Initialize existing book now logic
+    if (typeof initBookNow === 'function') {
+      initBookNow();
+    }
+  }
+}
+
+function resetBookingType() {
+  // reload the page
+  location.reload();
+}
+
+// Selfie capture functionality
+function setupSelfieCapture() {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const startBtn = document.getElementById('startCamera');
+  const captureBtn = document.getElementById('captureBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const preview = document.getElementById('selfiePreview');
+  const selfieData = document.getElementById('selfieData');
+  let stream = null;
+  
+  if (!startBtn) return;
+  
+  startBtn.addEventListener('click', async function() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      video.style.display = 'block';
+      startBtn.style.display = 'none';
+      captureBtn.style.display = 'inline-block';
+    } catch (err) {
+      alert('Could not access camera: ' + err.message);
+    }
+  });
+  
+  captureBtn.addEventListener('click', function() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    const imageData = canvas.toDataURL('image/jpeg');
+    selfieData.value = imageData;
+    
+    preview.src = imageData;
+    preview.style.display = 'block';
+    video.style.display = 'none';
+    captureBtn.style.display = 'none';
+    retakeBtn.style.display = 'inline-block';
+    
+    // Stop camera
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+  });
+  
+  retakeBtn.addEventListener('click', function() {
+    preview.style.display = 'none';
+    retakeBtn.style.display = 'none';
+    startBtn.style.display = 'inline-block';
+    selfieData.value = '';
+  });
+}
+
+// Load rooms for future booking
+function loadFutureRooms() {
+  const roomSelect = document.getElementById('futureRoomSelect');
+  const shareSelect = document.getElementById('futureShareSelect');
+  
+  const roomsUrl = document.getElementById('qbRoomsUrl') ? document.getElementById('qbRoomsUrl').value : '';
+  fetch(roomsUrl)
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok && data.rooms) {
+        roomSelect.innerHTML = '<option value="">Select a room</option>';
+        data.rooms.forEach(room => {
+          const opt = document.createElement('option');
+          opt.value = room.id;
+          opt.textContent = `Room ${room.room_no} (${room.available_count} available)`;
+          roomSelect.appendChild(opt);
+        });
+      }
+    })
+    .catch(err => console.error('Error loading rooms:', err));
+  
+  roomSelect.addEventListener('change', function() {
+    if (!this.value) {
+      shareSelect.disabled = true;
+      shareSelect.innerHTML = '<option value="">Select a room first</option>';
+      return;
+    }
+    
+    loadFutureShares(this.value);
+  });
+}
+
+function loadFutureShares(roomId) {
+  const shareSelect = document.getElementById('futureShareSelect');
+  const joiningDateInput = document.getElementById('futureJoiningDate');
+  const bedHint = document.getElementById('bedAvailabilityHint');
+  const joiningHint = document.getElementById('joiningDateHint');
+  
+  shareSelect.disabled = true;
+  shareSelect.innerHTML = '<option value="">Loading...</option>';
+  
+  const sharesTemplate = document.getElementById('qbSharesUrlTemplate') ? document.getElementById('qbSharesUrlTemplate').value : '';
+  fetch(sharesTemplate.replace('/0/', `/${roomId}/`) + '?include_vacant_from=true')
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok && data.shares) {
+        shareSelect.innerHTML = '<option value="">Select a bed</option>';
+        data.shares.forEach(share => {
+          const opt = document.createElement('option');
+          opt.value = share.share_no;
+          opt.dataset.status = share.status;
+          opt.dataset.vacantFrom = share.vacant_from || '';
+          
+          let text = `Bed ${share.share_no}`;
+          if (share.status === 'vacant_from' && share.vacant_from) {
+            text += ` (Available from ${share.vacant_from})`;
+          }
+          opt.textContent = text;
+          shareSelect.appendChild(opt);
+        });
+        shareSelect.disabled = false;
+      }
+    })
+    .catch(err => console.error('Error loading shares:', err));
+  
+  shareSelect.addEventListener('change', function() {
+    const selectedOpt = this.options[this.selectedIndex];
+    const status = selectedOpt.dataset.status;
+    const vacantFrom = selectedOpt.dataset.vacantFrom;
+    
+    const today = new Date();
+    const maxFutureDate = new Date(today);
+    maxFutureDate.setDate(maxFutureDate.getDate() + 60);
+    const maxDateStr = maxFutureDate.toISOString().split('T')[0];
+    
+    if (status === 'vacant_from' && vacantFrom) {
+      joiningDateInput.min = vacantFrom;
+      joiningDateInput.max = maxDateStr;
+      joiningHint.textContent = `Must be between ${vacantFrom} and ${maxDateStr}`;
+      bedHint.textContent = `This bed will be available from ${vacantFrom}`;
+    } else {
+      const todayStr = today.toISOString().split('T')[0];
+      joiningDateInput.min = todayStr;
+      joiningDateInput.max = maxDateStr;
+      joiningHint.textContent = `Select your move-in date (max 60 days from today)`;
+      bedHint.textContent = 'This bed is currently available';
+    }
+  });
+}
+</script>
+{% endblock %}

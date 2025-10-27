@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.db.models import Sum, Q
 from pgadmin.models import PG, Complaint
 from datetime import date as _date
+from datetime import datetime as _datetime
 
 
 @login_required
@@ -33,6 +34,7 @@ def dashboard(request):
 	pending_qs = (
 		Booking.objects.filter(user=request.user, status=Booking.PENDING)
 		.select_related('room', 'room__pg')
+		.prefetch_related('application')
 		.order_by('-created_at')
 	)
 	my_booking = approved_qs.first() or pending_qs.first()
@@ -42,9 +44,43 @@ def dashboard(request):
 	completed_qs = (
 		Booking.objects.filter(user=request.user, status=Booking.COMPLETED)
 		.select_related('room', 'room__pg')
+		.prefetch_related('application')
 		.order_by('-updated_at')[:5]
 	)
 	ctx["my_completed_bookings"] = list(completed_qs)
+
+	# Attach day-wise summary fields to bookings passed to the template
+	def _attach_daywise_summary(bk):
+		# Only for day-wise bookings with necessary fields
+		try:
+			if getattr(bk, 'booking_type', None) == Booking.DAYWISE:
+				start_date = getattr(bk, 'joining_date', None) or getattr(bk, 'start_date', None)
+				end_date = getattr(bk, 'leaving_date', None)
+				start_time = getattr(bk, 'start_time', None)
+				end_time = getattr(bk, 'end_time', None)
+				if start_date and end_date and start_time and end_time:
+					start_dt = _datetime.combine(start_date, start_time)
+					end_dt = _datetime.combine(end_date, end_time)
+					# Avoid negative durations
+					delta = end_dt - start_dt
+					hours = max(0, int(delta.total_seconds() / 3600))
+					bk.daywise_summary = f"{start_dt.strftime('%b %d, %Y %I:%M %p')} - {end_dt.strftime('%b %d, %Y %I:%M %p')} ({hours} hours)"
+					bk.daywise_total_hours = hours
+				else:
+					bk.daywise_summary = ''
+					bk.daywise_total_hours = 0
+		except Exception:
+			# Be defensive: don't break rendering if anything unexpected
+			bk.daywise_summary = ''
+			bk.daywise_total_hours = 0
+		return bk
+
+	# Apply to lists that will be rendered
+	if ctx.get('my_booking'):
+		ctx['my_booking'] = _attach_daywise_summary(ctx['my_booking'])
+	ctx['my_pending_bookings'] = [_attach_daywise_summary(b) for b in ctx.get('my_pending_bookings', [])]
+	ctx['my_approved_bookings'] = [_attach_daywise_summary(b) for b in ctx.get('my_approved_bookings', [])]
+	ctx['my_completed_bookings'] = [_attach_daywise_summary(b) for b in ctx.get('my_completed_bookings', [])]
 	
 	# Get active bookings (not left yet) for complaint button
 	active_bookings = Booking.objects.filter(
@@ -98,7 +134,8 @@ def dashboard(request):
 			next_month_start = month_start.replace(month=month_start.month + 1, day=1)
 		if pg:
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg=pg).count()
-			occupied = RoomShareStatus.objects.filter(status__in=[RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM], room__pg=pg).count()
+			reserved = RoomShareStatus.objects.filter(status=RoomShareStatus.RESERVED, room__pg=pg).count()
+			occupied = RoomShareStatus.objects.filter(status=RoomShareStatus.OCCUPIED, room__pg=pg).count()
 			leaving = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT_FROM, room__pg=pg).count()
 			total = RoomShareStatus.objects.filter(room__pg=pg).count()
 			pending = Booking.objects.filter(status=Booking.PENDING, room__pg=pg).count()
@@ -114,7 +151,8 @@ def dashboard(request):
 			)
 		else:
 			vacant = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT, room__pg__admins__user=request.user).count()
-			occupied = RoomShareStatus.objects.filter(status__in=[RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM], room__pg__admins__user=request.user).count()
+			reserved = RoomShareStatus.objects.filter(status=RoomShareStatus.RESERVED, room__pg__admins__user=request.user).count()
+			occupied = RoomShareStatus.objects.filter(status=RoomShareStatus.OCCUPIED, room__pg__admins__user=request.user).count()
 			leaving = RoomShareStatus.objects.filter(status=RoomShareStatus.VACANT_FROM, room__pg__admins__user=request.user).count()
 			total = RoomShareStatus.objects.filter(room__pg__admins__user=request.user).count()
 			pending = Booking.objects.filter(status=Booking.PENDING, room__pg__admins__user=request.user).count()
@@ -138,6 +176,7 @@ def dashboard(request):
 		
 		ctx.update({
 			"vacant_beds": vacant,
+			"reserved_beds": reserved,
 			"occupied_beds": occupied,
 			"pending_bookings": pending,
 			"leaving_pending": leaving_pending,
@@ -150,6 +189,7 @@ def dashboard(request):
 			"pgs": list(pgs_qs),
 			# Legacy aliases maintained until template migration completes everywhere
 			"vacant_shares": vacant,
+			"reserved_shares": reserved,
 			"occupied_shares": occupied,
 			"leaving_shares": leaving,
 			"total_shares": total,

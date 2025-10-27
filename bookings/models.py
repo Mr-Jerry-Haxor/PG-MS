@@ -53,19 +53,45 @@ class Booking(TimeStampedModel):
 		(REJECTED, 'Rejected'),
 		(COMPLETED, 'Completed'),
 	]
+	
+	# Booking type choices
+	REGULAR = 'regular'
+	DAYWISE = 'daywise'
+	BOOKING_TYPE_CHOICES = [
+		(REGULAR, 'Regular Monthly'),
+		(DAYWISE, 'Day-wise/Short-term'),
+	]
 
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bookings')
 	room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='bookings')
 	# Denormalized for constraints and fast queries: PG of the room
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='bookings', null=True, blank=True)
 	share_no = models.PositiveSmallIntegerField()
+	booking_type = models.CharField(max_length=10, choices=BOOKING_TYPE_CHOICES, default=REGULAR, help_text="Type of booking: regular monthly or day-wise short-term")
 	status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
 	advance_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 	start_date = models.DateField(null=True, blank=True)
-	joining_date = models.DateField(null=True, blank=True, help_text="Date tenant actually moved in; used to calculate rent days.")
+	joining_date = models.DateField(null=True, blank=True, help_text="Date tenant actually moved in; used to calculate rent days. For day-wise bookings, this is the start date.")
 	payment_date = models.DateField(null=True, blank=True, help_text="Monthly rent due date (day of month); defaults to joining date.")
-	leaving_date = models.DateField(null=True, blank=True)
+	leaving_date = models.DateField(null=True, blank=True, help_text="Date tenant left or will leave. For day-wise bookings, this is the end date.")
 	leaving_confirmed_date = models.DateField(null=True, blank=True)
+	
+	# Day-wise booking specific fields
+	start_time = models.TimeField(null=True, blank=True, help_text="For day-wise bookings: check-in time")
+	end_time = models.TimeField(null=True, blank=True, help_text="For day-wise bookings: check-out time")
+	purpose = models.TextField(blank=True, help_text="For day-wise bookings: purpose of short stay")
+	payment_received = models.BooleanField(default=False, help_text="For day-wise bookings: payment received status")
+	payment_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="For day-wise bookings: specific payment amount")
+	assigned_at = models.DateTimeField(null=True, blank=True, help_text="When room was assigned by admin")
+	assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_bookings', help_text="Admin who assigned the room")
+	
+	# Enhanced leave management fields
+	leaving_initiated_at = models.DateTimeField(null=True, blank=True, help_text="When user requested to leave")
+	leaving_reason = models.TextField(blank=True, help_text="User's reason for leaving")
+	advance_eligible = models.BooleanField(default=True, help_text="Eligible for advance refund based on notice period")
+	advance_returned = models.BooleanField(default=False, help_text="Advance amount returned by PG admin")
+	advance_returned_at = models.DateTimeField(null=True, blank=True)
+	advance_returned_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
 	class Meta:
 		constraints = [
@@ -137,6 +163,7 @@ class ResidentApplication(TimeStampedModel):
 	dob = models.DateField(null=True, blank=True)
 	age = models.PositiveSmallIntegerField(null=True, blank=True)
 	phone = models.CharField(max_length=20)
+	emergency_contact = models.CharField(max_length=20, blank=True, help_text="Emergency contact number (for day-wise bookings)")
 	whatsapp_number = models.CharField(max_length=20, blank=True, help_text="WhatsApp number (can be same as phone)")
 	email = models.EmailField()
 	father_name = models.CharField(max_length=255, blank=True)
@@ -234,3 +261,40 @@ def sync_application_name_to_user(sender, instance: ResidentApplication, created
 	except Exception:
 		# Avoid raising from signal; logging can be added if needed.
 		pass
+
+
+class RoomSwap(TimeStampedModel):
+	"""Model for room swap requests, including future swaps based on leaving dates."""
+	PENDING = 'pending'
+	APPROVED = 'approved'
+	REJECTED = 'rejected'
+	COMPLETED = 'completed'
+	CANCELLED = 'cancelled'
+	
+	STATUS_CHOICES = [
+		(PENDING, 'Pending'),
+		(APPROVED, 'Approved'),
+		(REJECTED, 'Rejected'),
+		(COMPLETED, 'Completed'),
+		(CANCELLED, 'Cancelled'),
+	]
+	
+	booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='swaps', help_text="The booking that is being swapped")
+	from_room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='swaps_from')
+	from_share_no = models.PositiveSmallIntegerField()
+	to_room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='swaps_to')
+	to_share_no = models.PositiveSmallIntegerField()
+	effective_date = models.DateField(help_text="Date when swap takes effect")
+	is_future_swap = models.BooleanField(default=False, help_text="Swap scheduled for future based on leaving date")
+	status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+	reason = models.TextField(blank=True)
+	requested_at = models.DateTimeField(auto_now_add=True)
+	processed_at = models.DateTimeField(null=True, blank=True)
+	processed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='processed_swaps')
+	
+	class Meta:
+		ordering = ['-requested_at']
+	
+	def __str__(self):
+		return f"{self.booking.user} swap from {self.from_room.room_no}/{self.from_share_no} to {self.to_room.room_no}/{self.to_share_no} on {self.effective_date}"
+

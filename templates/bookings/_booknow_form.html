@@ -1,0 +1,236 @@
+<!-- Book Now Form - Extracted Partial -->
+<div class="row g-2">
+  <div class="col-12 col-md-6">
+    <label class="form-label">Room</label>
+    <select id="roomSelect" class="form-select" name="room_id" {% if has_active %}disabled{% endif %}>
+      <option value="">Loading rooms…</option>
+    </select>
+    <div class="form-text">Only rooms with vacant beds are listed.</div>
+  </div>
+  <div class="col-12 col-md-6">
+    <label class="form-label">Bed</label>
+    <select id="shareSelect" class="form-select" name="share_no" disabled>
+      <option value="">Select a room first</option>
+    </select>
+    <div id="shareLegend" class="form-text mt-1"><span class="text-warning">⏳</span> indicates a future-dated availability.</div>
+    <div id="shareHint" class="form-text mt-1"></div>
+  </div>
+</div>
+
+<div id="step3BlockBooknow" class="mt-3" style="display:none;">
+  <div class="row g-2">
+    <div class="col-12 col-lg-8">
+      {% include 'bookings/_application_form_fields.html' with form=form %}
+    </div>
+    <div class="col-12 col-lg-4">
+      <div class="mb-2">
+        <label class="form-label">Joining Date</label>
+        <input type="date" class="form-control" name="joining_date" id="joiningDate" value="{{ joining_date_value|default:'' }}" required {% if has_active %}disabled{% endif %} />
+      </div>
+      <div class="text-end mt-3">
+        <button type="submit" class="btn btn-primary" id="submitBtnBooknow" {% if has_active %}disabled{% endif %}>
+          <span class="spinner-border spinner-border-sm d-none me-1" id="submitSpinnerBooknow" role="status" aria-hidden="true"></span>
+          Submit Request
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const roomSel = document.getElementById('roomSelect');
+  const shareSel = document.getElementById('shareSelect');
+  const spinner = document.getElementById('submitSpinnerBooknow');
+  const form = document.querySelector('form[data-booking-type="booknow"]');
+  const shareHint = document.getElementById('shareHint');
+  const joiningDate = document.getElementById('joiningDate');
+  const step3Block = document.getElementById('step3BlockBooknow');
+  const submitBtn = document.getElementById('submitBtnBooknow');
+  const selectedRoom = '{{ selected_room_id|default:"" }}';
+  const selectedShare = '{{ selected_share_no|default:"" }}';
+
+  function showStep3(){ if (step3Block) step3Block.style.display = 'block'; }
+  function hideStep3(){ if (step3Block) step3Block.style.display = 'none'; }
+
+  function localYYYYMMDD(d){
+    const year = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${year}-${m}-${day}`;
+  }
+
+  function setRooms(list){
+    roomSel.innerHTML = '';
+    if (!list || !list.length) {
+      roomSel.innerHTML = '<option value="">No rooms with vacancy</option>';
+      roomSel.disabled = true;
+      return;
+    }
+    roomSel.disabled = false;
+    roomSel.insertAdjacentHTML('beforeend','<option value="">Select a room…</option>');
+    list.forEach(function(r){
+      const opt = document.createElement('option');
+      const bedCount = r.bed_count ?? r.share_count ?? (r.vacant_beds ? r.vacant_beds.length : (r.vacant_shares ? r.vacant_shares.length : ''));
+      const label = bedCount ? `${r.room_no} — ${bedCount}-bed room` : `${r.room_no}`;
+      opt.value = r.id; opt.textContent = label;
+      roomSel.appendChild(opt);
+    });
+    if (selectedRoom) {
+      roomSel.value = selectedRoom;
+      roomSel.dispatchEvent(new Event('change'));
+    }
+  }
+
+  function setBeds(list){
+    shareSel.innerHTML = '';
+    if (!list || !list.length) {
+      shareSel.innerHTML = '<option value="">No vacant beds</option>';
+      shareSel.disabled = true;
+      hideStep3();
+      return;
+    }
+    shareSel.disabled = false;
+    shareSel.insertAdjacentHTML('beforeend','<option value="">Select a bed…</option>');
+    list.forEach(function(s){
+      const opt = document.createElement('option');
+      const rec = (typeof s === 'object') ? s : { share_no: s };
+      const bedNo = rec.bed_no ?? rec.share_no;
+      if (!bedNo) { return; }
+      const statusStr = (rec.status ? String(rec.status) : '').toUpperCase();
+      const isVacantType = statusStr.startsWith('VACANT');
+      const fallbackAllow = (!rec.status && (rec.available_from || rec.selectable));
+      if (!isVacantType && !fallbackAllow) { return; }
+      const availableFrom = rec.available_from ? ` (from ${rec.available_from})` : '';
+      const badge = rec.available_from && rec.selectable === false ? ' ⏳' : '';
+      opt.value = bedNo; opt.textContent = 'Bed ' + bedNo + availableFrom + badge;
+      if (typeof rec.selectable !== 'undefined') opt.dataset.selectable = rec.selectable ? '1' : '0';
+      if (rec.available_from) opt.dataset.availableFrom = rec.available_from;
+      shareSel.appendChild(opt);
+    });
+    if (selectedShare) {
+      shareSel.value = selectedShare;
+    }
+    shareSel.dispatchEvent(new Event('change'));
+  }
+
+  // Load rooms with vacancy
+  fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/')
+    .then(r=>r.json())
+    .then(json=> setRooms(json.rooms))
+    .catch(()=>{ roomSel.innerHTML = '<option value="">Failed to load rooms</option>'; roomSel.disabled = true; });
+
+  // When room changes, load its vacant beds
+  roomSel.addEventListener('change', function(){
+    shareSel.innerHTML = '<option value="">Loading…</option>';
+    shareSel.disabled = true;
+    const rid = roomSel.value;
+    if (!rid) { shareSel.innerHTML = '<option value="">Select a room first</option>'; hideStep3(); return; }
+    hideStep3();
+    fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/' + rid + '/shares/')
+      .then(r=>r.json())
+      .then(json=> setBeds(json.beds || json.shares || json.vacant_beds || json.vacant_shares))
+      .catch(()=>{ shareSel.innerHTML = '<option value="">Failed to load beds</option>'; shareSel.disabled = true; });
+  });
+
+  // Bed selection hint + joining date rules
+  shareSel.addEventListener('change', function(){
+    shareHint.textContent = '';
+    const opt = shareSel.options[shareSel.selectedIndex];
+    if (!opt || !opt.value) { hideStep3(); return; }
+    const selectable = opt.dataset.selectable === '1' || typeof opt.dataset.selectable === 'undefined';
+    const availableFrom = opt.dataset.availableFrom || '';
+    const pastAllowed = (form && form.dataset && form.dataset.pastAllowed === '1');
+
+    // Calculate date range for book now: ±7 days from today
+    const today = new Date();
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + 7);
+    
+    joiningDate.removeAttribute('min');
+    joiningDate.removeAttribute('max');
+    
+    if (selectable){
+      if (!pastAllowed){
+        // Only current date to next 7 days
+        joiningDate.setAttribute('min', localYYYYMMDD(today));
+        joiningDate.setAttribute('max', localYYYYMMDD(maxDate));
+      } else {
+        // Past 7 days to next 7 days from current date
+        const minDate = new Date(today);
+        minDate.setDate(minDate.getDate() - 365); // Allow past 365 days
+        joiningDate.setAttribute('min', localYYYYMMDD(minDate));
+        joiningDate.setAttribute('max', localYYYYMMDD(maxDate));
+      }
+      showStep3();
+      if (submitBtn) submitBtn.disabled = false;
+    } else {
+      if (availableFrom){
+        shareHint.textContent = `This bed will be vacant from ${availableFrom}. Please select a joining date on or after this date.`;
+        joiningDate.value = '';
+        joiningDate.setAttribute('min', availableFrom);
+        joiningDate.setAttribute('max', localYYYYMMDD(maxDate));
+      } else {
+        shareHint.textContent = 'This bed is not yet available. Please choose a different bed or pick a later joining date.';
+        joiningDate.value = '';
+      }
+      showStep3();
+      if (!availableFrom && submitBtn) submitBtn.disabled = true;
+      else if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+
+  // Form validation
+  if (form) {
+    form.addEventListener('submit', function(e){
+      // Only validate if step3 is visible
+      const step3Visible = step3Block && step3Block.style.display !== 'none';
+      
+      if (!step3Visible) {
+        e.preventDefault();
+        alert('Please select a room and bed first.');
+        return;
+      }
+      
+      const problems = [];
+      if (!shareSel.value){ problems.push('Please select a bed.'); }
+      const jd = joiningDate ? joiningDate.value : '';
+      if (!jd){ problems.push('Please choose a joining date.'); }
+      const min = joiningDate ? joiningDate.getAttribute('min') : '';
+      const max = joiningDate ? joiningDate.getAttribute('max') : '';
+      const pastAllowed = (form && form.dataset && form.dataset.pastAllowed === '1');
+      function cmpDate(a,b){ return a.localeCompare(b); }
+      
+      if (jd){
+        // Check minimum date
+        if (min && cmpDate(jd, min) < 0){ 
+          problems.push('Joining date must be on or after ' + min + '.'); 
+        }
+        // Check maximum date (book now has 7-day window)
+        if (max && cmpDate(jd, max) > 0){
+          problems.push('Joining date must be on or before ' + max + '.');
+        }
+        // Additional check if no min but past not allowed
+        if (!min && !pastAllowed){
+          const todayLocal = localYYYYMMDD(new Date());
+          if (cmpDate(jd, todayLocal) < 0) problems.push('Joining date cannot be in the past.');
+        }
+      }
+      
+      if (problems.length){
+        e.preventDefault();
+        alert(problems.join('\n'));
+        return;
+      }
+      if (submitBtn && submitBtn.disabled) { 
+        e.preventDefault(); 
+        return; 
+      }
+      
+      // All validations passed - allow submission
+      if (submitBtn) submitBtn.disabled = true;
+      if (spinner) spinner.classList.remove('d-none');
+    });
+  }
+});
+</script>

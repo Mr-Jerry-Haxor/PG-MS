@@ -8,10 +8,8 @@ from core.audit import log
 from .forms import FeesForm, PaymentForm, ExpenditureForm
 from bookings.models import Booking, ReferralCredit
 from django.db import transaction
-from django.db.models import Q, Sum
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
-from django.core.mail import EmailMultiAlternatives
+from django.db.models import Q, Sum, Count
+from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from datetime import date, timedelta
@@ -248,13 +246,12 @@ def payments_edit(request, pk=None):
             obj = form.save(commit=False)
             obj.pg = pg
             obj.save()
-            # Send receipt email only when transitioning to success or creating as success
-            try:
-                if obj.status == 'success' and (prev_status != 'success'):
-                    _send_payment_receipt_email(obj)
-            except Exception as e:
-                # Do not block UI on email failures; log and continue
-                messages.warning(request, f"Payment saved, but receipt email failed: {e}")
+            if obj.status == 'success' and (prev_status != 'success'):
+                try:
+                    from finance.signals import deliver_payment_receipt
+                    deliver_payment_receipt(obj)
+                except Exception as e:
+                    messages.warning(request, f"Payment saved, but receipt email failed: {e}")
             log(request.user, 'payment_saved', 'Payment', obj.id)
             messages.success(request, "Payment saved.")
             return redirect('payments_list')
@@ -291,64 +288,63 @@ def payments_delete(request, pk: int):
     return redirect('payments_list')
 
 
-def _send_payment_receipt_email(payment: Payment) -> None:
-    """Render and send a payment receipt email to the payer.
-    Uses template: email/payments/receipt.html
-    """
-    # Resolve room number (latest active approved booking for this user in this PG)
-    booking = (
-        Booking.objects.filter(
-            user=payment.user,
-            room__pg=payment.pg,
-            status=Booking.APPROVED,
-            leaving_date__isnull=True,
-        )
-        .select_related('room')
-        .order_by('-created_at')
-        .first()
+@login_required
+def my_payments(request):
+    """Show all payments made by the logged-in resident with receipt-style details."""
+    # Support sorting by payment date (oldest/newest)
+    sort_param = (request.GET.get('sort') or '').strip().lower()
+    if sort_param == 'oldest':
+        ordering = ('date', 'id')
+    else:
+        ordering = ('-date', '-id')
+
+    base_qs = (
+        Payment.objects.filter(user=request.user)
+        .select_related('pg')
+        .order_by(*ordering)
     )
-    room_number = getattr(getattr(booking, 'room', None), 'room_no', '—')
-    pg = payment.pg
+    success_total = base_qs.filter(status='success').aggregate(total=Sum('amount')).get('total')
+    success_total = success_total or Decimal('0')
+    status_counts_qs = base_qs.values('status').annotate(count=Count('id'))
+    status_counts = {item['status']: item['count'] for item in status_counts_qs}
+    success_count = status_counts.get('success', 0)
+    pending_failed_count = status_counts.get('pending', 0) + status_counts.get('failed', 0)
+    payments_list = list(base_qs)
+
+    from finance.signals import _build_receipt_context
+
+    payment_rows = []
+    for idx, payment in enumerate(payments_list):
+        receipt_ctx = _build_receipt_context(payment)
+        payment_rows.append({
+            'payment': payment,
+            'receipt': receipt_ctx,
+            'collapse_id': f"payment-{payment.id}",
+            'is_first': idx == 0,
+            'status_badge': {
+                'success': 'bg-success',
+                'pending': 'bg-warning text-dark',
+                'failed': 'bg-danger',
+            }.get(payment.status, 'bg-secondary'),
+            'status_label': payment.get_status_display(),
+            'mode_label': payment.get_mode_display(),
+            'type_label': payment.get_type_display(),
+        })
+
+    from django.urls import reverse
 
     context = {
-        'tenant_name': f"{(payment.user.first_name or '').strip()} {(payment.user.last_name or '').strip()}".strip() or payment.user.email,
-        'pg_name': pg.name,
-        'room_number': room_number,
-        'payment_date': payment.date.strftime('%Y-%m-%d') if payment.date else timezone.now().date().strftime('%Y-%m-%d'),
-        'payment_type': dict(Payment.TYPE_CHOICES).get(payment.type, payment.type),
-        'payment_method': dict(Payment.MODE_CHOICES).get(payment.mode, payment.mode),
-        'amount_paid': f"{payment.amount:.2f}",
-        'pg_phone': pg.phone or '',
-        'current_year': timezone.now().year,
-        'pg_address_short': (pg.address.splitlines()[0] if pg.address else ''),
+        'payment_rows': payment_rows,
+        'total_success': success_total,
+        'total_count': len(payment_rows),
+        'status_counts': status_counts,
+        'success_count': success_count,
+        'pending_failed_count': pending_failed_count,
+        'current_sort': 'oldest' if sort_param == 'oldest' else 'newest',
+        'sort_url_oldest': f"{reverse('my_payments')}?sort=oldest",
+        'sort_url_newest': f"{reverse('my_payments')}?sort=newest",
     }
-
-    # Sanitize WhatsApp phone: digits only, include country code (default to +91 if 10 digits)
-    try:
-        import re
-        raw = context['pg_phone']
-        digits = re.sub(r"\D", "", raw or "")
-        # handle common India patterns: leading 0, 10-digit local
-        if digits.startswith('0') and len(digits) > 1:
-            digits = digits.lstrip('0')
-        if len(digits) == 10:
-            digits = '91' + digits
-        context['whatsapp_phone'] = digits
-    except Exception:
-        context['whatsapp_phone'] = ''
-
-    subject = f"Payment Receipt — {pg.name}"
-    from_email = None  # Use DEFAULT_FROM_EMAIL if configured
-    to = [payment.user.email]
-
-    html_body = render_to_string('email/payments/receipt.html', context)
-    text_body = strip_tags(html_body)
-
-    msg = EmailMultiAlternatives(subject, text_body, from_email, to)
-    msg.attach_alternative(html_body, "text/html")
-    msg.send(fail_silently=True)
-
-
+    return render(request, 'finance/my_payments.html', context)
 @login_required
 def expenditure_list(request):
     if not _require_pg_admin(request.user):
@@ -450,6 +446,41 @@ def _payment_due_for_month(booking, m_first: date, m_days: int) -> date | None:
     return date(m_first.year, m_first.month, due_day)
 
 
+def _room_share_label(room) -> str:
+    """Return a human-friendly share label for the room, e.g. '3-Sharing'."""
+    if not room:
+        return ''
+    share_val = getattr(room, 'total_shares', '')
+    if share_val in (None, ''):
+        return ''
+    try:
+        share_str = str(int(share_val))
+    except Exception:
+        share_str = str(share_val)
+    share_map = dict(Fees.SHARE_TYPES)
+    if share_str in share_map:
+        return share_map[share_str]
+    # Fallback when share isn't one of the predefined choices
+    return f"{share_val}-Sharing"
+
+
+def _billing_period_from_payment_date(payment_date: date) -> tuple[date | None, date | None]:
+    """Given a payment date, return the inferred billing period (from, to).
+
+    From date defaults to the payment date. To date is computed as the same-day
+    in the next month minus one day (e.g., 23 Oct → 22 Nov).
+    """
+    if not payment_date:
+        return None, None
+    next_month = 1 if payment_date.month == 12 else payment_date.month + 1
+    next_year = payment_date.year + (1 if payment_date.month == 12 else 0)
+    last_day_next_month = calendar.monthrange(next_year, next_month)[1]
+    target_day = min(payment_date.day, last_day_next_month)
+    next_cycle_marker = date(next_year, next_month, target_day)
+    to_date = next_cycle_marker - timedelta(days=1)
+    return payment_date, to_date
+
+
 def _resolve_status(expected: float, collected: float, m_first: date, due_date: date | None, today: date | None = None):
     if today is None:
         today = timezone.now().date()
@@ -479,27 +510,190 @@ def _resolve_status(expected: float, collected: float, m_first: date, due_date: 
     return 'upcoming', 'No Due', 'status-upcoming'
 
 
-def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None) -> float:
-    # Custom rate override
-    rr = ResidentRate.objects.filter(user=u, pg=pg, active=True).first()
-    if rr:
-        monthly = float(rr.amount)
-    else:
-        # Derive from Fees by share type (room.total_shares)
-        share_type = str(getattr(getattr(booking, 'room', None), 'total_shares', '') or '')
-        fees = Fees.objects.filter(pg=pg, share_type=share_type).first()
-        monthly = float(fees.monthly_fee) if fees else 0.0
-    # Pro-rate by overlap days
-    days_in_month = (m_last - m_first).days + 1
-    # CRITICAL: Use joining_date as the primary start for pro-rating occupancy days
-    # payment_date should ONLY affect when rent is due, NOT the calculation of days stayed
-    # Fallback chain: joining_date → start_date → created_at
+def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None, details=None) -> float:
+    from datetime import datetime
+    from bookings.models import RoomSwap
+
+    def _add_detail(detail_type: str, **kwargs) -> None:
+        if details is None:
+            return
+        payload = {'type': detail_type}
+        payload.update(kwargs)
+        details.append(payload)
+
+    # Day-wise booking: compute expected directly based on configured fee.
+    if hasattr(booking, 'booking_type') and booking.booking_type == 'daywise':
+        daywise_fee = float(getattr(pg, 'daywise_fee', 0) or 0)
+        if daywise_fee <= 0:
+            return 0.0
+
+        start = booking.joining_date or booking.start_date or booking.created_at.date()
+        end = booking.leaving_date or m_last
+        actual_start = max(start, m_first)
+        actual_end = min(end, m_last)
+        if actual_start > actual_end:
+            return 0.0
+
+        hours = None
+        if booking.start_time and booking.end_time:
+            start_dt = datetime.combine(actual_start, booking.start_time)
+            end_dt = datetime.combine(actual_end, booking.end_time)
+            duration = end_dt - start_dt
+            hours = max(0.0, duration.total_seconds() / 3600)
+            if hours >= 12:
+                days = int(hours / 24) + (1 if hours % 24 >= 12 else 0)
+            else:
+                days = 0
+        else:
+            days = (actual_end - actual_start).days + 1
+
+        expected = round(daywise_fee * max(0, days), 2)
+        note_bits = [f"Day-wise fee ₹{daywise_fee:.2f}/day"]
+        if hours is not None:
+            note_bits.append(f"Duration ≈ {hours:.1f} hours")
+        _add_detail(
+            'daywise_segment',
+            room_no=getattr(getattr(booking, 'room', None), 'room_no', '—'),
+            share_label=_room_share_label(getattr(booking, 'room', None)),
+            start=actual_start,
+            end=actual_end,
+            days=max(0, days),
+            rate=daywise_fee,
+            rate_unit='day',
+            amount=expected,
+            source='Day-wise booking',
+            notes='; '.join(note_bits),
+        )
+        # Day-wise bookings are typically immediate, so skip month gating logic.
+        return expected
+
+    swaps = RoomSwap.objects.filter(
+        booking=booking,
+        status=RoomSwap.COMPLETED,
+        effective_date__gte=m_first,
+        effective_date__lte=m_last,
+    ).order_by('effective_date')
+
     start = booking.joining_date or booking.start_date or booking.created_at.date()
     end = booking.leaving_date
     stayed = _overlap_days(start, end, m_first, m_last)
-    if stayed <= 0 or monthly <= 0:
+    if stayed <= 0:
         return 0.0
-    expected = round((monthly * stayed) / days_in_month, 2)
+
+    days_in_month = (m_last - m_first).days + 1
+    resident_rate = ResidentRate.objects.filter(user=u, pg=pg, active=True).first()
+    custom_monthly = float(resident_rate.amount) if resident_rate else None
+    custom_source = 'Custom rate' if resident_rate else ''
+
+    if details is not None:
+        for swap in swaps:
+            _add_detail(
+                'swap_event',
+                effective_date=swap.effective_date,
+                from_room_no=getattr(getattr(swap, 'from_room', None), 'room_no', '—'),
+                from_share_label=_room_share_label(getattr(swap, 'from_room', None)),
+                to_room_no=getattr(getattr(swap, 'to_room', None), 'room_no', '—'),
+                to_share_label=_room_share_label(getattr(swap, 'to_room', None)),
+            )
+
+    if not swaps.exists():
+        room = getattr(booking, 'room', None)
+        share_label = _room_share_label(room)
+        if custom_monthly is not None:
+            monthly = custom_monthly
+            source = custom_source
+        else:
+            share_type = str(getattr(room, 'total_shares', '') or '')
+            fees = Fees.objects.filter(pg=pg, share_type=share_type).first()
+            monthly = float(getattr(fees, 'monthly_fee', 0) or 0)
+            source = f"{share_label} fee" if share_label else 'Default fee'
+
+        if monthly <= 0:
+            return 0.0
+
+        expected = round((monthly * stayed) / days_in_month, 2)
+        actual_start = max(start, m_first)
+        actual_end = min(end or m_last, m_last)
+        _add_detail(
+            'segment',
+            room_no=getattr(room, 'room_no', '—'),
+            share_label=share_label,
+            start=actual_start,
+            end=actual_end,
+            days=stayed,
+            rate=monthly,
+            rate_unit='month',
+            amount=expected,
+            source=source,
+        )
+    else:
+        segments = []
+        period_start = max(start, m_first)
+        period_end = min(end if end else m_last, m_last)
+        current_start = period_start
+        current_room = None
+
+        prior_swaps = RoomSwap.objects.filter(
+            booking=booking,
+            status=RoomSwap.COMPLETED,
+            effective_date__lt=m_first,
+        ).order_by('-effective_date')
+
+        if prior_swaps.exists():
+            current_room = prior_swaps.first().to_room
+        else:
+            first_swap_in_month = swaps.first()
+            current_room = first_swap_in_month.from_room if first_swap_in_month else booking.room
+
+        for swap in swaps:
+            swap_date = swap.effective_date
+            if current_start < swap_date:
+                segments.append({'start': current_start, 'end': swap_date - timedelta(days=1), 'room': current_room})
+            current_room = swap.to_room
+            current_start = swap_date
+
+        if current_start <= period_end:
+            segments.append({'start': current_start, 'end': period_end, 'room': current_room})
+
+        expected = 0.0
+        for segment in segments:
+            seg_start = segment['start']
+            seg_end = segment['end']
+            seg_room = segment['room']
+            seg_days = (seg_end - seg_start).days + 1
+
+            if custom_monthly is not None:
+                monthly = custom_monthly
+                source = custom_source or 'Custom rate'
+            else:
+                share_type = str(getattr(seg_room, 'total_shares', '') or '')
+                fees = Fees.objects.filter(pg=pg, share_type=share_type).first()
+                monthly = float(getattr(fees, 'monthly_fee', 0) or 0)
+                share_label = _room_share_label(seg_room)
+                source = f"{share_label} fee" if share_label else 'Default fee'
+
+            if monthly <= 0:
+                continue
+
+            seg_expected = round((monthly * seg_days) / days_in_month, 2)
+            expected += seg_expected
+            _add_detail(
+                'segment',
+                room_no=getattr(seg_room, 'room_no', '—'),
+                share_label=_room_share_label(seg_room),
+                start=seg_start,
+                end=seg_end,
+                days=seg_days,
+                rate=monthly,
+                rate_unit='month',
+                amount=seg_expected,
+                source=source,
+            )
+
+        expected = round(expected, 2)
+
+    if expected <= 0:
+        return 0.0
 
     if today is None:
         today = timezone.now().date()
@@ -509,13 +703,11 @@ def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None
     month_marker = (m_first.year, m_first.month)
     today_marker = (today.year, today.month)
 
-    # Future months are not yet due regardless of anchor
     if month_marker > today_marker:
         return 0.0
 
     if payment_anchor:
-        due_day = payment_anchor.day
-        due_day = min(due_day, days_in_month)
+        due_day = min(payment_anchor.day, days_in_month)
         due_date = date(m_first.year, m_first.month, due_day)
         if month_marker == today_marker and today < due_date:
             return 0.0
@@ -745,6 +937,8 @@ def monthly_dashboard(request):
         # Sort segments by start date for deterministic output
         segs = []
         primary_seg = None
+        row_segment_details = []
+        row_swap_details = []
         for b in bookings:
             s = b.joining_date or b.start_date or b.created_at.date()
             e = b.leaving_date
@@ -757,7 +951,8 @@ def monthly_dashboard(request):
                 fees = Fees.objects.filter(pg=pg, share_type=share_type).first()
                 base_monthly = float(getattr(fees, 'monthly_fee', 0) or 0)
                 base_source = f"{share_type}-Sharing fee" if share_type else 'Default fee'
-            exp_part = _expected_rent_for_user_pg_month(b.user, pg, b, m_first, m_last)
+            detail_entries = []
+            exp_part = _expected_rent_for_user_pg_month(b.user, pg, b, m_first, m_last, details=detail_entries)
             stayed = _overlap_days(s, e, m_first, m_last)
             payment_anchor = _payment_anchor_for_booking(b)
             due_date = _payment_due_for_month(b, m_first, m_days)
@@ -771,6 +966,11 @@ def monthly_dashboard(request):
             })
             if (primary_seg is None) or (stayed > primary_seg.get('stayed', 0)):
                 primary_seg = segs[-1]
+            for entry in detail_entries:
+                if entry.get('type') == 'swap_event':
+                    row_swap_details.append(entry)
+                else:
+                    row_segment_details.append(entry)
         segs.sort(key=lambda x: (x['start'] or m_first, x['end'] or m_last))
 
         expected_total = round(sum((seg['expected'] or 0.0) for seg in segs), 2)
@@ -829,6 +1029,140 @@ def monthly_dashboard(request):
         referral_future = []
         if credit_entry:
             referral_future = [c for c in credit_entry['pending'] if c not in scheduled_list]
+
+        # Build detailed expected breakdown for popover display
+        month_label = f"{calendar.month_name[month]} {year}"
+        sorted_segments = sorted(
+            row_segment_details,
+            key=lambda seg: ((seg.get('start') or m_first), (seg.get('end') or m_last)),
+        )
+        segment_lines = []
+        for seg_detail in sorted_segments:
+            seg_start = seg_detail.get('start') or m_first
+            seg_end = seg_detail.get('end') or m_last
+            start_label = seg_start.strftime('%d %b %Y')
+            end_label = seg_end.strftime('%d %b %Y')
+            meta_texts = []
+            room_no = seg_detail.get('room_no')
+            if room_no and room_no != '—':
+                meta_texts.append(f"Room {room_no}")
+            share_label = seg_detail.get('share_label')
+            if share_label:
+                meta_texts.append(share_label)
+            meta_html = format_html(
+                ' • {}',
+                format_html_join(' • ', '{}', ((text,) for text in meta_texts)),
+            ) if meta_texts else format_html('')
+            day_count = int(seg_detail.get('days') or 0)
+            day_label = format_html('{} day{}', day_count, '' if day_count == 1 else 's')
+            rate_value = float(seg_detail.get('rate') or 0.0)
+            rate_unit = 'day' if seg_detail.get('rate_unit') == 'day' else 'month'
+            amount_value = float(seg_detail.get('amount') or 0.0)
+            notes_items = []
+            if seg_detail.get('source'):
+                notes_items.append(str(seg_detail.get('source')))
+            if seg_detail.get('notes'):
+                notes_items.append(str(seg_detail.get('notes')))
+            notes_html = format_html(
+                '<br><span class="text-secondary small">{}</span>',
+                ' • '.join(notes_items)
+            ) if notes_items else format_html('')
+            # Format numeric amounts into plain strings before passing to format_html
+            rate_display = f"{rate_value:.2f}"
+            amount_display = f"{amount_value:.2f}"
+            segment_lines.append(
+                format_html(
+                    '<li><strong>{} → {}</strong>{} • {} × ₹{}/{} → <strong>₹{}</strong>{}</li>',
+                    start_label,
+                    end_label,
+                    meta_html,
+                    day_label,
+                    rate_display,
+                    rate_unit,
+                    amount_display,
+                    notes_html,
+                )
+            )
+        segment_items = format_html_join('', '{}', ((line,) for line in segment_lines))
+        segments_total_days = sum(int(entry.get('days') or 0) for entry in row_segment_details)
+        segment_count = len(sorted_segments)
+
+        swap_seen = {}
+        for swap_detail in row_swap_details:
+            key = (
+                swap_detail.get('effective_date'),
+                swap_detail.get('from_room_no'),
+                swap_detail.get('from_share_label'),
+                swap_detail.get('to_room_no'),
+                swap_detail.get('to_share_label'),
+            )
+            if key not in swap_seen:
+                swap_seen[key] = swap_detail
+        unique_swaps = sorted(swap_seen.values(), key=lambda e: e.get('effective_date') or m_first)
+        swap_lines = []
+        for swap_entry in unique_swaps:
+            effective_date = swap_entry.get('effective_date')
+            eff_label = effective_date.strftime('%d %b %Y') if effective_date else '—'
+            from_parts = []
+            from_room = swap_entry.get('from_room_no')
+            if from_room and from_room != '—':
+                from_parts.append(f"Room {from_room}")
+            from_share = swap_entry.get('from_share_label')
+            if from_share:
+                from_parts.append(from_share)
+            from_label = ' '.join(from_parts) if from_parts else '—'
+            to_parts = []
+            to_room = swap_entry.get('to_room_no')
+            if to_room and to_room != '—':
+                to_parts.append(f"Room {to_room}")
+            to_share = swap_entry.get('to_share_label')
+            if to_share:
+                to_parts.append(to_share)
+            to_label = ' '.join(to_parts) if to_parts else '—'
+            swap_lines.append(format_html('<li>{}: {} → {}</li>', eff_label, from_label, to_label))
+        swap_items = format_html_join('', '{}', ((line,) for line in swap_lines))
+        swap_count = len(unique_swaps)
+
+        parts = [
+            format_html('<div><strong>Gross expected:</strong> ₹{}</div>', f"{expected_total:.2f}"),
+        ]
+        if redeemed_total:
+            parts.append(format_html('<div class="small text-success">Referral credit applied: -₹{}</div>', f"{redeemed_total:.2f}"))
+        if pending_current_total:
+            parts.append(format_html('<div class="small text-secondary">Pending referral credit: -₹{}</div>', f"{pending_current_total:.2f}"))
+        parts.append(format_html('<div><strong>Net expected:</strong> ₹{}</div>', f"{expected_after_credit:.2f}"))
+        pending_display = max(0.0, pending)
+        parts.append(format_html('<div class="small">Collected: ₹{} • Pending: ₹{}</div>', f"{float(collected):.2f}", f"{pending_display:.2f}"))
+        if segment_count:
+            parts.append(
+                format_html(
+                    '<div class="small text-secondary">Total billed days: {} day{} in {}</div>',
+                    segments_total_days,
+                    '' if segments_total_days == 1 else 's',
+                    month_label,
+                )
+            )
+        if primary_seg and primary_seg.get('payment_due'):
+            parts.append(
+                format_html(
+                    '<div class="small text-secondary">Payment due date: {}</div>',
+                    primary_seg['payment_due'].strftime('%Y-%m-%d'),
+                )
+            )
+        parts.append(format_html('<div class="fw-semibold mt-2">Stay segments ({})</div>', segment_count))
+        if segment_lines:
+            parts.append(format_html('<ul class="list-unstyled mb-1">{}</ul>', segment_items))
+        else:
+            parts.append(format_html('<p class="mb-0 small text-secondary">No stay segments recorded for this month.</p>'))
+        parts.append(format_html('<div class="fw-semibold mt-2">Room swaps ({})</div>', swap_count))
+        if swap_lines:
+            parts.append(format_html('<ul class="list-unstyled mb-0">{}</ul>', swap_items))
+        else:
+            parts.append(format_html('<p class="mb-0 small text-secondary">No room swaps recorded in this period.</p>'))
+
+        expected_breakdown_html = format_html_join('', '{}', ((p,) for p in parts))
+        expected_breakdown_id = f"expected-breakdown-{u.id}"
+
         # Pick joining as earliest start in month; leaving as latest end if present
         earliest_start = min((seg['start'] or m_first) for seg in segs)
         latest_end = None
@@ -880,6 +1214,8 @@ def monthly_dashboard(request):
                 for seg in segs
             ],
             'month_days': m_days,
+            'expected_breakdown_html': expected_breakdown_html,
+            'expected_breakdown_id': expected_breakdown_id,
         })
         total_expected += expected_after_credit
         total_collected += float(collected)
@@ -2544,74 +2880,76 @@ def monthly_quick_payment(request):
     if not pay_date:
         pay_date = timezone.now().date()
 
+    from_date_str = (request.POST.get('from_date') or '').strip()
+    to_date_str = (request.POST.get('to_date') or '').strip()
+    from_date_val = parse_date(from_date_str) if from_date_str else None
+    to_date_val = parse_date(to_date_str) if to_date_str else None
+    if not from_date_val:
+        from_date_val = pay_date
+    _, default_to_date = _billing_period_from_payment_date(from_date_val)
+    if not to_date_val:
+        to_date_val = default_to_date
+    elif from_date_val and to_date_val < from_date_val:
+        to_date_val = default_to_date or to_date_val
+    if not to_date_val:
+        # final guard: ensure to_date always present
+        _, to_date_val = _billing_period_from_payment_date(pay_date)
+
     # Create Payment (success by default)
     try:
-        Payment.objects.create(
+        payment = Payment.objects.create(
             user=u, pg=pg, amount=amount, date=pay_date,
             status='success', mode=mode, type=ptype, notes=notes,
+            from_date=from_date_val, to_date=to_date_val,
         )
+        
+        # If payment type is 'advance', update the user's booking based on payment date
+        if ptype == 'advance':
+            try:
+                # Find the booking where payment date falls within the booking period
+                # Payment date should be:
+                # - After or equal to joining_date
+                # - Before or equal to leaving_date (if leaving_date exists)
+                # - If leaving_date is null, payment just needs to be after joining_date
+                
+                matching_booking = Booking.objects.filter(
+                    user=u,
+                    room__pg=pg,
+                    status=Booking.APPROVED,
+                    joining_date__lte=pay_date,  # Payment date is on or after joining
+                ).filter(
+                    Q(leaving_date__isnull=True) |  # No leaving date yet (current booking)
+                    Q(leaving_date__gte=pay_date)   # Or payment date is before/on leaving date
+                ).select_related('room').first()
+                
+                if matching_booking:
+                    # Add the payment amount to existing advance_paid
+                    matching_booking.advance_paid += amount
+                    matching_booking.save(update_fields=['advance_paid'])
+                    
+                    # Log the update
+                    from core.audit import log
+                    log(
+                        user=request.user,
+                        pg=pg,
+                        action='advance_payment_added',
+                        model='Booking',
+                        object_id=matching_booking.id,
+                        message=f"Advance payment of ₹{amount} added to booking (payment date: {pay_date}). Total advance: ₹{matching_booking.advance_paid}"
+                    )
+            except Exception as e:
+                # Don't fail the payment creation if booking update fails
+                # Just log the error for debugging
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to update booking advance_paid: {e}")
+                
     except Exception as e:
         messages.error(request, f'Failed to create payment: {e}')
         # AJAX error
         if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
             return JsonResponse({'ok': False, 'message': f'Failed to create payment: {e}'})
         return redirect('finance_monthly')
-
-    # Send HTML receipt email using shared template (best-effort)
-    try:
-        # Build context for email template
-        tenant_name = f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email
-        # Room number from the most recent/current booking in this PG
-        room_no = ''
-        try:
-            latest_b = Booking.objects.filter(user=u, room__pg=pg).select_related('room').order_by('-joining_date', '-start_date', '-created_at').first()
-            room_no = getattr(getattr(latest_b, 'room', None), 'room_no', '') or ''
-        except Exception:
-            pass
-        # Phone numbers
-        pg_phone = getattr(pg, 'phone', '') or ''
-
-        # Sanitize WhatsApp phone: digits only, include country code (default to +91 if 10 digits)
-        try:
-            import re
-            raw = pg_phone
-            digits = re.sub(r"\D", "", raw or "")
-            # handle common India patterns: leading 0, 10-digit local
-            if digits.startswith('0') and len(digits) > 1:
-                digits = digits.lstrip('0')
-            if len(digits) == 10:
-                digits = '91' + digits
-            whatsapp_phone = digits
-        except Exception:
-            whatsapp_phone = ''
-        # Address short (first line)
-        addr = getattr(pg, 'address', '') or ''
-        pg_address_short = (addr.splitlines()[0] if addr else '')
-        # Payment details display
-        payment_type_disp = 'Fee' if ptype == 'fee' else 'Advance'
-        payment_mode_disp = {'upi': 'UPI', 'cash': 'Cash', 'bank': 'Bank Transfer'}.get(mode, mode.title())
-        payment_date_disp = pay_date.strftime('%Y-%m-%d')
-        ctx = {
-            'tenant_name': tenant_name,
-            'pg_name': getattr(pg, 'name', '') or 'PG',
-            'room_number': room_no,
-            'payment_date': payment_date_disp,
-            'payment_type': payment_type_disp,
-            'payment_method': payment_mode_disp,
-            'amount_paid': f"{amount:.2f}",
-            'pg_phone': pg_phone,
-            'whatsapp_phone': whatsapp_phone,
-            'current_year': timezone.now().year,
-            'pg_address_short': pg_address_short,
-        }
-        html = render_to_string('email/payments/receipt.html', ctx)
-        text = strip_tags(html)
-        subject = 'Payment Receipt'
-        msg = EmailMultiAlternatives(subject, text, to=[u.email])
-        msg.attach_alternative(html, 'text/html')
-        msg.send(fail_silently=True)
-    except Exception:
-        pass
 
     # Compute updated monthly metrics for this user
     # Determine month context for metrics; fallback to payment date month if not provided

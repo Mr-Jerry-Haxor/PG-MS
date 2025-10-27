@@ -43,10 +43,12 @@ class PaymentForm(forms.ModelForm):
 
     class Meta:
         model = Payment
-        fields = ["user", "amount", "date", "status", "mode", "type", "notes"]
+        fields = ["user", "amount", "date", "from_date", "to_date", "status", "mode", "type", "notes"]
         widgets = {
             "amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "from_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "to_date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "status": forms.Select(attrs={"class": "form-select"}),
             "mode": forms.Select(attrs={"class": "form-select"}),
             "type": forms.Select(attrs={"class": "form-select"}),

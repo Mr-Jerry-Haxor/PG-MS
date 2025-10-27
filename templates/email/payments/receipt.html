@@ -1,117 +1,124 @@
 <!doctype html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Payment Receipt</title>
-  <style>
-    body {
-      margin: 0; padding: 0; width: 100% !important; background: #f3f4f6;
-      font-family: "Segoe UI", Roboto, Arial, sans-serif; color: #333;
-    }
-    table { border-collapse: collapse; }
-    .container {
-      max-width: 600px; margin: 20px auto; background: #fff;
-      border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-      animation: fadeIn 1.2s ease-in;
-    }
-    .header {
-      background: linear-gradient(135deg, #2563eb, #3b82f6);
-      color: #fff; text-align: center; padding: 30px 20px;
-      animation: slideDown 1s ease-out;
-    }
-    .header h1 { margin: 0; font-size: 22px; font-weight: 700; }
-    .content { padding: 24px; }
-    .receipt-box {
-      border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin-bottom: 20px;
-      background: #fafafa;
-      animation: fadeUp 1s ease-out;
-    }
-    .row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 15px; }
-    .label { color: #6b7280; }
-    .amount {
-      font-size: 20px; font-weight: bold; color: #2563eb;
-      background: #eff6ff; padding: 10px 16px; border-radius: 8px;
-      animation: pulse 2s infinite;
-    }
-    .footer {
-      text-align: center; font-size: 13px; color: #6b7280; padding: 16px 20px;
-      border-top: 1px solid #e5e7eb;
-      animation: fadeIn 2s ease-in;
-    }
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Payment Receipt</title>
+    <style>
+      body { margin: 0; padding: 24px 0; background: #f3f4f6; font-family: "Segoe UI", Roboto, Arial, sans-serif; color: #1f2937; }
+      .wrapper { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 16px; box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12); overflow: hidden; }
+      .header { background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; padding: 28px 28px 24px; text-align: center; }
+      .header h1 { margin: 0; font-size: 24px; font-weight: 700; }
+      .header p { margin: 6px 0 0; font-size: 14px; opacity: .9; }
+      .content { padding: 28px; }
+      .section-title { font-size: 14px; text-transform: uppercase; letter-spacing: 1.2px; color: #6366f1; margin: 0 0 12px; font-weight: 600; }
+      table { width: 100%; border-collapse: collapse; }
+      .details td { padding: 8px 0; font-size: 15px; vertical-align: top; }
+      .details td:first-child { width: 42%; color: #6b7280; font-weight: 600; }
+      .amount-box { margin: 24px 0; padding: 20px; background: #f5f3ff; border: 1px solid #e0e7ff; border-radius: 12px; text-align: center; }
+      .amount-box span { display: block; font-size: 14px; color: #4338ca; letter-spacing: 1px; text-transform: uppercase; }
+      .amount-box strong { display: block; font-size: 26px; color: #1d4ed8; margin-top: 6px; }
+      .note-box { margin-top: 28px; padding: 18px 20px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; font-size: 14px; color: #7c2d12; }
+      .note-box p { margin: 0 0 6px; }
+      .note-box ul { margin: 8px 0 0; padding-left: 18px; }
+      .footer { padding: 20px 28px 26px; text-align: center; font-size: 13px; color: #6b7280; background: #f9fafb; border-top: 1px solid #e5e7eb; }
+      .signature { margin-top: 28px; font-size: 15px; font-weight: 600; }
+      .address-line { display: block; }
+      @media (max-width: 600px) {
+        .content { padding: 24px; }
+        .header { padding: 24px 20px; }
+        .amount-box strong { font-size: 24px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="header">
+        <h1>Payment Receipt</h1>
+        <p>{{ receipt_label }}</p>
+      </div>
+      <div class="content">
+        <h2 class="section-title">PG Details</h2>
+        <table class="details" role="presentation">
+          <tr>
+            <td>PG Name</td>
+            <td>{{ pg_name }}</td>
+          </tr>
+          <tr>
+            <td>PG Address</td>
+            <td>
+              {% if pg_address_lines %}
+                {% for line in pg_address_lines %}<span class="address-line">{{ line }}</span>{% endfor %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>PG Phone</td>
+            <td>{% if pg_phone %}{{ pg_phone }}{% else %}—{% endif %}</td>
+          </tr>
+        </table>
 
-    /* Button */
-    .btn {
-      display: inline-block; margin-top: 10px; padding: 10px 18px;
-      font-size: 14px; font-weight: 600; color: #fff !important;
-      background-color: #25D366; border-radius: 8px; text-decoration: none;
-      animation: fadeIn 2s ease-in;
-    }
+        <h2 class="section-title" style="margin-top: 28px;">Payment Details</h2>
+        <table class="details" role="presentation">
+          <tr>
+            <td>Tenant</td>
+            <td>{{ tenant_name }}</td>
+          </tr>
+          <tr>
+            <td>Room No.</td>
+            <td>{% if room_number %}{{ room_number }}{% else %}—{% endif %}</td>
+          </tr>
+          <tr>
+            <td>Payment Date</td>
+            <td>{{ payment_date }}</td>
+          </tr>
+          <tr>
+            <td>Mode of Payment</td>
+            <td>{{ payment_mode_label }}</td>
+          </tr>
+          {% if show_period %}
+          <tr>
+            <td>From Date</td>
+            <td>{% if from_date %}{{ from_date }}{% else %}—{% endif %}</td>
+          </tr>
+          <tr>
+            <td>To Date</td>
+            <td>{% if to_date %}{{ to_date }}{% else %}—{% endif %}</td>
+          </tr>
+          {% endif %}
+          <tr>
+            <td>Reference No.</td>
+            <td>#{{ payment_reference }}</td>
+          </tr>
+          {% if payment_notes %}
+          <tr>
+            <td>Notes</td>
+            <td>{{ payment_notes }}</td>
+          </tr>
+          {% endif %}
+        </table>
 
-    /* Email-safe keyframe animations */
-    @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
-    @keyframes slideDown { from {transform:translateY(-20px); opacity:0;} to {transform:translateY(0); opacity:1;} }
-    @keyframes fadeUp { from {transform:translateY(20px); opacity:0;} to {transform:translateY(0); opacity:1;} }
-    @keyframes pulse {
-      0%,100% { box-shadow: 0 0 0 0 rgba(37,99,235,0.4); }
-      50% { box-shadow: 0 0 0 8px rgba(37,99,235,0); }
-    }
-  </style>
-</head>
-<body>
-  <table role="presentation" width="100%">
-    <tr>
-      <td align="center">
-        <div class="container">
-          <div class="header">
-            <h1>Payment Receipt</h1>
-            <p style="margin:6px 0 0; font-size:14px;">Thank you for your payment</p>
-          </div>
-          <div class="content">
-            <div class="receipt-box">
-              <div class="row">
-                <div class="label">Tenant : </div>
-                <div>{{tenant_name}}</div>
-              </div>
-              <div class="row">
-                <div class="label">Property : </div>
-                <div>{{pg_name}}</div>
-              </div>
-              <div class="row">
-                <div class="label">Room : </div>
-                <div>{{room_number}}</div>
-              </div>
-              <div class="row">
-                <div class="label">Date : </div>
-                <div>{{payment_date}}</div>
-              </div>
-              <div class="row">
-                <div class="label">Payment Type : </div>
-                <div>{{payment_type}}</div>
-              </div>
-              <div class="row">
-                <div class="label">Payment Method : </div>
-                <div>{{payment_method}}</div>
-              </div>
-              <div class="row" style="margin-top:18px;">
-                <div class="label">Amount Paid : </div>
-                <div class="amount">₹ {{amount_paid}}</div>
-              </div>
-            </div>
-            <p style="font-size:14px; color:#374151; margin:0 0 10px;">
-              For any questions, please call us at 
-              <a href="tel:{{pg_phone}}" style="color:#2563eb; text-decoration:none;">{{pg_phone}}</a>.
-            </p>
-            <!-- WhatsApp button -->
-            <a href="https://wa.me/{{whatsapp_phone}}?text=Hello%20I%20have%20a%20query%20regarding%20my%20payment" 
-               class="btn" target="_blank">💬 Chat on WhatsApp</a>
-          </div>
-          <div class="footer">
-            © {{current_year}} {{pg_name}} · {{pg_address_short}}
-          </div>
+        <div class="amount-box">
+          <span>Amount Paid</span>
+          <strong>₹ {{ amount_paid }}</strong>
         </div>
-      </td>
-    </tr>
-  </table>
-</body>
+
+        <div class="note-box">
+          <p><strong>NOTE:</strong></p>
+          <ul>
+            {% for note in note_lines %}
+              <li>{{ note }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <div class="signature">{{ signature_label }}</div>
+      </div>
+      <div class="footer">
+        © {{ current_year }} {{ pg_name }}
+      </div>
+    </div>
+  </body>
 </html>

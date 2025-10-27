@@ -197,10 +197,21 @@
             <td>{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% else %}—{% endif %}</td>
             <td class="col-advance nowrap" title="One-time advance (not monthly)">₹ {{ r.advance|default:'0.00' }}</td>
             <td>
-              <span class="nowrap" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ r.expected_tip }}">₹ {{ r.expected }}</span>
+              <span class="nowrap expected-breakdown" role="button" tabindex="0"
+                    data-bs-toggle="popover"
+                    data-breakdown-target="{{ r.expected_breakdown_id }}"
+                    data-breakdown-title="Expected breakdown"
+                    data-expected-summary="{{ r.expected_tip|escape }}"
+                    title="{{ r.expected_tip|escape }}"
+                    aria-label="Expected breakdown for {{ r.user.first_name }} {{ r.user.last_name }}">
+                ₹ {{ r.expected }}
+              </span>
               {% if r.segments and r.segments|length > 1 %}
                 <span class="badge bg-secondary ms-1">{{ r.segments|length }}</span>
               {% endif %}
+              <div id="{{ r.expected_breakdown_id }}" class="d-none">
+                {{ r.expected_breakdown_html }}
+              </div>
             </td>
             <td class="nowrap td-collected">₹ {{ r.collected }}</td>
             <td class="nowrap td-pending">₹ {{ r.pending }}</td>
@@ -212,7 +223,8 @@
                 data-user-email="{{ r.user.email }}" data-expected="{{ r.expected }}"
                 data-collected="{{ r.collected }}" data-pending="{{ r.pending }}"
                 data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
-                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">{{ r.status_label }}</span>
+                data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}"
+                data-due-date="{% if r.payment_date_iso %}{{ r.payment_date_iso }}{% elif r.payment_anchor_iso %}{{ r.payment_anchor_iso }}{% endif %}">{{ r.status_label }}</span>
             </td>
             <td>
               <div class="d-flex flex-wrap gap-1">
@@ -407,9 +419,18 @@
             </div>
           </div>
           <div class="row g-2 mt-2">
-            <div class="col-6">
-              <label class="form-label small">Date</label>
+            <div class="col-12 col-sm-4">
+              <label class="form-label small">Payment Date</label>
               <input type="date" class="form-control" name="date" id="qp_date" value="{% now 'Y-m-d' %}">
+            </div>
+            <div class="col-12 col-sm-4">
+              <label class="form-label small">From Date</label>
+              <input type="date" class="form-control" name="from_date" id="qp_from_date">
+            </div>
+            <div class="col-12 col-sm-4">
+              <label class="form-label small">To Date</label>
+              <input type="date" class="form-control" name="to_date" id="qp_to_date">
+              <div class="form-text">Auto-updates from the payment date; adjust if needed.</div>
             </div>
           </div>
           <div class="row g-2 mt-2">
@@ -451,6 +472,88 @@
     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
       try { new bootstrap.Tooltip(tooltipTriggerEl); } catch (e) {}
     });
+    if (typeof bootstrap !== 'undefined' && typeof bootstrap.Popover === 'function') {
+      var popoverTriggerList = [].slice.call(document.querySelectorAll('.expected-breakdown[data-breakdown-target]'));
+      popoverTriggerList.forEach(function (popoverTriggerEl) {
+        try {
+          new bootstrap.Popover(popoverTriggerEl, {
+            html: true,
+            trigger: 'hover focus',
+            placement: 'auto',
+            container: 'body',
+            sanitize: false,
+            title: function() {
+              return popoverTriggerEl.getAttribute('data-breakdown-title') || 'Expected breakdown';
+            },
+            content: function() {
+              var targetId = popoverTriggerEl.getAttribute('data-breakdown-target');
+              if (targetId) {
+                var src = document.getElementById(targetId);
+                if (src) {
+                  return src.innerHTML;
+                }
+              }
+              return popoverTriggerEl.getAttribute('data-expected-summary') || '';
+            }
+          });
+        } catch (e) {}
+      });
+    }
+
+    function pad2(value) {
+      return String(value).padStart(2, '0');
+    }
+
+    function todayIsoDate() {
+      var today = new Date();
+      return today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate());
+    }
+
+    function computeBillingPeriod(dateStr) {
+      if (!dateStr) { return null; }
+      var parts = dateStr.split('-');
+      if (parts.length !== 3) { return null; }
+      var year = parseInt(parts[0], 10);
+      var month = parseInt(parts[1], 10);
+      var day = parseInt(parts[2], 10);
+      if (isNaN(year) || isNaN(month) || isNaN(day)) { return null; }
+      var baseDate = new Date(year, month - 1, day);
+      if (Number.isNaN(baseDate.getTime())) { return null; }
+      var nextMonthDate = new Date(year, month - 1 + 1, 1);
+      var nextMonthYear = nextMonthDate.getFullYear();
+      var nextMonthIndex = nextMonthDate.getMonth();
+      var lastDayNextMonth = new Date(nextMonthYear, nextMonthIndex + 1, 0).getDate();
+      var targetDay = Math.min(day, lastDayNextMonth);
+      var cycleEndMarker = new Date(nextMonthYear, nextMonthIndex, targetDay);
+      var toDate = new Date(cycleEndMarker);
+      toDate.setDate(toDate.getDate() - 1);
+      function formatDate(d) {
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+      }
+      return {
+        from: formatDate(baseDate),
+        to: formatDate(toDate)
+      };
+    }
+
+    function updateQuickPayBillingPeriod(baseDateStr) {
+      var fromInput = document.getElementById('qp_from_date');
+      var toInput = document.getElementById('qp_to_date');
+      if (!fromInput || !toInput) { return; }
+      if (!baseDateStr) {
+        fromInput.value = '';
+        toInput.value = '';
+        return;
+      }
+      var period = computeBillingPeriod(baseDateStr);
+      if (!period) {
+        fromInput.value = '';
+        toInput.value = '';
+        return;
+      }
+      fromInput.value = period.from;
+      toInput.value = period.to;
+    }
     // CSRF helper: prefer hidden csrf input if present, else fallback to cookie
     function getCsrfTokenFromPage() {
       try {
@@ -810,9 +913,27 @@
             amtInput.value = amt; // reset to pending when locking
           }
         };
+          var dateInput = document.getElementById('qp_date');
+          if (dateInput) {
+            var assignedDue = (this.dataset.dueDate || '').trim();
+            if (assignedDue) {
+              dateInput.value = assignedDue;
+            } else {
+              dateInput.value = todayIsoDate();
+            }
+            updateQuickPayBillingPeriod(dateInput.value);
+          }
         qpModal.show();
       });
     });
+
+    var qpDateInput = document.getElementById('qp_date');
+    if (qpDateInput) {
+      qpDateInput.addEventListener('change', function(){
+        updateQuickPayBillingPeriod(this.value);
+      });
+      updateQuickPayBillingPeriod(qpDateInput.value);
+    }
 
     // Confirm before submit
     // Toast helper

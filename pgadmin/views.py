@@ -19,7 +19,7 @@ try:
 except Exception:  # allauth not strictly required at import time
     EmailAddress = None
 
-from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus, ReferralCredit
+from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus, ReferralCredit, RoomSwap
 from core.audit import log
 from core.drive import drive_delete
 from core.models import Notification
@@ -193,37 +193,192 @@ def booking_swap_room(request, booking_id: int) -> JsonResponse:
 
     new_room = get_object_or_404(Room.objects.select_for_update(), pk=room_id, pg_id=pg_id)
     new_share = get_object_or_404(RoomShareStatus.objects.select_for_update(), room=new_room, share_no=share_no)
-    if new_share.status != RoomShareStatus.VACANT:
-        return JsonResponse({'ok': False, 'error': 'Selected bed is no longer vacant.'}, status=400)
+    
+    # Check if swap_with_occupied checkbox was checked
+    swap_with_occupied = request.POST.get('swap_with_occupied') == 'on'
+    
+    # Validate the target share status
+    if new_share.status == RoomShareStatus.OCCUPIED and not swap_with_occupied:
+        return JsonResponse({'ok': False, 'error': 'Cannot swap to occupied bed. Please check "Swap with occupied" checkbox if you want to exchange rooms with another tenant.'}, status=400)
+    
+    if swap_with_occupied:
+        # Allow VACANT, VACANT_FROM, or OCCUPIED
+        if new_share.status not in [RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM, RoomShareStatus.OCCUPIED]:
+            return JsonResponse({'ok': False, 'error': 'Selected bed is not available for swap.'}, status=400)
+    else:
+        # Only allow VACANT or VACANT_FROM
+        if new_share.status not in [RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]:
+            return JsonResponse({'ok': False, 'error': 'Selected bed is not available for swap.'}, status=400)
 
     old_room = booking.room
-    old_share = get_object_or_404(RoomShareStatus.objects.select_for_update(), room=old_room, share_no=booking.share_no)
+    old_share_no = booking.share_no
+    old_share = get_object_or_404(RoomShareStatus.objects.select_for_update(), room=old_room, share_no=old_share_no)
+    
+    today = timezone.now().date()
+    swap_type = "regular"  # regular, exchange, or occupied
 
-    # Free old share
-    old_share.status = RoomShareStatus.VACANT
-    old_share.vacant_from = None
-    old_share.save(update_fields=['status', 'vacant_from'])
+    # Check if this is a swap with an OCCUPIED share (regular tenant)
+    if new_share.status == RoomShareStatus.OCCUPIED:
+        # Find the booking occupying this share
+        occupying_booking = Booking.objects.filter(
+            room=new_room,
+            share_no=share_no,
+            status=Booking.APPROVED,
+            leaving_date__isnull=True
+        ).select_for_update().first()
+        
+        if occupying_booking:
+            swap_type = "occupied"
+            # SWAP: Exchange the two tenants' rooms
+            # Create swap log for the occupying tenant first
+            RoomSwap.objects.create(
+                booking=occupying_booking,
+                from_room=new_room,
+                from_share_no=share_no,
+                to_room=old_room,
+                to_share_no=old_share_no,
+                effective_date=today,
+                is_future_swap=False,
+                status=RoomSwap.COMPLETED,
+                reason=f"Exchanged with {booking.user.get_full_name() or booking.user.email} during room swap",
+                processed_at=timezone.now(),
+                processed_by=request.user
+            )
+            
+            # Move occupying tenant to current tenant's old room
+            occupying_booking.room = old_room
+            occupying_booking.share_no = old_share_no
+            occupying_booking.save(update_fields=['room', 'pg', 'share_no'])
+            
+            # Update occupying tenant's application if exists
+            occupying_app = getattr(occupying_booking, 'application', None)
+            if occupying_app and occupying_app.room_id != old_room.id:
+                occupying_app.room = old_room
+                occupying_app.save(update_fields=['room'])
+            
+            # Both shares remain OCCUPIED, just swapped tenants
+            # Old share status doesn't change (still OCCUPIED)
+            # New share status doesn't change (still OCCUPIED)
+            
+            log(request.user, 'booking_swap', 'Booking', booking.id, 
+                f"Swapped with occupied tenant: moved to room {new_room.room_no} bed {share_no}, " +
+                f"occupied tenant moved to room {old_room.room_no} bed {old_share_no}")
+        else:
+            return JsonResponse({'ok': False, 'error': 'No active booking found for the selected occupied bed.'}, status=400)
+    
+    # Check if this is a swap with a VACANT_FROM share (occupied by a leaving tenant)
+    elif new_share.status == RoomShareStatus.VACANT_FROM:
+        # Find the booking that will be leaving from this share
+        leaving_booking = Booking.objects.filter(
+            room=new_room,
+            share_no=share_no,
+            status=Booking.APPROVED,
+            leaving_date__isnull=False,
+            leaving_confirmed_date__isnull=False
+        ).select_for_update().first()
+        
+        if leaving_booking:
+            swap_type = "exchange"
+            # SWAP: Exchange the two tenants' rooms
+            # Create swap log for the leaving tenant first
+            RoomSwap.objects.create(
+                booking=leaving_booking,
+                from_room=new_room,
+                from_share_no=share_no,
+                to_room=old_room,
+                to_share_no=old_share_no,
+                effective_date=today,
+                is_future_swap=False,
+                status=RoomSwap.COMPLETED,
+                reason=f"Exchanged with {booking.user.get_full_name() or booking.user.email} during room swap",
+                processed_at=timezone.now(),
+                processed_by=request.user
+            )
+            
+            # Move leaving tenant to current tenant's old room
+            leaving_booking.room = old_room
+            leaving_booking.share_no = old_share_no
+            leaving_booking.save(update_fields=['room', 'pg', 'share_no'])
+            
+            # Update leaving tenant's application if exists
+            leaving_app = getattr(leaving_booking, 'application', None)
+            if leaving_app and leaving_app.room_id != old_room.id:
+                leaving_app.room = old_room
+                leaving_app.save(update_fields=['room'])
+            
+            # Old share becomes VACANT_FROM (occupied by leaving tenant)
+            old_share.status = RoomShareStatus.VACANT_FROM
+            old_share.vacant_from = leaving_booking.leaving_date
+            old_share.save(update_fields=['status', 'vacant_from'])
+            
+            # New share becomes OCCUPIED (by current tenant, no longer leaving)
+            new_share.status = RoomShareStatus.OCCUPIED
+            new_share.vacant_from = None
+            new_share.save(update_fields=['status', 'vacant_from'])
+            
+            log(request.user, 'booking_swap', 'Booking', booking.id, 
+                f"Swapped with leaving tenant: moved to room {new_room.room_no} bed {share_no}, " +
+                f"leaving tenant moved to room {old_room.room_no} bed {old_share_no}")
+        else:
+            # VACANT_FROM but no leaving booking found, treat as regular vacant
+            old_share.status = RoomShareStatus.VACANT
+            old_share.vacant_from = None
+            old_share.save(update_fields=['status', 'vacant_from'])
+            
+            new_share.status = RoomShareStatus.OCCUPIED
+            new_share.vacant_from = None
+            new_share.save(update_fields=['status', 'vacant_from'])
+            
+            log(request.user, 'booking_swap', 'Booking', booking.id, 
+                f"Moved to room {new_room.room_no} bed {share_no} (VACANT_FROM with no active leaving booking)")
+    else:
+        # Regular swap to VACANT share
+        # Free old share
+        old_share.status = RoomShareStatus.VACANT
+        old_share.vacant_from = None
+        old_share.save(update_fields=['status', 'vacant_from'])
 
-    # Occupy new share
-    new_share.status = RoomShareStatus.OCCUPIED
-    new_share.vacant_from = None
-    new_share.save(update_fields=['status', 'vacant_from'])
+        # Occupy new share
+        new_share.status = RoomShareStatus.OCCUPIED
+        new_share.vacant_from = None
+        new_share.save(update_fields=['status', 'vacant_from'])
+        
+        log(request.user, 'booking_swap', 'Booking', booking.id, 
+            f"Swapped to room {new_room.room_no} bed {share_no}")
 
-    # Update booking
+    # Create swap log for the current tenant
+    reason_map = {
+        "regular": "Room swap (regular move to vacant bed)",
+        "exchange": "Exchanged with leaving tenant",
+        "occupied": "Exchanged with occupied tenant"
+    }
+    RoomSwap.objects.create(
+        booking=booking,
+        from_room=old_room,
+        from_share_no=old_share_no,
+        to_room=new_room,
+        to_share_no=share_no,
+        effective_date=today,
+        is_future_swap=False,
+        status=RoomSwap.COMPLETED,
+        reason=reason_map.get(swap_type, "Room swap"),
+        processed_at=timezone.now(),
+        processed_by=request.user
+    )
+
+    # Update current tenant's booking to new room
     booking.room = new_room
     booking.share_no = share_no
     booking.save(update_fields=['room', 'pg', 'share_no'])
 
+    # Update current tenant's application if exists
     app = getattr(booking, 'application', None)
     if app and app.room_id != new_room.id:
         app.room = new_room
         app.save(update_fields=['room'])
 
-    log(request.user, 'booking_swap', 'Booking', booking.id, f"Swapped to room {new_room.room_no} bed {share_no}")
-
     old_share.refresh_from_db()
     new_share.refresh_from_db()
-    today = timezone.now().date()
 
     old_card_html = render_to_string(
         'pgadmin/_tenant_share_card.html',
@@ -262,21 +417,41 @@ def booking_swap_rooms_api(request, booking_id: int) -> JsonResponse:
     if not _admin_pgs(request.user).filter(id=pg_id).exists():
         return JsonResponse({'ok': False, 'error': 'PG Admin access required for this PG.'}, status=403)
 
-    rooms = (
-        Room.objects.filter(pg_id=pg_id)
-        .annotate(vacant_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT)))
-        .order_by('room_no')
-    )
+    # Check if we should include occupied shares
+    include_occupied = request.GET.get('include_occupied') == 'true'
+    
+    if include_occupied:
+        rooms = (
+            Room.objects.filter(pg_id=pg_id)
+            .annotate(
+                vacant_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT)),
+                vacant_from_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT_FROM)),
+                occupied_count=Count('shares', filter=Q(shares__status=RoomShareStatus.OCCUPIED))
+            )
+            .order_by('room_no')
+        )
+    else:
+        rooms = (
+            Room.objects.filter(pg_id=pg_id)
+            .annotate(
+                vacant_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT)),
+                vacant_from_count=Count('shares', filter=Q(shares__status=RoomShareStatus.VACANT_FROM))
+            )
+            .order_by('room_no')
+        )
 
-    room_data = [
-        {
+    room_data = []
+    for room in rooms:
+        data = {
             'id': room.id,
             'room_no': room.room_no,
             'vacant_count': room.vacant_count,
+            'vacant_from_count': room.vacant_from_count,
             'total_beds': room.total_shares,
         }
-        for room in rooms
-    ]
+        if include_occupied:
+            data['occupied_count'] = room.occupied_count
+        room_data.append(data)
 
     return JsonResponse({
         'ok': True,
@@ -421,15 +596,52 @@ def booking_swap_shares_api(request, booking_id: int, room_id: int) -> JsonRespo
         return JsonResponse({'ok': False, 'error': 'PG Admin access required for this PG.'}, status=403)
 
     room = get_object_or_404(Room, pk=room_id, pg_id=pg_id)
-    shares = RoomShareStatus.objects.filter(room=room, status=RoomShareStatus.VACANT).order_by('share_no')
+    
+    # Check if we should include occupied shares
+    include_occupied = request.GET.get('include_occupied') == 'true'
+    
+    if include_occupied:
+        # Include VACANT, VACANT_FROM, and OCCUPIED shares (excluding current tenant's bed)
+        shares = RoomShareStatus.objects.filter(
+            room=room, 
+            status__in=[RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM, RoomShareStatus.OCCUPIED]
+        ).exclude(
+            room=booking.room,
+            share_no=booking.share_no
+        ).order_by('share_no')
+    else:
+        # Include only VACANT and VACANT_FROM shares (excluding current tenant's bed)
+        shares = RoomShareStatus.objects.filter(
+            room=room, 
+            status__in=[RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]
+        ).exclude(
+            room=booking.room,
+            share_no=booking.share_no
+        ).order_by('share_no')
 
-    data = [
-        {
+    data = []
+    for share in shares:
+        share_data = {
             'share_no': share.share_no,
             'status': share.status,
+            'vacant_from': share.vacant_from.strftime('%Y-%m-%d') if share.vacant_from else None,
+            'occupant_name': None,
         }
-        for share in shares
-    ]
+        
+        # If occupied, get the occupant's name
+        if share.status == RoomShareStatus.OCCUPIED or share.status == RoomShareStatus.VACANT_FROM:
+            occupant_booking = Booking.objects.filter(
+                room=room,
+                share_no=share.share_no,
+                status=Booking.APPROVED
+            ).select_related('user__profile').first()
+            
+            if occupant_booking:
+                occupant = occupant_booking.user
+                share_data['occupant_name'] = occupant.get_full_name() or occupant.email
+                share_data['occupant_phone'] = getattr(occupant.profile, 'phone', None) if hasattr(occupant, 'profile') else None
+        
+        data.append(share_data)
 
     return JsonResponse({'ok': True, 'room_id': room.id, 'shares': data})
 def _require_pg_admin(user):
@@ -484,32 +696,115 @@ def _build_share_detail(room: Room, share: RoomShareStatus) -> dict:
     booking = None
     occupant = None
     application = None
+    future_booking = None
+    future_occupant = None
+    future_application = None
+    today = timezone.now().date()
+    
     if share.status in [RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM]:
+        # Current occupant: joined already and hasn't left yet
         booking = (
-            Booking.objects.filter(room=room, share_no=share.share_no, status=Booking.APPROVED)
+            Booking.objects.filter(
+                room=room, 
+                share_no=share.share_no, 
+                status=Booking.APPROVED,
+                joining_date__lte=today
+            )
+            .filter(
+                Q(leaving_date__isnull=True) | Q(leaving_date__gte=today)
+            )
             .select_related('user', 'user__profile')
             .order_by('-created_at')
             .first()
         )
+        # If status is VACANT_FROM or there's a leaving_date, check for future reserved booking
+        if share.status == RoomShareStatus.VACANT_FROM or (booking and booking.leaving_date):
+            future_booking = (
+                Booking.objects.filter(
+                    room=room,
+                    share_no=share.share_no,
+                    status=Booking.APPROVED,
+                    joining_date__gt=today
+                )
+                .select_related('user', 'user__profile')
+                .order_by('joining_date', '-created_at')
+                .first()
+            )
+            if future_booking:
+                future_occupant = getattr(future_booking, 'user', None)
+                try:
+                    future_application = future_booking.application
+                except Exception:
+                    future_application = None
+    
     elif share.status == RoomShareStatus.RESERVED:
+        # First, check if there's a current occupant (booking with leaving_date > today)
         booking = (
-            Booking.objects.filter(room=room, share_no=share.share_no, status=Booking.PENDING)
+            Booking.objects.filter(
+                room=room, 
+                share_no=share.share_no, 
+                status=Booking.APPROVED,
+                joining_date__lte=today
+            )
+            .filter(
+                Q(leaving_date__isnull=True) | Q(leaving_date__gte=today)
+            )
             .select_related('user', 'user__profile')
             .order_by('-created_at')
             .first()
         )
+        
+        # If current occupant exists or we should check for future anyway, look for future reserved booking
+        future_booking = (
+            Booking.objects.filter(
+                room=room,
+                share_no=share.share_no,
+                status=Booking.APPROVED,
+                joining_date__gt=today
+            )
+            .select_related('user', 'user__profile')
+            .order_by('joining_date', '-created_at')
+            .first()
+        )
+        
+        # If no current occupant found, use the future booking as the main booking
+        if not booking:
+            booking = future_booking
+            future_booking = None  # Don't show as future if it's the main booking
+        else:
+            # Current occupant exists, so keep future_booking for display
+            if future_booking:
+                future_occupant = getattr(future_booking, 'user', None)
+                try:
+                    future_application = future_booking.application
+                except Exception:
+                    future_application = None
+        
+        # If still no booking, fall back to pending bookings
+        if not booking:
+            booking = (
+                Booking.objects.filter(room=room, share_no=share.share_no, status=Booking.PENDING)
+                .select_related('user', 'user__profile')
+                .order_by('-created_at')
+                .first()
+            )
+    
     if booking is not None:
         occupant = getattr(booking, 'user', None)
         try:
             application = booking.application
         except Exception:
             application = None
+    
     return {
         'share': share,
         'booking': booking,
         'occupant': occupant,
         'application': application,
         'is_pending': bool(booking and booking.status == Booking.PENDING),
+        'future_booking': future_booking,
+        'future_occupant': future_occupant,
+        'future_application': future_application,
     }
 
 
@@ -861,27 +1156,29 @@ def tenants_export_excel(request):
             c.font = Font(bold=True)
         row += 1
 
-        # For each bed number, find occupant booking (approved) or pending occupant whose joining date <= today
+        # For each bed number, use _build_share_detail to get both current and future bookings
         shares = list(room.shares.order_by('share_no'))
         # Ensure we iterate from 1..room.total_shares
         total = room.total_shares or len(shares) or 1
         for share_no in range(1, total + 1):
+            # Get share object
+            share = next((s for s in shares if s.share_no == share_no), None)
+            
+            # Use _build_share_detail to get booking details including future booking
+            share_detail = _build_share_detail(room, share) if share else {}
+            booking = share_detail.get('booking')
+            future_booking = share_detail.get('future_booking')
+            
             # default empty row: include room and bed number
             values = [f"{room.room_no} - (BED {share_no})"] + [''] * (len(headers) - 1)
 
-            # find booking
-            booking = Booking.objects.filter(room=room, share_no=share_no, status__in=[Booking.APPROVED, Booking.PENDING]).select_related('user', 'user__profile').order_by('-created_at').first()
-            # If booking exists and not yet left (leaving_date is None or in future), include
-            include_person = False
+            # If current booking exists, populate row
             if booking:
-                if not booking.leaving_date or booking.leaving_date >= today:
-                    include_person = True
-
-            if include_person and booking:
                 user = booking.user
-                app = getattr(booking, 'application', None)
-                # Populate fields
-                values[1] = f"{user.first_name} {user.last_name}".strip()
+                app = share_detail.get('application')
+                # Populate fields - add "(Current)" prefix if future booking exists
+                name_prefix = "(Current) " if future_booking else ""
+                values[1] = name_prefix + f"{user.first_name} {user.last_name}".strip()
                 joining = booking.joining_date or booking.start_date
                 values[2] = joining.isoformat() if joining else ''
                 values[3] = booking.leaving_date.isoformat() if booking.leaving_date else ''
@@ -901,7 +1198,7 @@ def tenants_export_excel(request):
                     ledger_url = ''
                 values[10] = ledger_url
 
-            # write the row
+            # write the current booking row
             for ci, v in enumerate(values, start=1):
                 cell = ws.cell(row=row, column=ci)
                 if ci == 11 and v:
@@ -913,6 +1210,46 @@ def tenants_export_excel(request):
                 else:
                     cell.value = v
             row += 1
+            
+            # If future booking exists, add an additional row for next tenant
+            if future_booking:
+                future_user = future_booking.user
+                future_app = share_detail.get('future_application')
+                future_values = [f"{room.room_no} - (BED {share_no})"] + [''] * (len(headers) - 1)
+                
+                # Populate future tenant fields with "(Next)" prefix
+                future_values[1] = "(Next) " + f"{future_user.first_name} {future_user.last_name}".strip()
+                future_joining = future_booking.joining_date or future_booking.start_date
+                future_values[2] = future_joining.isoformat() if future_joining else ''
+                future_values[3] = future_booking.leaving_date.isoformat() if future_booking.leaving_date else ''
+                # phone/email preference: application.phone -> profile.phone -> user.email
+                future_phone = getattr(future_app, 'phone', None) or getattr(getattr(future_user, 'profile', None), 'phone', '')
+                future_values[4] = future_phone
+                future_values[5] = getattr(future_app, 'email', None) or future_user.email or ''
+                # parents info from application if present
+                future_values[6] = getattr(future_app, 'father_name', '') if future_app else ''
+                future_values[7] = getattr(future_app, 'father_phone', '') if future_app else ''
+                future_values[8] = getattr(future_app, 'mother_name', '') if future_app else ''
+                future_values[9] = getattr(future_app, 'mother_phone', '') if future_app else ''
+                # Ledger link for future tenant
+                try:
+                    future_ledger_url = request.build_absolute_uri(reverse('finance_ledger', kwargs={'user_id': future_user.id}))
+                except Exception:
+                    future_ledger_url = ''
+                future_values[10] = future_ledger_url
+                
+                # write the future booking row
+                for ci, v in enumerate(future_values, start=1):
+                    cell = ws.cell(row=row, column=ci)
+                    if ci == 11 and v:
+                        # Ledger hyperlink
+                        cell.value = 'Ledger'
+                        cell.hyperlink = v
+                        cell.font = Font(color='0000EE', underline='single')
+                        cell.alignment = Alignment(horizontal='left')
+                    else:
+                        cell.value = v
+                row += 1
 
         # leave two blank rows between rooms
         row += 2
@@ -1086,7 +1423,10 @@ def tenants_export_pdf(request):
         all_cards = []
         
         for share_no in range(1, total_shares + 1):
-            booking = room_share_map.get((room.id, share_no))
+            share = room.shares.filter(share_no=share_no).first()
+            share_detail = _build_share_detail(room, share) if share else {}
+            booking = share_detail.get('booking')
+            future_booking = share_detail.get('future_booking')
 
             # Build single card with 3 columns: [selfie | details | checkbox]
             if booking:
@@ -1112,13 +1452,28 @@ def tenants_export_pdf(request):
                 
                 # Column 2: Details
                 detail_style = ParagraphStyle('CardDetail', parent=styles['Normal'], fontSize=7, leading=9, wordWrap='CJK')
+                advance_amount = booking.advance_paid if booking.advance_paid is not None else Decimal('0')
+                advance_str = f"Rs.{advance_amount:.2f}"
+
                 details_lines = [
                     f"<b>{name}</b>",
                     f"Phone: {phone}",
                     f"Join: {joining_str}",
                     f"Pay: {payment_str}",
-                    f"Leave: {leaving_str}"
+                    f"Leave: {leaving_str}",
+                    f"Advance: {advance_str}"
                 ]
+                
+                # Add future booking details if exists
+                if future_booking:
+                    future_user = future_booking.user
+                    future_name = f"{future_user.first_name} {future_user.last_name}".strip() or future_user.email
+                    future_joining = future_booking.joining_date
+                    future_joining_str = future_joining.strftime('%d/%m/%y') if future_joining else '—'
+                    details_lines.append("<b>---NEXT---</b>")
+                    details_lines.append(f"<b>{future_name}</b>")
+                    details_lines.append(f"Join: {future_joining_str}")
+                
                 details_cell = Paragraph("<br/>".join(details_lines), detail_style)
                 
                 # Column 3: Checkbox
@@ -1912,13 +2267,20 @@ def bookings_pending(request):
     pg = _active_pg(request)
     pending = []
     if pg:
+        # Get all pending bookings (both regular and day-wise)
         pending = (
             Booking.objects.filter(status=Booking.PENDING, room__pg=pg)
-            .select_related('user', 'room')
+            .select_related('user', 'room', 'assigned_by')
             .prefetch_related('application', 'application__status_history')
             .annotate(has_application=Exists(ResidentApplication.objects.filter(booking_id=OuterRef('pk'))))
+            .order_by('booking_type', '-created_at')  # Day-wise first, then regular
         )
-    return render(request, 'pgadmin/bookings_pending.html', {"pg": pg, "bookings": pending, "pgs": list(_admin_pgs(request.user))})
+    
+    return render(request, 'pgadmin/bookings_pending.html', {
+        "pg": pg,
+        "bookings": pending,
+        "pgs": list(_admin_pgs(request.user))
+    })
 
 
 @login_required
@@ -1932,13 +2294,312 @@ def booking_approve(request, booking_id):
     if not _admin_pgs(request.user).filter(id=(getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None))).exists():
         messages.error(request, "PG Admin access required for this PG.")
         return redirect('dashboard')
+    
+    pg = booking.pg or booking.room.pg
+    
+    # Handle day-wise bookings differently - need room assignment
+    if booking.booking_type == Booking.DAYWISE:
+        if request.method == 'POST':
+            # Process room assignment for day-wise booking
+            room_id = request.POST.get('room_id')
+            share_no = request.POST.get('share_no')
+            payment_amount = request.POST.get('payment_amount', '0')
+            payment_received = request.POST.get('payment_received') == 'on'
+            
+            if not room_id or not share_no:
+                messages.error(request, "Please select a room and bed.")
+                return redirect('pg_booking_approve', booking_id=booking.id)
+            
+            try:
+                room = Room.objects.get(id=room_id, pg=pg)
+                share_no = int(share_no)
+                share = RoomShareStatus.objects.get(room=room, share_no=share_no)
+                
+                # Update booking with assigned room
+                booking.room = room
+                booking.share_no = share_no
+                booking.status = Booking.APPROVED
+                booking.assigned_by = request.user
+                booking.assigned_at = timezone.now()
+                booking.payment_received = payment_received
+                if payment_amount:
+                    booking.payment_amount = float(payment_amount)
+                booking.save()
+                
+                # Update share status to OCCUPIED (day-wise bookings start immediately)
+                share.status = RoomShareStatus.OCCUPIED
+                share.save(update_fields=['status'])
+                
+                # Update application status
+                if hasattr(booking, 'application'):
+                    booking.application.status = ResidentApplication.CONFIRMED
+                    booking.application.save(update_fields=['status'])
+                
+                # Create Payment record if payment was received
+                if payment_received and payment_amount:
+                    from finance.models import Payment
+                    try:
+                        amount_decimal = float(payment_amount)
+                        Payment.objects.create(
+                            user=booking.user,
+                            pg=pg,
+                            amount=amount_decimal,
+                            date=timezone.now().date(),
+                            status='success',
+                            mode='cash',  # Default to cash, admin can edit later
+                            type='daywise',  # Use 'daywise' type instead of 'fee'
+                            notes=f"Day-wise booking payment for Room {room.room_no} Bed {share_no}",
+                            from_date=booking.joining_date,
+                            to_date=booking.leaving_date
+                        )
+                    except Exception as e:
+                        # Log but don't fail the approval
+                        messages.warning(request, f"Booking approved but payment record failed: {str(e)}")
+                
+                log(request.user, 'daywise_booking_approved', 'Booking', booking.id, 
+                    f"Approved day-wise booking for room {room.room_no} bed {share_no}")
+                
+                messages.success(request, f"Day-wise booking approved and assigned to Room {room.room_no}, Bed {share_no}.")
+                return redirect('pg_bookings_pending')
+                
+            except (Room.DoesNotExist, RoomShareStatus.DoesNotExist, ValueError) as e:
+                messages.error(request, f"Invalid room or bed selection: {str(e)}")
+                return redirect('pg_booking_approve', booking_id=booking.id)
+        else:
+            # GET request - show room selection form
+            from datetime import datetime, time as dt_time
+
+            vacant_rooms = Room.objects.filter(pg=pg).prefetch_related('shares')
+
+            # Compute booking start/end datetimes and human summary
+            booking_start_dt = None
+            booking_end_dt = None
+            booking_summary = None
+            try:
+                if booking.joining_date:
+                    st_time = booking.start_time or dt_time(0, 0)
+                    en_time = booking.end_time or dt_time(0, 0)
+                    booking_start_dt = datetime.combine(booking.joining_date, st_time)
+                    booking_end_dt = datetime.combine(booking.leaving_date or booking.joining_date, en_time)
+                    # If end is before start, leave booking_summary None (template will show dates)
+                    if booking_end_dt >= booking_start_dt:
+                        delta = booking_end_dt - booking_start_dt
+                        total_minutes = int(delta.total_seconds() // 60)
+                        days = total_minutes // (60 * 24)
+                        hours = (total_minutes - days * 24 * 60) // 60
+                        minutes = total_minutes - days * 24 * 60 - hours * 60
+                        parts = []
+                        if days:
+                            parts.append(f"{days} day" + ("s" if days != 1 else ""))
+                        if hours:
+                            parts.append(f"{hours} hour" + ("s" if hours != 1 else ""))
+                        if minutes:
+                            parts.append(f"{minutes} minute" + ("s" if minutes != 1 else ""))
+                        human = ' '.join(parts) if parts else '0 minutes'
+                        total_hours = round(delta.total_seconds() / 3600, 2)
+                        booking_summary = {
+                            'human': human,
+                            'total_hours': total_hours,
+                            'start_dt': booking_start_dt,
+                            'end_dt': booking_end_dt,
+                        }
+            except Exception:
+                booking_summary = None
+
+            # Get vacant shares but only include VACANT_FROM shares that are available by booking.start
+            # Also exclude shares that have overlapping bookings (PENDING/APPROVED)
+            from bookings.models import Booking as BookingModel
+            vacant_shares = []
+            for room in vacant_rooms:
+                for share in room.shares.filter(status__in=[RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]):
+                    include = False
+                    if share.status == RoomShareStatus.VACANT:
+                        include = True
+                    elif share.status == RoomShareStatus.VACANT_FROM:
+                        # Only include if vacant_from is set and is <= booking joining date
+                        if share.vacant_from and booking.joining_date and share.vacant_from <= booking.joining_date:
+                            include = True
+                    if not include:
+                        continue
+
+                    # Now exclude if there are existing bookings on this share that overlap the requested period
+                    overlap = False
+                    try:
+                        if booking_start_dt and booking_end_dt:
+                            other_qs = BookingModel.objects.filter(
+                                room=room,
+                                share_no=share.share_no,
+                                status__in=[BookingModel.PENDING, BookingModel.APPROVED]
+                            ).exclude(pk=booking.id)
+                            for other in other_qs:
+                                # Determine other booking start/end datetimes
+                                try:
+                                    other_start = None
+                                    other_end = None
+                                    o_st_time = other.start_time or dt_time(0, 0)
+                                    o_en_time = other.end_time or dt_time(0, 0)
+                                    if other.joining_date:
+                                        other_start = datetime.combine(other.joining_date, o_st_time)
+                                    elif other.start_date:
+                                        other_start = datetime.combine(other.start_date, o_st_time)
+                                    if other.leaving_date:
+                                        other_end = datetime.combine(other.leaving_date, o_en_time)
+                                    # If other_end is None, treat as open-ended -> overlap
+                                    if other_start and (other_end is None or other_end >= booking_start_dt) and other_start <= booking_end_dt:
+                                        overlap = True
+                                        break
+                                except Exception:
+                                    # If any parsing fails, be conservative and mark overlap
+                                    overlap = True
+                                    break
+                    except Exception:
+                        overlap = True
+
+                    if overlap:
+                        # skip this share because it conflicts with an existing booking
+                        continue
+
+                    vacant_shares.append({
+                        'room': room,
+                        'share': share,
+                        'room_id': room.id,
+                        'share_no': share.share_no,
+                    })
+
+            context = {
+                'pg': pg,
+                'booking': booking,
+                'vacant_shares': vacant_shares,
+                'booking_summary': booking_summary,
+                'pgs': list(_admin_pgs(request.user)),
+            }
+            return render(request, 'pgadmin/booking_approve_daywise.html', context)
+    
+    # Regular booking approval (existing logic)
+    from decimal import Decimal, InvalidOperation
+
     share = get_object_or_404(RoomShareStatus, room=booking.room, share_no=booking.share_no)
+
+    confirm_application = False
+    collect_advance = False
+    advance_amount_value = Decimal('0')
+    advance_mode = 'upi'
+    advance_notes = ''
+
+    if request.method == 'POST':
+        confirm_application = request.POST.get('confirm_application') == 'on'
+        collect_advance = request.POST.get('collect_advance') == 'on'
+        advance_mode = (request.POST.get('advance_mode') or 'upi').lower()
+        advance_notes = (request.POST.get('advance_notes') or '').strip()
+        if advance_mode not in ('upi', 'cash', 'bank'):
+            advance_mode = 'upi'
+        if collect_advance:
+            raw_amount = (request.POST.get('advance_amount') or '').strip()
+            try:
+                advance_amount_value = Decimal(raw_amount)
+            except (InvalidOperation, ValueError):
+                messages.error(request, "Enter a valid advance amount.")
+                return redirect('pg_bookings_pending')
+            if advance_amount_value <= 0:
+                messages.error(request, "Advance amount must be greater than zero.")
+                return redirect('pg_bookings_pending')
+
     booking.status = Booking.APPROVED
     booking.start_date = timezone.now().date()
-    booking.save()
-    share.status = RoomShareStatus.OCCUPIED
+    update_fields = ['status', 'start_date']
+    if collect_advance:
+        booking.advance_paid = (booking.advance_paid or Decimal('0')) + advance_amount_value
+        update_fields.append('advance_paid')
+    booking.save(update_fields=update_fields)
+    
+    # Set share status based on joining_date
+    today = timezone.now().date()
+    if booking.joining_date and booking.joining_date > today:
+        # Future joining date - mark as RESERVED
+        share.status = RoomShareStatus.RESERVED
+    else:
+        # Current or past joining date - mark as OCCUPIED
+        share.status = RoomShareStatus.OCCUPIED
     share.save(update_fields=['status'])
+    
     log(request.user, 'booking_approved', 'Booking', booking.id, f"Approved for room {booking.room.room_no} bed {booking.share_no}")
+    if confirm_application and hasattr(booking, 'application'):
+        if booking.application.status != ResidentApplication.CONFIRMED:
+            booking.application.status = ResidentApplication.CONFIRMED
+            booking.application.save(update_fields=['status'])
+            log(request.user, 'application_confirmed_during_booking', 'ResidentApplication', booking.application.id, f"Application confirmed while approving booking {booking.id}")
+
+    advance_payment_success = False
+    payment_obj = None
+    if collect_advance:
+        from finance.models import Payment
+        try:
+            # Build notes: use custom notes if provided, otherwise use default
+            payment_notes = advance_notes if advance_notes else f"Advance collected during booking approval for Room {booking.room.room_no} Bed {booking.share_no}"
+            
+            payment_obj = Payment.objects.create(
+                user=booking.user,
+                pg=pg,
+                amount=advance_amount_value,
+                date=timezone.now().date(),
+                status='success',
+                mode=advance_mode,
+                type='advance',
+                notes=payment_notes,
+                from_date=booking.joining_date or booking.start_date,
+                to_date=booking.joining_date or booking.start_date,
+            )
+            advance_payment_success = True
+            log(request.user, 'advance_recorded', 'Payment', payment_obj.id, f"Advance of Rs.{advance_amount_value} recorded for booking {booking.id}")
+            
+            # Send email receipt
+            try:
+                from finance.signals import _build_receipt_context
+                receipt_ctx = _build_receipt_context(payment_obj)
+                
+                # Build email content
+                email_subject = f"Payment Receipt - {pg.name}"
+                email_body = f"""Dear {booking.user.get_full_name() or booking.user.email},
+
+Your advance payment has been successfully recorded.
+
+Payment Details:
+---------------
+Receipt No: {receipt_ctx.get('receipt_no', 'N/A')}
+Amount: Rs.{advance_amount_value}
+Payment Mode: {advance_mode.upper()}
+Date: {payment_obj.date.strftime('%d %B %Y')}
+PG: {pg.name}
+
+Room Details:
+------------
+Room: {booking.room.room_no}
+Bed: {booking.share_no}
+Joining Date: {booking.joining_date or booking.start_date}
+
+{f'Notes: {payment_notes}' if payment_notes else ''}
+
+Thank you for your payment!
+
+---
+{pg.name}
+{pg.address or ''}
+{pg.phone or ''}
+"""
+                
+                send_mail(
+                    subject=email_subject,
+                    message=email_body,
+                    from_email=None,
+                    recipient_list=[booking.user.email],
+                    fail_silently=True,
+                )
+            except Exception as e:
+                # Log but don't fail - email is optional
+                messages.warning(request, f"Payment recorded but email receipt could not be sent: {str(e)}")
+                
+        except Exception as exc:
+            messages.warning(request, f"Advance amount saved but payment record could not be created: {exc}")
     # Notify user
     Notification.objects.create(user=booking.user, title="Booking approved", message=f"Your booking for {booking.room} bed {booking.share_no} was approved.")
     try:
@@ -1953,7 +2614,15 @@ def booking_approve(request, booking_id):
         )
     except Exception:
         pass
-    messages.success(request, "Booking approved and user notified.")
+    success_parts = ["Booking approved and user notified."]
+    if confirm_application and hasattr(booking, 'application') and booking.application.status == ResidentApplication.CONFIRMED:
+        success_parts.append("Resident application marked as confirmed.")
+    if collect_advance:
+        if advance_payment_success:
+            success_parts.append(f"Advance of Rs.{advance_amount_value:.2f} recorded.")
+        else:
+            success_parts.append("Advance amount noted.")
+    messages.success(request, ' '.join(success_parts))
     # AJAX response
     if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
         return JsonResponse({
@@ -1977,6 +2646,30 @@ def booking_reject(request, booking_id):
     if not _admin_pgs(request.user).filter(id=(getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None))).exists():
         messages.error(request, "PG Admin access required for this PG.")
         return redirect('dashboard')
+    
+    # Handle day-wise bookings differently (no share to update if not assigned yet)
+    if booking.booking_type == Booking.DAYWISE:
+        booking.status = Booking.REJECTED
+        booking.save(update_fields=['status'])
+        
+        # Update application status if exists
+        if hasattr(booking, 'application'):
+            booking.application.status = ResidentApplication.REJECTED
+            booking.application.save(update_fields=['status'])
+        
+        log(request.user, 'daywise_booking_rejected', 'Booking', booking.id, "Rejected day-wise booking")
+        messages.info(request, "Day-wise booking rejected.")
+        
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+            return JsonResponse({
+                'ok': True,
+                'action': 'booking_reject',
+                'booking_id': booking.id,
+                'message': 'Day-wise booking rejected.'
+            })
+        return redirect('pg_bookings_pending')
+    
+    # Regular booking rejection
     share = get_object_or_404(RoomShareStatus, room=booking.room, share_no=booking.share_no)
     booking.status = Booking.REJECTED
     booking.save(update_fields=['status'])
@@ -2021,20 +2714,11 @@ def booking_reject(request, booking_id):
     return redirect('pg_bookings_pending')
 
 
-@login_required
-def leaving_requests(request):
-    if not _require_pg_admin(request.user):
-        messages.error(request, "PG Admin access required.")
-        return redirect('dashboard')
-    pg = _active_pg(request)
-    requests_qs = (
-        Booking.objects
-        .filter(room__pg=pg, leaving_date__isnull=False, status=Booking.APPROVED)
-        .select_related('user', 'room', 'application')
-        if pg else []
-    )
-    today = timezone.now().date() if pg else None
-    return render(request, 'pgadmin/leaving_requests.html', {"pg": pg, "bookings": requests_qs, "pgs": list(_admin_pgs(request.user)), "today": today})
+# ============================================================================
+# OLD LEAVING REQUESTS - REPLACED BY ENHANCED VERSION (line ~3124)
+# This old function is kept for backward compatibility with old leaving_requests.html template
+# The new enhanced version uses leaving_requests_enhanced.html
+# ============================================================================
 
 
 @login_required
@@ -2502,7 +3186,7 @@ def application_update_referral(request, app_id):
 
     messages.success(
         request,
-        f"Referral recorded: {ref_booking.user.get_full_name() or ref_booking.user.email} will receive ₹{amount:.2f}.",
+        f"Referral recorded: {ref_booking.user.get_full_name() or ref_booking.user.email} will receive Rs.{amount:.2f}.",
     )
     return redirect_target
 
@@ -2877,41 +3561,30 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                 _image_cache[url] = None
                 return None
         
-        # Build room_share_map with all possible shares
-        room_share_map = {}
-        for room in rooms:
-            total_shares = room.total_shares or 1
-            for share_no in range(1, total_shares + 1):
-                room_share_map[(room.id, share_no)] = None
-        
-        # Batch fetch bookings with related data
-        bookings_qs = Booking.objects.filter(
-            room__in=rooms,
-            status__in=[Booking.APPROVED, Booking.PENDING]
-        ).select_related('user', 'user__profile', 'application').order_by('-created_at')
-        
-        # Map bookings to their room/share positions
-        for booking in bookings_qs:
-            key = (booking.room_id, booking.share_no)
-            if key in room_share_map and room_share_map[key] is None:
-                if not booking.leaving_date or booking.leaving_date >= today:
-                    room_share_map[key] = booking
-        
         PDFTaskManager.update_task(
             task_id,
             progress=30,
             message='Loading images sequentially for best quality...'
         )
         
-        # Pre-download images sequentially (one by one) for maximum reliability
+        # Pre-fetch all shares to get booking details including future bookings
         image_urls = set()
-        for booking in room_share_map.values():
-            if booking:
-                user = booking.user
-                app = getattr(booking, 'application', None)
-                selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
-                if selfie_url:
-                    image_urls.add(selfie_url)
+        for room in rooms:
+            total_shares = room.total_shares or 1
+            for share_no in range(1, total_shares + 1):
+                share = room.shares.filter(share_no=share_no).first()
+                share_detail = _build_share_detail(room, share) if share else {}
+                booking = share_detail.get('booking')
+                future_booking = share_detail.get('future_booking')
+                
+                # Collect image URLs from both current and future bookings
+                for bk in [booking, future_booking]:
+                    if bk:
+                        user = bk.user
+                        app = share_detail.get('application') if bk == booking else share_detail.get('future_application')
+                        selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
+                        if selfie_url:
+                            image_urls.add(selfie_url)
         
         # Download images one by one with retry logic for perfect loading
         if image_urls:
@@ -2965,12 +3638,16 @@ def _generate_pdf_async(task_id, user_id, pg_id):
             all_cards = []
             
             for share_no in range(1, total_shares + 1):
-                booking = room_share_map.get((room.id, share_no))
+                # Use _build_share_detail to get both current and future bookings
+                share = room.shares.filter(share_no=share_no).first()
+                share_detail = _build_share_detail(room, share) if share else {}
+                booking = share_detail.get('booking')
+                future_booking = share_detail.get('future_booking')
                 
                 # Build single card with 3 columns: [selfie | details | checkbox]
                 if booking:
                     user = booking.user
-                    app = getattr(booking, 'application', None)
+                    app = share_detail.get('application')
                     selfie_url = getattr(app, 'selfie_url', None) or getattr(getattr(user, 'profile', None), 'selfie_url', None)
                     
                     # Normalize URL before cache lookup (must match normalization during download)
@@ -3006,13 +3683,28 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                     
                     # Column 2: Details
                     detail_style = ParagraphStyle('CardDetail', parent=styles['Normal'], fontSize=7, leading=9, wordWrap='CJK')
+                    advance_amount = booking.advance_paid if booking.advance_paid is not None else Decimal('0')
+                    advance_str = f"Rs.{advance_amount:.2f}"
+
                     details_lines = [
                         f"<b>{name}</b>",
                         f"Phone: {phone}",
                         f"Join: {joining_str}",
                         f"Pay: {payment_str}",
-                        f"Leave: {leaving_str}"
+                        f"Leave: {leaving_str}",
+                        f"Advance: {advance_str}"
                     ]
+                    
+                    # Add future booking details if exists
+                    if future_booking:
+                        future_user = future_booking.user
+                        future_name = f"{future_user.first_name} {future_user.last_name}".strip() or future_user.email
+                        future_joining = future_booking.joining_date
+                        future_joining_str = future_joining.strftime('%d/%m/%y') if future_joining else '—'
+                        details_lines.append("<b>---NEXT---</b>")
+                        details_lines.append(f"<b>{future_name}</b>")
+                        details_lines.append(f"Join: {future_joining_str}")
+                    
                     details_cell = Paragraph("<br/>".join(details_lines), detail_style)
                     
                     # Column 3: Checkbox
@@ -3114,3 +3806,916 @@ def _generate_pdf_async(task_id, user_id, pg_id):
             message='PDF generation failed',
             error=str(e)
         )
+
+
+# ============================================================================
+# ENHANCED LEAVE MANAGEMENT (PG ADMIN)
+# ============================================================================
+
+@login_required
+def leaving_requests(request):
+    """Enhanced leaving requests page with advance management"""
+    if not _require_pg_admin(request.user):
+        messages.error(request, "You must be a PG Admin.")
+        return redirect('dashboard')
+    
+    pg_qs = _admin_pgs(request.user)
+    if not pg_qs.exists():
+        messages.error(request, "No PG assigned.")
+        return redirect('dashboard')
+    
+    pg = pg_qs.first()
+    today = date.today()
+    
+    # Get ALL leave requests - filtering is now handled client-side
+    leave_requests = Booking.objects.filter(
+        room__pg=pg,
+        status=Booking.APPROVED,
+        leaving_date__isnull=False
+    ).select_related(
+        'user', 'user__profile', 'room', 'application'
+    ).order_by('-leaving_initiated_at', '-leaving_date')
+    
+    context = {
+        'pg': pg,
+        'leave_requests': leave_requests,
+        'today': today,
+    }
+    
+    return render(request, 'pgadmin/leaving_requests_enhanced.html', context)
+
+
+@login_required
+def confirm_leave(request, booking_id):
+    """Confirm leave request"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    booking = get_object_or_404(
+        Booking.objects.select_related('room', 'room__pg', 'user'),
+        id=booking_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if not booking.leaving_date:
+        return JsonResponse({'error': 'No leaving date set'}, status=400)
+    
+    if booking.leaving_confirmed_date:
+        return JsonResponse({'error': 'Already confirmed'}, status=400)
+    
+    # Confirm the leave
+    booking.leaving_confirmed_date = booking.leaving_date
+    booking.save(update_fields=['leaving_confirmed_date'])
+    
+    # Update RoomShareStatus to vacant_from
+    share = RoomShareStatus.objects.filter(room=booking.room, share_no=booking.share_no).first()
+    if share and share.status != RoomShareStatus.VACANT:
+        share.status = RoomShareStatus.VACANT_FROM
+        share.vacant_from = booking.leaving_date
+        share.save(update_fields=['status', 'vacant_from'])
+    
+    # Notify user
+    Notification.objects.create(
+        user=booking.user,
+        title="Leave Request Confirmed",
+        message=f"Your leave request for {booking.room.room_no}, Bed {booking.share_no} on {booking.leaving_date.strftime('%B %d, %Y')} has been confirmed."
+    )
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='leave_confirmed',
+        target_type='Booking',
+        target_id=booking.id,
+        message=f"Leave confirmed for {booking.user.get_full_name()}, leaving on {booking.leaving_date}",
+        meta={
+            'leaving_date': booking.leaving_date.isoformat(),
+            'tenant': booking.user.get_full_name()
+        }
+    )
+    
+    messages.success(request, f"Leave confirmed for {booking.user.get_full_name()} on {booking.leaving_date}.")
+    return JsonResponse({'success': True, 'leaving_confirmed_date': booking.leaving_confirmed_date.isoformat()})
+
+
+@login_required
+def reject_leave(request, booking_id):
+    """Reject leave request"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    booking = get_object_or_404(
+        Booking.objects.select_related('room', 'room__pg', 'user'),
+        id=booking_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if booking.leaving_confirmed_date:
+        return JsonResponse({'error': 'Already confirmed - cannot reject'}, status=400)
+    
+    # Clear leave request
+    old_leaving_date = booking.leaving_date
+    booking.leaving_date = None
+    booking.leaving_reason = ''
+    booking.leaving_initiated_at = None
+    booking.advance_eligible = True
+    booking.save(update_fields=[
+        'leaving_date', 'leaving_reason', 'leaving_initiated_at', 'advance_eligible'
+    ])
+    
+    # Notify user
+    Notification.objects.create(
+        user=booking.user,
+        title="Leave Request Rejected",
+        message=f"Your leave request for {booking.room.room_no}, Bed {booking.share_no} on {old_leaving_date} has been rejected. Please contact admin for details."
+    )
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='leave_rejected',
+        target_type='Booking',
+        target_id=booking.id,
+        message=f"Leave request rejected for {booking.user.get_full_name()}",
+        meta={
+            'rejected_date': old_leaving_date.isoformat() if old_leaving_date else None,
+            'tenant': booking.user.get_full_name()
+        }
+    )
+    
+    messages.success(request, f"Leave request rejected for {booking.user.get_full_name()}.")
+    return JsonResponse({'success': True})
+
+
+@login_required
+def edit_leave_date(request, booking_id):
+    """Edit leave date for a booking"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    booking = get_object_or_404(
+        Booking.objects.select_related('room', 'room__pg', 'user'),
+        id=booking_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    new_date_str = request.POST.get('new_date')
+    if not new_date_str:
+        return JsonResponse({'error': 'new_date required'}, status=400)
+    
+    try:
+        new_date = parse_date(new_date_str)
+        if not new_date:
+            raise ValueError("Invalid date format")
+    except:
+        return JsonResponse({'error': 'Invalid date format'}, status=400)
+    
+    if new_date < date.today():
+        return JsonResponse({'error': 'Date cannot be in the past'}, status=400)
+    
+    # Recalculate advance eligibility
+    if booking.leaving_initiated_at:
+        notice_period = getattr(booking.room.pg, 'notice_period', 30)
+        days_diff = (new_date - booking.leaving_initiated_at.date()).days
+        booking.advance_eligible = days_diff >= notice_period
+    
+    old_date = booking.leaving_date
+    booking.leaving_date = new_date
+    
+    # Update confirmed date if already confirmed
+    if booking.leaving_confirmed_date:
+        booking.leaving_confirmed_date = new_date
+        # Update share vacant_from
+        share = RoomShareStatus.objects.filter(room=booking.room, share_no=booking.share_no).first()
+        if share:
+            share.vacant_from = new_date
+            share.save(update_fields=['vacant_from'])
+    
+    booking.save(update_fields=['leaving_date', 'leaving_confirmed_date', 'advance_eligible'])
+    
+    # Notify user
+    Notification.objects.create(
+        user=booking.user,
+        title="Leave Date Updated",
+        message=f"Your leave date has been updated from {old_date} to {new_date} by PG admin."
+    )
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='leave_date_edited',
+        target_type='Booking',
+        target_id=booking.id,
+        message=f"Leave date updated from {old_date} to {new_date} for {booking.user.get_full_name()}",
+        meta={
+            'old_date': old_date.isoformat() if old_date else None,
+            'new_date': new_date.isoformat(),
+            'tenant': booking.user.get_full_name()
+        }
+    )
+    
+    return JsonResponse({
+        'success': True,
+        'new_date': new_date.isoformat(),
+        'advance_eligible': booking.advance_eligible
+    })
+
+
+@login_required
+def mark_advance_returned(request, booking_id):
+    """Mark advance as returned and create expenditure"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    booking = get_object_or_404(
+        Booking.objects.select_related('room', 'room__pg', 'user'),
+        id=booking_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if not booking.advance_eligible:
+        return JsonResponse({'error': 'Not eligible for advance return'}, status=400)
+    
+    if booking.advance_returned:
+        return JsonResponse({'error': 'Advance already marked as returned'}, status=400)
+    
+    amount_str = request.POST.get('amount', '')
+    try:
+        amount = Decimal(amount_str)
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+    except:
+        return JsonResponse({'error': 'Invalid amount'}, status=400)
+    
+    # Validate amount doesn't exceed advance_paid
+    if amount > booking.advance_paid:
+        return JsonResponse({
+            'warning': True,
+            'message': f'Amount (Rs.{amount}) exceeds advance paid (Rs.{booking.advance_paid}). Continue anyway?'
+        })
+    
+    # Create expenditure entry
+    from finance.models import Expenditure
+    
+    expenditure = Expenditure.objects.create(
+        pg=booking.room.pg,
+        category='advance_return',
+        amount=amount,
+        date=date.today(),
+        notes=f"Advance returned to {booking.user.get_full_name()} (Room {booking.room.room_no}, Bed {booking.share_no}). Leaving date: {booking.leaving_date}",
+        booking=booking
+    )
+    
+    # Mark advance as returned
+    booking.advance_returned = True
+    booking.advance_returned_at = timezone.now()
+    booking.advance_returned_amount = amount
+    booking.save(update_fields=['advance_returned', 'advance_returned_at', 'advance_returned_amount'])
+    
+    # Notify user
+    Notification.objects.create(
+        user=booking.user,
+        title="Advance Amount Returned",
+        message=f"Your advance amount of Rs.{amount} has been returned for Room {booking.room.room_no}, Bed {booking.share_no}."
+    )
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='advance_returned',
+        target_type='Booking',
+        target_id=booking.id,
+        message=f"Advance of Rs.{amount} returned to {booking.user.get_full_name()} for room {booking.room.room_no} bed {booking.share_no}",
+        meta={
+            'amount': str(amount),
+            'expenditure_id': expenditure.id,
+            'tenant': booking.user.get_full_name()
+        }
+    )
+    
+    messages.success(request, f"Advance of Rs.{amount} marked as returned to {booking.user.get_full_name()}. Expenditure entry created.")
+    return JsonResponse({
+        'success': True,
+        'amount': str(amount),
+        'returned_at': booking.advance_returned_at.isoformat()
+    })
+
+
+@login_required
+def edit_advance_returned_amount(request, booking_id):
+    """Edit advance returned amount and update associated expenditure"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    booking = get_object_or_404(
+        Booking.objects.select_related('room', 'room__pg', 'user'),
+        id=booking_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if not booking.advance_returned:
+        return JsonResponse({'error': 'Advance not yet marked as returned'}, status=400)
+    
+    amount_str = request.POST.get('amount', '')
+    try:
+        amount = Decimal(amount_str)
+        if amount < 0:
+            raise ValueError("Amount cannot be negative")
+    except:
+        return JsonResponse({'error': 'Invalid amount'}, status=400)
+    
+    old_amount = booking.advance_returned_amount
+    
+    # Update booking
+    booking.advance_returned_amount = amount
+    booking.save(update_fields=['advance_returned_amount'])
+    
+    # Find and update the associated expenditure by matching notes
+    from finance.models import Expenditure
+    
+    # Search for expenditure with matching booking reference in notes
+    expenditures = Expenditure.objects.filter(
+        pg=booking.room.pg,
+        category='advance_return',
+        booking=booking
+    ).order_by('-date')
+    
+    if expenditures.exists():
+        # Update the most recent expenditure
+        expenditure = expenditures.first()
+        expenditure.amount = amount
+        expenditure.notes = f"Advance returned to {booking.user.get_full_name()} (Room {booking.room.room_no}, Bed {booking.share_no}). Leaving date: {booking.leaving_date}. [Edited from Rs.{old_amount}]"
+        expenditure.save(update_fields=['amount', 'notes'])
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='advance_amount_edited',
+        target_type='Booking',
+        target_id=booking.id,
+        message=f"Advance returned amount edited from Rs.{old_amount} to Rs.{amount} for {booking.user.get_full_name()}, room {booking.room.room_no} bed {booking.share_no}",
+        meta={
+            'old_amount': str(old_amount),
+            'new_amount': str(amount),
+            'tenant': booking.user.get_full_name()
+        }
+    )
+    
+    messages.success(request, f"Advance amount updated from Rs.{old_amount} to Rs.{amount}.")
+    return JsonResponse({
+        'success': True,
+        'old_amount': str(old_amount),
+        'new_amount': str(amount)
+    })
+
+
+# ============================================================================
+# RE-CONTINUE FEATURE
+# ============================================================================
+
+@login_required
+def re_continue_booking(request, booking_id):
+    """Allow user to re-continue (cancel leaving) before or on leaving date"""
+    from bookings.models import RoomSwap
+    
+    booking = get_object_or_404(
+        Booking.objects.select_related('room', 'room__pg'),
+        id=booking_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    # Can only re-continue if leaving_confirmed_date exists and is future/today
+    if not booking.leaving_confirmed_date:
+        return JsonResponse({'error': 'No confirmed leaving date'}, status=400)
+    
+    if booking.leaving_confirmed_date < date.today():
+        return JsonResponse({'error': 'Cannot re-continue - leaving date has passed'}, status=400)
+    
+    if request.method == 'GET':
+        # Show options: same room or change room
+        # Check for conflicts in same room
+        same_room_conflicts = []
+        
+        # Check future bookings on this bed
+        future_bookings = Booking.objects.filter(
+            room=booking.room,
+            share_no=booking.share_no,
+            status__in=[Booking.PENDING, Booking.APPROVED],
+            joining_date__gte=booking.leaving_confirmed_date
+        ).exclude(id=booking.id).select_related('user')
+        
+        if future_bookings.exists():
+            for fb in future_bookings:
+                same_room_conflicts.append({
+                    'type': 'booking',
+                    'detail': f"Booking for {fb.user.get_full_name()} from {fb.joining_date}"
+                })
+        
+        # Check future swaps
+        future_swaps = RoomSwap.objects.filter(
+            to_room=booking.room,
+            to_share_no=booking.share_no,
+            effective_date__gte=booking.leaving_confirmed_date,
+            status=RoomSwap.APPROVED
+        ).select_related('booking', 'booking__user')
+        
+        if future_swaps.exists():
+            for fs in future_swaps:
+                same_room_conflicts.append({
+                    'type': 'swap',
+                    'detail': f"Swap for {fs.booking.user.get_full_name()} effective {fs.effective_date}"
+                })
+        
+        # Get available rooms for change option
+        vacant_rooms = []
+        all_rooms = Room.objects.filter(pg=booking.room.pg).prefetch_related('shares')
+        for room in all_rooms:
+            for share in room.shares.all():
+                if share.status == RoomShareStatus.VACANT:
+                    vacant_rooms.append({
+                        'room_id': room.id,
+                        'room_no': room.room_no,
+                        'share_no': share.share_no
+                    })
+        
+        return JsonResponse({
+            'success': True,
+            'same_room_available': len(same_room_conflicts) == 0,
+            'same_room_conflicts': same_room_conflicts,
+            'vacant_rooms': vacant_rooms,
+            'current_room': booking.room.room_no,
+            'current_share': booking.share_no
+        })
+    
+    elif request.method == 'POST':
+        option = request.POST.get('option')  # 'same' or 'change'
+        
+        if option == 'same':
+            # Validate no conflicts
+            conflicts_exist = (
+                Booking.objects.filter(
+                    room=booking.room,
+                    share_no=booking.share_no,
+                    status__in=[Booking.PENDING, Booking.APPROVED],
+                    joining_date__gte=booking.leaving_confirmed_date
+                ).exclude(id=booking.id).exists() or
+                RoomSwap.objects.filter(
+                    to_room=booking.room,
+                    to_share_no=booking.share_no,
+                    effective_date__gte=booking.leaving_confirmed_date,
+                    status=RoomSwap.APPROVED
+                ).exists()
+            )
+            
+            if conflicts_exist:
+                return JsonResponse({'error': 'Conflicts exist - cannot continue in same room'}, status=400)
+            
+            # Clear leaving dates
+            booking.leaving_date = None
+            booking.leaving_confirmed_date = None
+            booking.leaving_reason = ''
+            booking.leaving_initiated_at = None
+            booking.save(update_fields=[
+                'leaving_date', 'leaving_confirmed_date', 'leaving_reason', 'leaving_initiated_at'
+            ])
+            
+            # Update room share status back to OCCUPIED
+            share = RoomShareStatus.objects.filter(room=booking.room, share_no=booking.share_no).first()
+            if share:
+                share.status = RoomShareStatus.OCCUPIED
+                share.vacant_from = None
+                share.save(update_fields=['status', 'vacant_from'])
+            
+            # Notify user
+            Notification.objects.create(
+                user=booking.user,
+                title="Re-Continue Approved",
+                message=f"Your request to continue staying in Room {booking.room.room_no}, Bed {booking.share_no} has been approved."
+            )
+            
+            # Audit log
+            log(
+                actor=request.user,
+                action='re_continue_same_room',
+                target_type='Booking',
+                target_id=booking.id,
+                message=f"Re-continue approved for {booking.user.get_full_name()} in same room",
+                meta={'tenant': booking.user.get_full_name()}
+            )
+            
+            messages.success(request, f"{booking.user.get_full_name()} will continue in same room.")
+            return JsonResponse({'success': True, 'message': 'Re-continue approved - same room'})
+        
+        elif option == 'change':
+            new_room_id = request.POST.get('new_room_id')
+            new_share_no = request.POST.get('new_share_no')
+            
+            try:
+                new_room = Room.objects.get(id=new_room_id, pg=booking.room.pg)
+                new_share = RoomShareStatus.objects.get(room=new_room, share_no=new_share_no)
+            except:
+                return JsonResponse({'error': 'Invalid room/share selection'}, status=400)
+            
+            if new_share.status != RoomShareStatus.VACANT:
+                return JsonResponse({'error': 'Selected bed is not vacant'}, status=400)
+            
+            # Free old room/share
+            old_share = RoomShareStatus.objects.filter(room=booking.room, share_no=booking.share_no).first()
+            if old_share:
+                old_share.status = RoomShareStatus.VACANT
+                old_share.vacant_from = None
+                old_share.save(update_fields=['status', 'vacant_from'])
+            
+            # Update booking to new room/share
+            old_room_no = booking.room.room_no
+            old_share_no = booking.share_no
+            
+            booking.room = new_room
+            booking.share_no = new_share_no
+            booking.leaving_date = None
+            booking.leaving_confirmed_date = None
+            booking.leaving_reason = ''
+            booking.leaving_initiated_at = None
+            booking.save(update_fields=[
+                'room', 'share_no', 'leaving_date', 'leaving_confirmed_date', 
+                'leaving_reason', 'leaving_initiated_at'
+            ])
+            
+            # Mark new share as occupied
+            new_share.status = RoomShareStatus.OCCUPIED
+            new_share.save(update_fields=['status'])
+            
+            # Notify user
+            Notification.objects.create(
+                user=booking.user,
+                title="Re-Continue with Room Change",
+                message=f"Your request to continue has been approved. You have been moved from Room {old_room_no}, Bed {old_share_no} to Room {new_room.room_no}, Bed {new_share_no}."
+            )
+            
+            # Audit log
+            log(
+                actor=request.user,
+                action='re_continue_change_room',
+                target_type='Booking',
+                target_id=booking.id,
+                message=f"Re-continue with room change for {booking.user.get_full_name()}: {old_room_no}/{old_share_no} → {new_room.room_no}/{new_share_no}",
+                meta={
+                    'tenant': booking.user.get_full_name(),
+                    'old_room': f"{old_room_no}/{old_share_no}",
+                    'new_room': f"{new_room.room_no}/{new_share_no}"
+                }
+            )
+            
+            messages.success(request, f"{booking.user.get_full_name()} moved to Room {new_room.room_no}, Bed {new_share_no}.")
+            return JsonResponse({'success': True, 'message': 'Re-continue approved - room changed'})
+        
+        return JsonResponse({'error': 'Invalid option'}, status=400)
+
+
+# ============================================================================
+# FUTURE SWAP FEATURE
+# ============================================================================
+
+@login_required
+def create_future_swap(request, booking_id):
+    """Create future swap request based on confirmed leaving date"""
+    from bookings.models import RoomSwap
+    
+    booking = get_object_or_404(
+        Booking.objects.select_related('room', 'room__pg', 'user'),
+        id=booking_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if request.method == 'GET':
+        # Get available target beds (vacant or with confirmed leaving)
+        available_targets = []
+        today = date.today()
+        
+        # Get all rooms in PG
+        all_rooms = Room.objects.filter(pg=booking.room.pg).prefetch_related('shares')
+        
+        for room in all_rooms:
+            for share in room.shares.all():
+                # Skip current bed
+                if room.id == booking.room.id and share.share_no == booking.share_no:
+                    continue
+                
+                # Check if vacant
+                if share.status == RoomShareStatus.VACANT:
+                    available_targets.append({
+                        'room_id': room.id,
+                        'room_no': room.room_no,
+                        'share_no': share.share_no,
+                        'available_from': 'Now',
+                        'status': 'vacant'
+                    })
+                # Check if has confirmed leaving
+                elif share.status in [RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM]:
+                    occupant_booking = Booking.objects.filter(
+                        room=room,
+                        share_no=share.share_no,
+                        status=Booking.APPROVED,
+                        leaving_confirmed_date__isnull=False
+                    ).first()
+                    
+                    if occupant_booking and occupant_booking.leaving_confirmed_date >= today:
+                        available_targets.append({
+                            'room_id': room.id,
+                            'room_no': room.room_no,
+                            'share_no': share.share_no,
+                            'available_from': occupant_booking.leaving_confirmed_date.isoformat(),
+                            'status': 'leaving',
+                            'leaving_user': occupant_booking.user.get_full_name()
+                        })
+        
+        return JsonResponse({
+            'success': True,
+            'available_targets': available_targets,
+            'current_room': booking.room.room_no,
+            'current_share': booking.share_no
+        })
+    
+    elif request.method == 'POST':
+        to_room_id = request.POST.get('to_room_id')
+        to_share_no = request.POST.get('to_share_no')
+        effective_date_str = request.POST.get('effective_date')
+        reason = request.POST.get('reason', '')
+        
+        try:
+            to_room = Room.objects.get(id=to_room_id, pg=booking.room.pg)
+            to_share = RoomShareStatus.objects.get(room=to_room, share_no=to_share_no)
+            effective_date = parse_date(effective_date_str)
+            
+            if not effective_date:
+                raise ValueError("Invalid date")
+        except:
+            return JsonResponse({'error': 'Invalid swap parameters'}, status=400)
+        
+        if effective_date < date.today():
+            return JsonResponse({'error': 'Effective date cannot be in the past'}, status=400)
+        
+        # Validate target bed availability
+        # Check if bed will be vacant by effective_date
+        target_booking = Booking.objects.filter(
+            room=to_room,
+            share_no=to_share_no,
+            status=Booking.APPROVED
+        ).first()
+        
+        if target_booking:
+            if not target_booking.leaving_confirmed_date:
+                return JsonResponse({'error': 'Target bed has no confirmed leaving date'}, status=400)
+            if target_booking.leaving_confirmed_date > effective_date:
+                return JsonResponse({
+                    'error': f'Target bed will be available only from {target_booking.leaving_confirmed_date}'
+                }, status=400)
+        
+        # Check for overlapping swaps
+        overlapping_swaps = RoomSwap.objects.filter(
+            Q(booking=booking) | Q(to_room=to_room, to_share_no=to_share_no),
+            effective_date=effective_date,
+            status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
+        )
+        
+        if overlapping_swaps.exists():
+            return JsonResponse({'error': 'Overlapping swap exists'}, status=400)
+        
+        # Create swap request
+        swap = RoomSwap.objects.create(
+            booking=booking,
+            from_room=booking.room,
+            from_share_no=booking.share_no,
+            to_room=to_room,
+            to_share_no=to_share_no,
+            effective_date=effective_date,
+            is_future_swap=True,
+            reason=reason,
+            status=RoomSwap.PENDING
+        )
+        
+        # Notify user
+        Notification.objects.create(
+            user=booking.user,
+            title="Room Swap Scheduled",
+            message=f"A future room swap has been scheduled for you from Room {booking.room.room_no}/Bed {booking.share_no} to Room {to_room.room_no}/Bed {to_share_no}, effective {effective_date}. Pending approval."
+        )
+        
+        # Audit log
+        log(
+            actor=request.user,
+            action='future_swap_created',
+            target_type='RoomSwap',
+            target_id=swap.id,
+            message=f"Future swap created: {booking.room.room_no}/{booking.share_no} → {to_room.room_no}/{to_share_no} on {effective_date}",
+            meta={
+                'booking_id': booking.id,
+                'from': f"{booking.room.room_no}/{booking.share_no}",
+                'to': f"{to_room.room_no}/{to_share_no}",
+                'effective_date': effective_date.isoformat()
+            }
+        )
+        
+        messages.success(request, f"Future swap created for {booking.user.get_full_name()}.")
+        return JsonResponse({'success': True, 'swap_id': swap.id})
+
+
+@login_required
+def approve_future_swap(request, swap_id):
+    """Approve a future swap request"""
+    from bookings.models import RoomSwap
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    swap = get_object_or_404(
+        RoomSwap.objects.select_related('booking', 'booking__room', 'booking__room__pg', 'from_room', 'to_room'),
+        id=swap_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=swap.booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if swap.status != RoomSwap.PENDING:
+        return JsonResponse({'error': 'Swap is not pending'}, status=400)
+    
+    # Approve swap
+    swap.status = RoomSwap.APPROVED
+    swap.processed_at = timezone.now()
+    swap.processed_by = request.user
+    swap.save(update_fields=['status', 'processed_at', 'processed_by'])
+    
+    # Notify user
+    Notification.objects.create(
+        user=swap.booking.user,
+        title="Room Swap Approved",
+        message=f"Your room swap from {swap.from_room.room_no}/Bed {swap.from_share_no} to {swap.to_room.room_no}/Bed {swap.to_share_no} effective {swap.effective_date} has been approved."
+    )
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='future_swap_approved',
+        target_type='RoomSwap',
+        target_id=swap.id,
+        message=f"Future swap approved for booking {swap.booking.id}",
+        meta={'booking_id': swap.booking.id}
+    )
+    
+    messages.success(request, "Future swap approved.")
+    return JsonResponse({'success': True})
+
+
+@login_required
+def reject_future_swap(request, swap_id):
+    """Reject a future swap request"""
+    from bookings.models import RoomSwap
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    swap = get_object_or_404(
+        RoomSwap.objects.select_related('booking', 'booking__room', 'booking__room__pg'),
+        id=swap_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=swap.booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if swap.status != RoomSwap.PENDING:
+        return JsonResponse({'error': 'Swap is not pending'}, status=400)
+    
+    # Reject swap
+    swap.status = RoomSwap.REJECTED
+    swap.processed_at = timezone.now()
+    swap.processed_by = request.user
+    swap.save(update_fields=['status', 'processed_at', 'processed_by'])
+    
+    # Notify user
+    Notification.objects.create(
+        user=swap.booking.user,
+        title="Room Swap Rejected",
+        message=f"Your room swap request has been rejected. Please contact admin for details."
+    )
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='future_swap_rejected',
+        target_type='RoomSwap',
+        target_id=swap.id,
+        message=f"Future swap rejected for booking {swap.booking.id}",
+        meta={'booking_id': swap.booking.id}
+    )
+    
+    messages.success(request, "Future swap rejected.")
+    return JsonResponse({'success': True})
+
+
+@login_required
+def execute_swap(request, swap_id):
+    """Manually execute/complete a swap (normally done automatically on effective date)"""
+    from bookings.models import RoomSwap
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    swap = get_object_or_404(
+        RoomSwap.objects.select_related('booking', 'booking__room', 'from_room', 'to_room'),
+        id=swap_id
+    )
+    
+    if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=swap.booking.room.pg.id).exists():
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if swap.status != RoomSwap.APPROVED:
+        return JsonResponse({'error': 'Swap is not approved'}, status=400)
+    
+    # Execute swap
+    with transaction.atomic():
+        # Update booking room/share
+        old_share = RoomShareStatus.objects.filter(room=swap.from_room, share_no=swap.from_share_no).first()
+        if old_share:
+            old_share.status = RoomShareStatus.VACANT
+            old_share.save(update_fields=['status'])
+        
+        new_share = RoomShareStatus.objects.filter(room=swap.to_room, share_no=swap.to_share_no).first()
+        if new_share:
+            new_share.status = RoomShareStatus.OCCUPIED
+            new_share.vacant_from = None
+            new_share.save(update_fields=['status', 'vacant_from'])
+        
+        swap.booking.room = swap.to_room
+        swap.booking.share_no = swap.to_share_no
+        swap.booking.save(update_fields=['room', 'share_no'])
+        
+        swap.status = RoomSwap.COMPLETED
+        swap.save(update_fields=['status'])
+    
+    # Notify user
+    Notification.objects.create(
+        user=swap.booking.user,
+        title="Room Swap Completed",
+        message=f"Your room swap is complete. You are now in Room {swap.to_room.room_no}, Bed {swap.to_share_no}."
+    )
+    
+    # Audit log
+    log(
+        actor=request.user,
+        action='swap_executed',
+        target_type='RoomSwap',
+        target_id=swap.id,
+        message=f"Swap executed for booking {swap.booking.id}",
+        meta={'booking_id': swap.booking.id}
+    )
+    
+    messages.success(request, "Swap executed successfully.")
+    return JsonResponse({'success': True})
+
+
+@login_required
+def sync_bed_statuses(request):
+    """
+    Sync RoomShareStatus based on actual Booking data for the active PG.
+    Triggered by the Refresh button in Beds Overview.
+    """
+    if not _require_pg_admin(request.user):
+        messages.error(request, "Access denied.")
+        return redirect('dashboard')
+    
+    pg = _active_pg(request)
+    if not pg:
+        messages.error(request, "No PG selected.")
+        return redirect('dashboard')
+    
+    # Import the sync utility
+    from bookings.utils import sync_room_share_statuses
+    
+    try:
+        stats = sync_room_share_statuses(pg=pg)
+        messages.success(
+            request,
+            f"Bed statuses synced successfully! "
+            f"Processed {stats['total_processed']} beds: "
+            f"{stats['vacant']} vacant, {stats['reserved']} reserved, "
+            f"{stats['occupied']} occupied, {stats['vacant_from']} leaving."
+        )
+    except Exception as e:
+        messages.error(request, f"Error syncing bed statuses: {str(e)}")
+    
+    return redirect('dashboard')
+
