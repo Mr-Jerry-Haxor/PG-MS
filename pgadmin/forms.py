@@ -6,7 +6,7 @@ from bookings.models import Room, RoomShareStatus
 class PGForm(forms.ModelForm):
     class Meta:
         model = PG
-        fields = ["name", "address", "phone", "referral_amount", "daywise_fee", "past_joining_date_allowed", "notice_period"]
+        fields = ["name", "address", "phone", "referral_amount", "daywise_fee", "past_joining_date_allowed", "allow_custom_leave_date", "notice_period"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "address": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
@@ -29,6 +29,7 @@ class PGForm(forms.ModelForm):
                 "placeholder": "Fee per day for day-wise bookings (₹)",
             }),
             "past_joining_date_allowed": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "allow_custom_leave_date": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "notice_period": forms.NumberInput(attrs={
                 "class": "form-control",
                 "min": "1",

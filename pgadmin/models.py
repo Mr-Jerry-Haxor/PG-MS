@@ -14,6 +14,8 @@ class PG(TimeStampedModel):
 	referral_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Default referral credit amount for this PG.")
 	# Allow PG admins to permit selecting past joining dates in quick booking flows
 	past_joining_date_allowed = models.BooleanField(default=False, help_text="Allow selecting a joining date in the past for quick bookings.")
+	# Allow tenants to choose a custom leaving date when submitting a leave request
+	allow_custom_leave_date = models.BooleanField(default=True, blank=True, help_text="Allow tenants to select a custom leaving date when requesting to leave the PG.")
 	# Notice period in days (default 30 days)
 	notice_period = models.PositiveIntegerField(default=30, help_text="Notice period in days required before leaving.")
 	# Day-wise booking fee per day

@@ -134,6 +134,46 @@ def booking_leave_direct(request, booking_id: int) -> JsonResponse:
 
     previous_status = share.status
 
+    # If the requested leaving date equals the booking's joining date and it's in the future,
+    # treat this as an immediate cancellation: delete the booking and free the share.
+    today = timezone.now().date()
+    if booking.joining_date and leaving_date == booking.joining_date and leaving_date > today:
+        # Delete the booking and free the share
+        bid = booking.id
+        room_id = booking.room_id
+        share_no = booking.share_no
+
+        # Delete booking record
+        booking.delete()
+
+        # Update share to VACANT
+        share.status = RoomShareStatus.VACANT
+        share.vacant_from = None
+        share.save(update_fields=['status', 'vacant_from'])
+
+        room_counts = _room_share_counts(share.room)
+
+        log(
+            request.user,
+            'booking_cancelled',
+            'Booking',
+            bid,
+            f"Booking {bid} cancelled and deleted for room {share.room.room_no} bed {share_no}",
+        )
+
+        return JsonResponse({
+            'ok': True,
+            'action': 'booking_deleted',
+            'booking_id': bid,
+            'room_id': room_id,
+            'share_status': share.status,
+            'vacant_from': '',
+            'previous_status': previous_status,
+            'room_counts': room_counts,
+            'message': 'Booking cancelled and deleted.',
+        })
+
+    # Otherwise, treat as a leave request (existing behavior)
     update_fields = ['leaving_date']
     booking.leaving_date = leaving_date
     if booking.leaving_confirmed_date:
@@ -2280,6 +2320,39 @@ def bookings_pending(request):
         "pg": pg,
         "bookings": pending,
         "pgs": list(_admin_pgs(request.user))
+    })
+
+
+@login_required
+def bookings_confirmed(request):
+    """Show confirmed/approved bookings for the active PG.
+
+    Lists current and future approved bookings so admins can review confirmed residents.
+    """
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    pg = _active_pg(request)
+    confirmed = []
+    if pg:
+        app_qs = ResidentApplication.objects.select_related(
+            'referred_by_booking',
+            'referred_by_booking__user',
+            'referred_by_booking__room'
+        ).prefetch_related('status_history')
+
+        confirmed = (
+            Booking.objects.filter(status=Booking.APPROVED, room__pg=pg)
+            .select_related('user', 'user__profile', 'room', 'assigned_by')
+            .prefetch_related(Prefetch('application', queryset=app_qs))
+            .annotate(has_application=Exists(ResidentApplication.objects.filter(booking_id=OuterRef('pk'))))
+            .order_by('start_date', 'joining_date')
+        )
+
+    return render(request, 'pgadmin/bookings_confirmed.html', {
+        'pg': pg,
+        'bookings': confirmed,
+        'pgs': list(_admin_pgs(request.user)),
     })
 
 

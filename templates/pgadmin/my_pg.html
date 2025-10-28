@@ -55,6 +55,11 @@
       <label class="form-check-label">Allow past joining date for quick bookings</label>
       <div class="form-text">If enabled, prospective residents can pick a joining date in the past when using the quick booking link.</div>
     </div>
+    <div class="mb-3 form-check">
+      {{ form.allow_custom_leave_date }}
+      <label class="form-check-label">Allow tenants to select custom leaving date</label>
+      <div class="form-text">If enabled, tenants can choose a custom leaving date when submitting a leave request. Disable to force tenants to contact the PG owner for custom dates.</div>
+    </div>
     <button class="btn btn-primary" type="submit">Save</button>
   </div>
 </form>
