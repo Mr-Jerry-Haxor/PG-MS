@@ -3,6 +3,43 @@
 
 {% block title %}Leave Requests • {{ pg.name }}{% endblock %}
 
+{% block head_extra %}
+<style>
+  /* Fix z-index issues for modals on iPhone/iOS devices */
+  .modal-backdrop {
+    z-index: 1040 !important;
+  }
+  
+  .modal {
+    z-index: 1050 !important;
+  }
+  
+  .modal-dialog {
+    z-index: 1051 !important;
+  }
+  
+  /* Ensure modal content is above backdrop */
+  .modal.show {
+    display: block !important;
+  }
+  
+  /* Prevent body scroll when modal is open */
+  body.modal-open {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+  }
+  
+  /* Fix for iOS Safari blur issue - remove transform on modal dialog */
+  @supports (-webkit-touch-callout: none) {
+    .modal-dialog {
+      transform: none !important;
+      -webkit-transform: none !important;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid my-4">
   <form id="csrfTokenHolder" class="d-none">
@@ -42,7 +79,8 @@
           <button type="button" class="btn btn-outline-primary filter-btn active" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="all">All</button>
           <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="pending">Pending</button>
           <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="confirmed">Confirmed</button>
-          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="completed">Completed</button>
+          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="scheduled">Scheduled Leave</button>
+          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="vacated">Vacated</button>
         </div>
         
         <span class="text-muted" style="font-size: 0.875rem;">|</span>
@@ -105,7 +143,7 @@
           <tbody>
             {% for booking in leave_requests %}
             <tr id="leaveRow{{ booking.id }}" class="leave-row" 
-                data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_confirmed_date >= today %}confirmed{% else %}completed{% endif %}"
+                data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_date < today %}vacated{% elif booking.leaving_date >= today %}scheduled{% else %}confirmed{% endif %}"
                 data-advance="{% if booking.advance_returned %}returned{% elif not booking.advance_eligible %}not-eligible{% elif booking.leaving_confirmed_date %}pending{% else %}eligible{% endif %}"
                 data-booking-type="{% if booking.booking_type == 'daywise' %}daywise{% else %}regular{% endif %}">
               <td>
@@ -128,6 +166,14 @@
               <td>
                 <span class="badge bg-primary">Room {{ booking.room.room_no }}</span>
                 <span class="badge bg-secondary">Bed {{ booking.share_no }}</span>
+                {# Show status capsule under room/bed for vacated or scheduled #}
+                {% if booking.leaving_confirmed_date %}
+                  {% if booking.leaving_date < today %}
+                    <div class="mt-1"><span class="badge bg-dark text-white small">Vacated</span></div>
+                  {% elif booking.leaving_date >= today %}
+                    <div class="mt-1"><span class="badge bg-warning text-dark small">Scheduled</span></div>
+                  {% endif %}
+                {% endif %}
               </td>
               <td>
                 {% if booking.leaving_initiated_at %}
@@ -139,11 +185,9 @@
               </td>
               <td>
                 <span id="leaveDate{{ booking.id }}" class="fw-semibold">{{ booking.leaving_date|date:"M d, Y" }}</span>
-                {% if not booking.leaving_confirmed_date %}
                 <button class="btn btn-sm btn-link p-0 ms-1 edit-leave-date-btn" data-booking-id="{{ booking.id }}" data-leaving-date="{{ booking.leaving_date|date:'Y-m-d' }}" title="Edit date">
                   <i class="bi bi-pencil"></i>
                 </button>
-                {% endif %}
                 {% if booking.leaving_confirmed_date %}
                 <div><span class="badge bg-success">Confirmed</span></div>
                 {% endif %}
@@ -218,12 +262,12 @@
             
             <!-- Reason Modal -->
             {% if booking.leaving_reason %}
-            <div class="modal fade" id="reasonModal{{ booking.id }}" tabindex="-1">
+            <div class="modal fade" id="reasonModal{{ booking.id }}" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="true">
               <div class="modal-dialog">
-                <div class="modal-content">
+                <div class="modal-content" style="z-index: 1052;">
                   <div class="modal-header">
                     <h5 class="modal-title">Leave Reason - {{ booking.user.get_full_name }}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
                     <p>{{ booking.leaving_reason }}</p>
@@ -237,12 +281,12 @@
             {% endif %}
 
             {% if booking.leaving_confirmed_date %}
-            <div class="modal fade" id="deleteModal{{ booking.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ booking.id }}" aria-hidden="true">
+            <div class="modal fade" id="deleteModal{{ booking.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ booking.id }}" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="true">
               <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
+                <div class="modal-content" style="z-index: 1052;">
                   <div class="modal-header">
                     <h5 class="modal-title" id="deleteModalLabel{{ booking.id }}">Delete Resident Data</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
                     <div class="alert alert-warning d-flex align-items-start">
@@ -259,7 +303,7 @@
                   </div>
                   <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep Data</button>
-                    <form method="post" action="{% url 'pg_leaving_delete' booking.id %}" class="m-0">
+                    <form method="post" action="{% url 'pg_leaving_delete' booking.id %}" class="m-0" style="display: inline;">
                       {% csrf_token %}
                       <button type="submit" class="btn btn-danger">Delete Permanently</button>
                     </form>
@@ -292,12 +336,12 @@
 </div>
 
 <!-- Edit Leave Date Modal -->
-<div class="modal fade" id="editLeaveDateModal" tabindex="-1">
+<div class="modal fade" id="editLeaveDateModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="true">
   <div class="modal-dialog">
-    <div class="modal-content">
+    <div class="modal-content" style="z-index: 1052;">
       <div class="modal-header">
         <h5 class="modal-title">Edit Leave Date</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <input type="date" class="form-control" id="newLeaveDateInput">
@@ -312,12 +356,12 @@
 </div>
 
 <!-- Mark Advance Returned Modal -->
-<div class="modal fade" id="markAdvanceModal" tabindex="-1">
+<div class="modal fade" id="markAdvanceModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="true">
   <div class="modal-dialog">
-    <div class="modal-content">
+    <div class="modal-content" style="z-index: 1052;">
       <div class="modal-header">
         <h5 class="modal-title">Mark Advance as Returned</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="mb-3">
@@ -336,12 +380,12 @@
 </div>
 
 <!-- Edit Advance Amount Modal -->
-<div class="modal fade" id="editAdvanceAmountModal" tabindex="-1">
+<div class="modal fade" id="editAdvanceAmountModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="true">
   <div class="modal-dialog">
-    <div class="modal-content">
+    <div class="modal-content" style="z-index: 1052;">
       <div class="modal-header">
         <h5 class="modal-title">Edit Advance Returned Amount</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="mb-3">
