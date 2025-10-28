@@ -1,7 +1,7 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from .models import Notification
-from bookings.models import RoomShareStatus, Booking
+from bookings.models import RoomShareStatus, Booking, ReferralCredit
 from finance.models import Payment, Expenditure
 from django.utils import timezone
 from django.db.models import Sum, Q
@@ -194,6 +194,17 @@ def dashboard(request):
 			"leaving_shares": leaving,
 			"total_shares": total,
 		})
+
+	# Include user's referrals so dashboard can show a compact view for referrers
+	if request.user.is_authenticated:
+		try:
+			my_referrals_qs = ReferralCredit.objects.filter(referrer_user=request.user).select_related(
+				'referrer_booking__room', 'referred_booking__room', 'referrer_user', 'referred_user', 'pg'
+			).order_by('-created_at')
+			ctx['my_referrals'] = list(my_referrals_qs)
+		except Exception:
+			# Be defensive: if referrals table or relations are missing, skip showing referrals
+			ctx['my_referrals'] = []
 	return render(request, 'dashboard.html', ctx)
 
 

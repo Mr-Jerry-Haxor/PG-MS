@@ -76,15 +76,17 @@
         </div>
         {% if b.application %}
           {% if b.application.status == 'confirmed' %}
-            <span class="pill pill-submitted">Confirmed</span>
-          {% elif b.application.status == 'refill_requested' %}
-            <span class="pill" style="background:#eff6ff;color:#1d4ed8">Re-Fill Requested</span>
-          {% elif b.application.status == 'resubmitted' or b.application.status == 'submitted' %}
-            <span class="pill pill-submitted">Submitted</span>
-          {% elif b.application.status == 'rejected' %}
-            <span class="pill" style="background:#fee2e2;color:#991b1b">Rejected</span>
-          {% else %}
-            <span class="pill">Submitted</span>
+              <span class="pill pill-submitted">Confirmed</span>
+            {% elif b.application.status == 'refill_requested' %}
+              <span class="pill" style="background:#eff6ff;color:#1d4ed8">Re-Fill Requested</span>
+            {% elif b.application.status == 'pending' %}
+              <span class="pill pill-pending">Pending</span>
+            {% elif b.application.status == 'resubmitted' or b.application.status == 'submitted' %}
+              <span class="pill pill-submitted">Submitted</span>
+            {% elif b.application.status == 'rejected' %}
+              <span class="pill" style="background:#fee2e2;color:#991b1b">Rejected</span>
+            {% else %}
+              <span class="pill">Submitted</span>
           {% endif %}
         {% else %}
           <span class="pill pill-pending">Pending</span>

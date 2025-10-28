@@ -5,9 +5,10 @@
   /* simple responsive table/cards for referrals */
   .ref-card { border: 1px solid #e9ecef; padding: .75rem; border-radius: .375rem; }
   @media (max-width: 576px) {
-    .ref-grid { display: grid; grid-template-columns: 1fr; gap: .5rem; }
-    /* On mobile, show card view (both pending and redeemed) for full visibility */
-    .ref-table { display: none; }
+    /* Hide cards on mobile; show table only (swipe horizontally) */
+    .ref-grid { display: none; }
+    .ref-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .ref-table table { min-width: 720px; }
   }
   @media (min-width: 577px) {
     /* Desktop: prefer table view */
@@ -55,8 +56,11 @@
       <div class="ref-card">
         <div class="d-flex justify-content-between align-items-start">
           <div>
-            <div><strong>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}</strong></div>
+            <div><strong>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</strong></div>
             <div class="small text-secondary">Amount: ₹ {{ c.amount|floatformat:2 }}{% if c.scheduled_month %} · Scheduled {{ c.scheduled_month|date:'M Y' }}{% endif %}</div>
+            {% if c.referred_user %}
+              <div class="small text-secondary">Referred: {{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}</div>
+            {% endif %}
             {% if c.notes %}<div class="small text-secondary">Note: {{ c.notes }}</div>{% endif %}
           </div>
           <div class="text-end small text-secondary">Created {{ c.created_at|date:'Y-m-d' }}</div>
@@ -75,8 +79,11 @@
       <div class="ref-card">
         <div class="d-flex justify-content-between align-items-start">
           <div>
-            <div><strong>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}</strong></div>
+            <div><strong>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</strong></div>
             <div class="small text-secondary">Amount: ₹ {{ c.amount|floatformat:2 }} · Redeemed: ₹ {{ c.redeemed_amount|default:c.amount|floatformat:2 }}{% if c.redeemed_for_month %} · For {{ c.redeemed_for_month|date:'M Y' }}{% endif %}</div>
+            {% if c.referred_user %}
+              <div class="small text-secondary">Referred: {{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}</div>
+            {% endif %}
             {% if c.notes %}<div class="small text-secondary">Note: {{ c.notes }}</div>{% endif %}
           </div>
           <div class="text-end small text-secondary">Redeemed on {{ c.redeemed_on|date:'Y-m-d' }}</div>
@@ -89,24 +96,38 @@
 </div>
 
 <div class="ref-table">
-  <table class="table table-sm table-striped">
+  <div class="mb-2">
+    <div class="btn-group btn-group-sm" role="group" aria-label="filters" id="ref-filters">
+      <button type="button" class="btn btn-outline-secondary active" data-filter="all">All</button>
+      <button type="button" class="btn btn-outline-secondary" data-filter="pending">Pending</button>
+      <button type="button" class="btn btn-outline-secondary" data-filter="redeemed">Redeemed</button>
+    </div>
+  </div>
+
+  <table class="table table-sm table-striped" id="ref-table">
     <thead>
       <tr>
-        <th>Referrer</th>
-        <th>Referred</th>
-        <th>Amount</th>
-        <th>Scheduled</th>
-        <th>Redeemed?</th>
+        <th class="sortable" data-key="referrer">Referrer</th>
+        <th class="sortable" data-key="referred">Referred</th>
+        <th class="sortable text-end" data-key="amount">Amount</th>
+        <th class="sortable" data-key="scheduled">Scheduled</th>
+        <th class="sortable" data-key="redeemed">Redeemed?</th>
         <th>Notes</th>
-        <th>Created</th>
+        <th class="sortable" data-key="created">Created</th>
       </tr>
     </thead>
     <tbody>
       {% for c in redeemed %}
-        <tr>
-          <td>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}</td>
-          <td>{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email }}{% else %}—{% endif %}</td>
-          <td>₹ {{ c.amount|floatformat:2 }}</td>
+        <tr data-status="redeemed"
+            data-referrer="{{ c.referrer_user.get_full_name|default:c.referrer_user.email|escape }}"
+            data-referred="{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email|escape }}{% else %}{% endif %}"
+            data-amount="{{ c.amount }}"
+            data-scheduled="{% if c.scheduled_month %}{{ c.scheduled_month|date:'Y-m' }}{% else %}{% endif %}"
+            data-redeemed="1"
+            data-created="{{ c.created_at|date:'Y-m-d' }}">
+          <td>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</td>
+          <td>{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}{% else %}—{% endif %}</td>
+          <td class="text-end">₹ {{ c.amount|floatformat:2 }}</td>
           <td>{% if c.scheduled_month %}{{ c.scheduled_month|date:'M Y' }}{% else %}—{% endif %}</td>
           <td>Yes (₹ {{ c.redeemed_amount|default:c.amount|floatformat:2 }})</td>
           <td>{{ c.notes|default:'—' }}</td>
@@ -114,10 +135,16 @@
         </tr>
       {% endfor %}
       {% for c in pending %}
-        <tr>
-          <td>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}</td>
-          <td>{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email }}{% else %}—{% endif %}</td>
-          <td>₹ {{ c.amount|floatformat:2 }}</td>
+        <tr data-status="pending"
+            data-referrer="{{ c.referrer_user.get_full_name|default:c.referrer_user.email|escape }}"
+            data-referred="{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email|escape }}{% else %}{% endif %}"
+            data-amount="{{ c.amount }}"
+            data-scheduled="{% if c.scheduled_month %}{{ c.scheduled_month|date:'Y-m' }}{% else %}{% endif %}"
+            data-redeemed="0"
+            data-created="{{ c.created_at|date:'Y-m-d' }}">
+          <td>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</td>
+          <td>{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}{% else %}—{% endif %}</td>
+          <td class="text-end">₹ {{ c.amount|floatformat:2 }}</td>
           <td>{% if c.scheduled_month %}{{ c.scheduled_month|date:'M Y' }}{% else %}—{% endif %}</td>
           <td>No</td>
           <td>{{ c.notes|default:'—' }}</td>
@@ -126,6 +153,71 @@
       {% endfor %}
     </tbody>
   </table>
+
+  <script>
+    (function(){
+      const table = document.getElementById('ref-table');
+      if (!table) return;
+      const tbody = table.tBodies[0];
+      const filterGroup = document.getElementById('ref-filters');
+
+      // Filtering
+      filterGroup.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-filter]');
+        if (!btn) return;
+        [...filterGroup.querySelectorAll('button')].forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        const f = btn.getAttribute('data-filter');
+        for (const r of tbody.rows){
+          const status = r.getAttribute('data-status');
+          if (f === 'all' || status === f) r.style.display = '';
+          else r.style.display = 'none';
+        }
+      });
+
+      // Sorting
+      function getCellValue(row, key){
+        const v = row.getAttribute('data-' + key);
+        return v === null ? '' : v;
+      }
+
+      function comparer(key, asc){
+        return function(a,b){
+          let va = getCellValue(a, key);
+          let vb = getCellValue(b, key);
+          // numeric
+          if (key === 'amount'){
+            return (parseFloat(va||0) - parseFloat(vb||0)) * (asc?1:-1);
+          }
+          // dates YYYY-MM-DD or YYYY-MM
+          if (key === 'created' || key === 'scheduled'){
+            const da = va ? Date.parse(va) : 0;
+            const db = vb ? Date.parse(vb) : 0;
+            return (da - db) * (asc?1:-1);
+          }
+          // strings
+          va = va.toLowerCase(); vb = vb.toLowerCase();
+          if (va > vb) return asc?1:-1;
+          if (va < vb) return asc?-1:1;
+          return 0;
+        };
+      }
+
+      let sortState = {};
+      for (const th of table.querySelectorAll('th.sortable')){
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', ()=>{
+          const key = th.getAttribute('data-key');
+          const asc = !(sortState[key] === 'asc');
+          sortState = {}; sortState[key] = asc ? 'asc' : 'desc';
+          const rows = Array.from(tbody.rows).filter(r=>r.style.display !== 'none');
+          rows.sort(comparer(key, asc));
+          // append in new order
+          for (const r of rows) tbody.appendChild(r);
+        });
+      }
+    })();
+  </script>
 </div>
 
 {% endblock %}

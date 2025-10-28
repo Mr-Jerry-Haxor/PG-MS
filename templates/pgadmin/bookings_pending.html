@@ -167,6 +167,41 @@
                     </div>
                   </div>
                 </div>
+
+                <hr class="my-3">
+
+                <div class="form-check">
+                  <input class="form-check-input referral-toggle" type="checkbox" id="isReferred{{ b.id }}" name="is_referred" data-target="#referralFields{{ b.id }}">
+                  <label class="form-check-label" for="isReferred{{ b.id }}"><strong>This booking was referred by an existing resident</strong></label>
+                </div>
+                <div class="mt-3 ms-2 d-none" id="referralFields{{ b.id }}">
+                  <div class="row g-2">
+                    <div class="col-12">
+                      <label class="form-label" for="referredBy{{ b.id }}">Referred By <span class="text-danger">*</span></label>
+                      <select class="form-select form-select-sm" id="referredBy{{ b.id }}" name="referred_by_booking_id">
+                        <option value="">-- Select Active Resident --</option>
+                        {% for resident in active_residents %}
+                          <option value="{{ resident.id }}">
+                            {{ resident.user.get_full_name|default:resident.user.email }} - Room {{ resident.room.room_no }}/Bed {{ resident.share_no }}
+                          </option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="referralMonth{{ b.id }}">Apply Credit In Month <span class="text-danger">*</span></label>
+                      <select class="form-select form-select-sm" id="referralMonth{{ b.id }}" name="referral_month">
+                        <option value="">-- Select Month --</option>
+                        {# Options are populated on page load via JS to ensure correct future months and client timezone handling #}
+                      </select>
+                      <div class="form-text small">Select future month when referral credit should be applied to referrer's rent</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label" for="referralAmount{{ b.id }}">Referral Credit Amount (₹)</label>
+                      <input type="number" class="form-control form-control-sm" id="referralAmount{{ b.id }}" name="referral_amount" step="0.01" min="0" value="500" placeholder="500">
+                      <div class="form-text small">Default: ₹500</div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -193,6 +228,7 @@
 document.addEventListener('DOMContentLoaded', function () {
   const syncMap = new Map();
 
+  // Handle advance payment toggle
   document.querySelectorAll('.advance-toggle').forEach(function (checkbox) {
     const targetSelector = checkbox.getAttribute('data-target');
     const container = document.querySelector(targetSelector);
@@ -215,9 +251,67 @@ document.addEventListener('DOMContentLoaded', function () {
     syncMap.set(checkbox, { container, amountInput, sync });
   });
 
+  // Handle referral toggle
+  document.querySelectorAll('.referral-toggle').forEach(function (checkbox) {
+    const targetSelector = checkbox.getAttribute('data-target');
+    const container = document.querySelector(targetSelector);
+    if (!container) return;
+    const referrerSelect = container.querySelector('select[name="referred_by_booking_id"]');
+    const monthSelect = container.querySelector('select[name="referral_month"]');
+
+    const sync = function () {
+      const isChecked = checkbox.checked;
+      container.classList.toggle('d-none', !isChecked);
+      if (referrerSelect) {
+        referrerSelect.toggleAttribute('required', isChecked);
+        if (!isChecked) {
+          referrerSelect.value = '';
+        }
+      }
+      if (monthSelect) {
+        monthSelect.toggleAttribute('required', isChecked);
+        if (!isChecked) {
+          monthSelect.value = '';
+        }
+      }
+    };
+
+    checkbox.addEventListener('change', sync);
+    sync();
+    syncMap.set(checkbox, { container, referrerSelect, monthSelect, sync });
+  });
+
+  // Generate month options dynamically (next 12 months)
+  document.querySelectorAll('select[name="referral_month"]').forEach(function(select) {
+    // Skip if already populated
+    if (select.options.length > 1) return;
+    
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-11
+    
+    for (let i = 0; i < 12; i++) {
+      const futureDate = new Date(currentYear, currentMonth + i + 1, 1); // Start from next month
+      const year = futureDate.getFullYear();
+      const month = futureDate.getMonth();
+      
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+      
+      const value = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      const label = `${monthNames[month]} ${year}`;
+      
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    }
+  });
+
+  // Reset all fields when modal is closed
   document.querySelectorAll('.modal').forEach(function (modal) {
     modal.addEventListener('hidden.bs.modal', function () {
-      modal.querySelectorAll('.advance-toggle').forEach(function (checkbox) {
+      modal.querySelectorAll('.advance-toggle, .referral-toggle').forEach(function (checkbox) {
         checkbox.checked = false;
         const meta = syncMap.get(checkbox);
         if (meta) {

@@ -141,12 +141,14 @@ class Booking(TimeStampedModel):
 
 
 class ResidentApplication(TimeStampedModel):
+	PENDING = 'pending'
 	SUBMITTED = 'submitted'
 	CONFIRMED = 'confirmed'
 	REFILL_REQUESTED = 'refill_requested'
 	RESUBMITTED = 'resubmitted'
 	REJECTED = 'rejected'
 	STATUS_CHOICES = [
+		(PENDING, 'Pending'),
 		(SUBMITTED, 'Submitted'),
 		(CONFIRMED, 'Confirmed'),
 		(REFILL_REQUESTED, 'Re-Fill Requested'),
@@ -162,7 +164,7 @@ class ResidentApplication(TimeStampedModel):
 	name = models.CharField(max_length=255)
 	dob = models.DateField(null=True, blank=True)
 	age = models.PositiveSmallIntegerField(null=True, blank=True)
-	phone = models.CharField(max_length=20)
+	phone = models.CharField(max_length=20,null=True, blank=True)
 	emergency_contact = models.CharField(max_length=20, blank=True, help_text="Emergency contact number (for day-wise bookings)")
 	whatsapp_number = models.CharField(max_length=20, blank=True, help_text="WhatsApp number (can be same as phone)")
 	email = models.EmailField()

@@ -2306,6 +2306,7 @@ def bookings_pending(request):
         return redirect('dashboard')
     pg = _active_pg(request)
     pending = []
+    active_residents = []
     if pg:
         # Get all pending bookings (both regular and day-wise)
         pending = (
@@ -2315,11 +2316,27 @@ def bookings_pending(request):
             .annotate(has_application=Exists(ResidentApplication.objects.filter(booking_id=OuterRef('pk'))))
             .order_by('booking_type', '-created_at')  # Day-wise first, then regular
         )
+        
+        # Get active residents for referral selection
+        # Active = APPROVED bookings with no leaving_date or future leaving_date
+        today = timezone.now().date()
+        active_residents = (
+            Booking.objects.filter(
+                status=Booking.APPROVED,
+                room__pg=pg
+            )
+            .filter(
+                Q(leaving_date__isnull=True) | Q(leaving_date__gte=today)
+            )
+            .select_related('user', 'room')
+            .order_by('user__first_name', 'user__email')
+        )
     
     return render(request, 'pgadmin/bookings_pending.html', {
         "pg": pg,
         "bookings": pending,
-        "pgs": list(_admin_pgs(request.user))
+        "pgs": list(_admin_pgs(request.user)),
+        "active_residents": active_residents,
     })
 
 
@@ -2602,6 +2619,126 @@ def booking_approve(request, booking_id):
             booking.application.save(update_fields=['status'])
             log(request.user, 'application_confirmed_during_booking', 'ResidentApplication', booking.application.id, f"Application confirmed while approving booking {booking.id}")
 
+    # Handle referral tracking
+    referral_created = False
+    referral_credit_amount = Decimal('0')
+    if request.method == 'POST':
+        is_referred = request.POST.get('is_referred') == 'on'
+        if is_referred:
+            referred_by_booking_id = request.POST.get('referred_by_booking_id')
+            referral_month_str = request.POST.get('referral_month')
+            referral_amount_str = request.POST.get('referral_amount', '500').strip()
+            
+            if referred_by_booking_id and referral_month_str:
+                try:
+                    # Get the referrer booking
+                    referrer_booking = Booking.objects.select_related('user', 'room').get(
+                        id=int(referred_by_booking_id),
+                        status=Booking.APPROVED,
+                        room__pg=pg
+                    )
+                    
+                    # Parse referral amount
+                    try:
+                        referral_credit_amount = Decimal(referral_amount_str) if referral_amount_str else Decimal('500')
+                    except (InvalidOperation, ValueError):
+                        referral_credit_amount = Decimal('500')
+                    
+                    # Parse referral month
+                    referral_month = parse_date(referral_month_str)
+                    if not referral_month:
+                        messages.warning(request, "Invalid referral month format.")
+                    else:
+                        # Ensure referral month is in the future
+                        today = timezone.now().date()
+                        if referral_month <= today.replace(day=1):
+                            messages.warning(request, "Referral month must be in the future.")
+                        else:
+                            # Update application with referrer
+                            if hasattr(booking, 'application') and booking.application:
+                                booking.application.referred_by_booking = referrer_booking
+                                booking.application.save(update_fields=['referred_by_booking'])
+                                log(request.user, 'referral_set', 'ResidentApplication', booking.application.id, 
+                                    f"Set referrer to booking {referrer_booking.id} ({referrer_booking.user.get_full_name() or referrer_booking.user.email})")
+                            
+                            # Create ReferralCredit record only if there's a resident application linked
+                            if hasattr(booking, 'application') and booking.application:
+                                try:
+                                    referral_credit = ReferralCredit.objects.create(
+                                        pg=pg,
+                                        referrer_user=referrer_booking.user,
+                                        referrer_booking=referrer_booking,
+                                        referred_user=booking.user,
+                                        referred_booking=booking,
+                                        application=booking.application,
+                                        amount=referral_credit_amount,
+                                        scheduled_month=referral_month,
+                                        notes=f"Referral credit for {booking.user.get_full_name() or booking.user.email}"
+                                    )
+                                    referral_created = True
+                                    log(request.user, 'referral_credit_created', 'ReferralCredit', referral_credit.id,
+                                        f"Created referral credit of Rs.{referral_credit_amount} for {referrer_booking.user.email} scheduled for {referral_month}")
+                                except Exception as exc:
+                                    # Avoid leaving transaction broken by preventing IntegrityError where possible
+                                    messages.warning(request, f"Referral information saved but credit record failed: {exc}")
+                            else:
+                                # Auto-create a minimal ResidentApplication so referral can be linked.
+                                try:
+                                    # Build minimal fields from user and booking
+                                    user_obj = booking.user
+                                    name = (getattr(user_obj, 'first_name', '') or '')
+                                    if not name:
+                                        # fallback to full name helper or email
+                                        name = (getattr(user_obj, 'get_full_name', lambda: '')() or user_obj.email or '')
+                                    phone = ''
+                                    try:
+                                        phone = getattr(getattr(user_obj, 'profile', None), 'phone', '') or ''
+                                    except Exception:
+                                        phone = ''
+                                    email_addr = getattr(user_obj, 'email', '') or ''
+
+                                    app = ResidentApplication.objects.create(
+                                        user=user_obj,
+                                        booking=booking,
+                                        pg=pg,
+                                        room=booking.room,
+                                        status=ResidentApplication.PENDING,  # auto-created applications set to PENDING
+                                        name=name,
+                                        phone=phone,
+                                        email=email_addr,
+                                    )
+                                    # Ensure booking.application relation is available
+                                    booking.application = app
+                                    log(request.user, 'application_autocreated', 'ResidentApplication', app.id, f"Auto-created minimal application for booking {booking.id} during referral setup")
+
+                                    # Now link referrer and create ReferralCredit
+                                    booking.application.referred_by_booking = referrer_booking
+                                    booking.application.save(update_fields=['referred_by_booking'])
+                                    try:
+                                        referral_credit = ReferralCredit.objects.create(
+                                            pg=pg,
+                                            referrer_user=referrer_booking.user,
+                                            referrer_booking=referrer_booking,
+                                            referred_user=booking.user,
+                                            referred_booking=booking,
+                                            application=booking.application,
+                                            amount=referral_credit_amount,
+                                            scheduled_month=referral_month,
+                                            notes=f"Referral credit for {booking.user.get_full_name() or booking.user.email}"
+                                        )
+                                        referral_created = True
+                                        log(request.user, 'referral_credit_created', 'ReferralCredit', referral_credit.id,
+                                            f"Created referral credit of Rs.{referral_credit_amount} for {referrer_booking.user.email} scheduled for {referral_month}")
+                                    except Exception as exc:
+                                        messages.warning(request, f"Referral information saved but credit record failed: {exc}")
+                                except Exception as exc:
+                                    messages.warning(request, f"Could not auto-create resident application for referral: {exc}")
+                
+                except Booking.DoesNotExist:
+                    messages.warning(request, "Selected referrer booking not found or invalid.")
+                except Exception as exc:
+                    messages.warning(request, f"Error processing referral: {exc}")
+
     advance_payment_success = False
     payment_obj = None
     if collect_advance:
@@ -2695,6 +2832,8 @@ Thank you for your payment!
             success_parts.append(f"Advance of Rs.{advance_amount_value:.2f} recorded.")
         else:
             success_parts.append("Advance amount noted.")
+    if referral_created:
+        success_parts.append(f"Referral credit of Rs.{referral_credit_amount:.2f} created and scheduled.")
     messages.success(request, ' '.join(success_parts))
     # AJAX response
     if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
@@ -2962,8 +3101,22 @@ def resident_applications(request):
             .select_related('user', 'room', 'user__profile')
             .order_by('user__first_name', 'user__last_name', 'room__room_no', 'share_no')
         )
-    submitted_count = bookings.filter(application__isnull=False).count() if bookings else 0
-    pending_count = bookings.filter(application__isnull=True).count() if bookings else 0
+    if bookings:
+        # Submitted: applications with submitted/resubmitted/refill_requested statuses
+        submitted_count = bookings.filter(
+            application__status__in=(
+                ResidentApplication.SUBMITTED,
+                ResidentApplication.RESUBMITTED,
+                ResidentApplication.REFILL_REQUESTED,
+            )
+        ).count()
+        # Pending: either no application exists or application exists with 'pending' status
+        pending_count = bookings.filter(
+            Q(application__isnull=True) | Q(application__status=ResidentApplication.PENDING)
+        ).count()
+    else:
+        submitted_count = 0
+        pending_count = 0
     return render(
         request,
         'pgadmin/resident_applications.html',
