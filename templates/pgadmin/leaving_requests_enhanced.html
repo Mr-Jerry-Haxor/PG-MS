@@ -41,8 +41,8 @@
         <div class="btn-group btn-group-sm" role="group" id="statusFilterGroup">
           <button type="button" class="btn btn-outline-primary filter-btn active" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="all">All</button>
           <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="pending">Pending</button>
-          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="confirmed">Confirmed</button>
-          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="completed">Completed</button>
+          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="vacated">Vacated</button>
+          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="scheduled">Scheduled Leave</button>
         </div>
         
         <span class="text-muted" style="font-size: 0.875rem;">|</span>
@@ -105,7 +105,7 @@
           <tbody>
             {% for booking in leave_requests %}
             <tr id="leaveRow{{ booking.id }}" class="leave-row" 
-                data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_confirmed_date >= today %}confirmed{% else %}completed{% endif %}"
+                data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_confirmed_date < today %}vacated{% else %}scheduled{% endif %}"
                 data-advance="{% if booking.advance_returned %}returned{% elif not booking.advance_eligible %}not-eligible{% elif booking.leaving_confirmed_date %}pending{% else %}eligible{% endif %}"
                 data-booking-type="{% if booking.booking_type == 'daywise' %}daywise{% else %}regular{% endif %}">
               <td>
@@ -139,13 +139,15 @@
               </td>
               <td>
                 <span id="leaveDate{{ booking.id }}" class="fw-semibold">{{ booking.leaving_date|date:"M d, Y" }}</span>
-                {% if not booking.leaving_confirmed_date %}
                 <button class="btn btn-sm btn-link p-0 ms-1 edit-leave-date-btn" data-booking-id="{{ booking.id }}" data-leaving-date="{{ booking.leaving_date|date:'Y-m-d' }}" title="Edit date">
                   <i class="bi bi-pencil"></i>
                 </button>
-                {% endif %}
                 {% if booking.leaving_confirmed_date %}
-                <div><span class="badge bg-success">Confirmed</span></div>
+                  {% if booking.leaving_confirmed_date < today %}
+                    <div><span class="badge bg-dark">Vacated</span></div>
+                  {% else %}
+                    <div><span class="badge bg-info">Scheduled Leave</span></div>
+                  {% endif %}
                 {% endif %}
               </td>
               <td>
@@ -414,7 +416,8 @@ function rejectLeave(bookingId) {
 function editLeaveDate(bookingId, currentDate) {
   document.getElementById('editBookingId').value = bookingId;
   document.getElementById('newLeaveDateInput').value = currentDate;
-  document.getElementById('newLeaveDateInput').min = new Date().toISOString().split('T')[0];
+  // Allow any date (past or future) for admin to correct historical data
+  // document.getElementById('newLeaveDateInput').min = new Date().toISOString().split('T')[0];
   
   const modal = new bootstrap.Modal(document.getElementById('editLeaveDateModal'));
   modal.show();
@@ -805,14 +808,122 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
     
+    
     // Apply filters
     applyFilters();
   });
   
   // Initial count update
   applyFilters();
+  
+  // Fix for iOS Safari modal backdrop issue
+  // Ensure modals work correctly on iOS devices
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  
+  if (isIOS) {
+    // Handle modal show event
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('show.bs.modal', function() {
+        // Store current scroll position
+        const scrollY = window.scrollY;
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${scrollY}px`;
+        document.body.style.width = '100%';
+      });
+      
+      modal.addEventListener('hidden.bs.modal', function() {
+        // Restore scroll position
+        const scrollY = document.body.style.top;
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        window.scrollTo(0, parseInt(scrollY || '0') * -1);
+      });
+    });
+  }
 });
 </script>
 
+<style>
+/* Fix for iOS Safari modal backdrop blur issue */
+.modal-backdrop {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 1040 !important;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 1055 !important;
+  display: none;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  outline: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal.show {
+  display: block !important;
+}
+
+.modal-dialog {
+  position: relative;
+  width: auto;
+  margin: 0.5rem;
+  pointer-events: none;
+}
+
+.modal-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  pointer-events: auto;
+  background-color: #fff;
+  background-clip: padding-box;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 0.3rem;
+  outline: 0;
+}
+
+/* Ensure buttons are always clickable on iOS */
+.modal-footer .btn,
+.modal-header .btn-close {
+  position: relative;
+  z-index: 1;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  touch-action: manipulation;
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+}
+
+/* iOS specific fixes */
+@supports (-webkit-touch-callout: none) {
+  .modal {
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+  }
+  
+  .modal-backdrop {
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+  }
+}
+</style>
+
 {% endblock %}
+
 
