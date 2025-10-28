@@ -131,12 +131,12 @@
         <table class="table table-hover mb-0" style="min-width: 1000px;">
           <thead class="table-light">
             <tr>
-              <th>Tenant</th>
-              <th>Room/Bed</th>
-              <th>Initiated</th>
-              <th>Leave Date</th>
-              <th>Reason</th>
-              <th>Advance</th>
+              <th data-key="name" class="sortable">Tenant <span class="sort-indicator"></span></th>
+              <th data-key="room" class="sortable">Room/Bed <span class="sort-indicator"></span></th>
+              <th data-key="initiated" class="sortable">Initiated <span class="sort-indicator"></span></th>
+              <th data-key="leaving" class="sortable">Leave Date <span class="sort-indicator"></span></th>
+              <th data-key="reason" class="sortable">Reason <span class="sort-indicator"></span></th>
+              <th data-key="advance" class="sortable">Advance <span class="sort-indicator"></span></th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -855,6 +855,53 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Initial count update
   applyFilters();
+
+  // Column sorting
+  const table = document.querySelector('table.table');
+  if (table) {
+    const tbody = table.tBodies[0];
+    let sortState = { idx: null, asc: true };
+    table.querySelectorAll('th.sortable').forEach(function(th){
+      th.style.cursor = 'pointer';
+      th.addEventListener('click', function(){
+        const key = th.dataset.key || '';
+        const columnIndex = Array.from(th.parentNode.children).indexOf(th);
+        let type = 'string';
+        if (['room','advance'].includes(key)) type = 'num';
+        if (['initiated','leaving'].includes(key)) type = 'date';
+
+        // Build rows array and sort
+        const rowsArr = Array.from(tbody.querySelectorAll('tr'));
+        rowsArr.sort(function(a,b){
+          let v1 = (a.children[columnIndex] && a.children[columnIndex].textContent || '').trim();
+          let v2 = (b.children[columnIndex] && b.children[columnIndex].textContent || '').trim();
+          if (type === 'num'){
+            v1 = parseFloat(v1.replace(/[^0-9.-]/g,'')) || 0;
+            v2 = parseFloat(v2.replace(/[^0-9.-]/g,'')) || 0;
+          }
+          if (type === 'date'){
+            v1 = new Date(v1 || 0);
+            v2 = new Date(v2 || 0);
+          }
+          if (v1 === v2) return 0;
+          return (v1 > v2 ? 1 : -1) * (sortState.asc ? 1 : -1);
+        });
+
+        // Reattach in sorted order
+        rowsArr.forEach(r => tbody.appendChild(r));
+
+        // Toggle sort order
+        sortState.asc = !sortState.asc;
+
+        // Update indicators
+        table.querySelectorAll('.sort-indicator').forEach(si => si.textContent = '');
+        th.querySelector('.sort-indicator').textContent = sortState.asc ? ' ▲' : ' ▼';
+
+        // Reapply filters to ensure hidden rows stay hidden
+        applyFilters();
+      });
+    });
+  }
 });
 </script>
 
