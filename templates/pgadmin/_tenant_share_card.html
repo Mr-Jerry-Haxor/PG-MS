@@ -74,7 +74,17 @@ Expects context variables:
               <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#swapModal{{ sd.booking.id }}" disabled>Swap Room</button>
             {% else %}
               <button class="btn btn-sm btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.booking.id }}">Leave PG</button>
-              <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#swapModal{{ sd.booking.id }}">Swap Room</button>
+              {# Show cancel button if there's a pending future swap, otherwise show Swap Room button #}
+              {% if sd.pending_swap %}
+                <form method="post" action="{% url 'pg_cancel_future_swap' sd.pending_swap.id %}" class="d-inline" onsubmit="return confirm('Cancel this scheduled swap? This cannot be undone.');">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-x-circle"></i> Cancel Future Swap (Room {{ sd.pending_swap.to_room.room_no }} Bed {{ sd.pending_swap.to_share_no }} on {{ sd.pending_swap.effective_date|date:"M d, Y" }})
+                  </button>
+                </form>
+              {% else %}
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#swapModal{{ sd.booking.id }}">Swap Room</button>
+              {% endif %}
             {% endif %}
           {% endif %}
           {% if sd.is_pending %}
@@ -223,6 +233,16 @@ Expects context variables:
                         <option value="">Select a room first</option>
                       </select>
                       <div class="form-text small" id="bedInfo{{ sd.future_booking.id }}">After choosing the room, pick an available bed.</div>
+                    </div>
+                    
+                    <!-- Schedule Swap Date -->
+                    <div class="mb-3">
+                      <label class="form-label fw-semibold" for="swapDate{{ sd.future_booking.id }}">
+                        Swap Date <small class="text-muted">(Optional - leave empty for immediate swap)</small>
+                      </label>
+                      <input type="date" class="form-control swap-date-input" id="swapDate{{ sd.future_booking.id }}" name="swap_date" min="{{ today|date:'Y-m-d' }}">
+                      <div class="form-text small">Select a future date to schedule this swap, or leave empty to swap immediately.</div>
+                      <div class="text-danger small d-none" id="swapConflict{{ sd.future_booking.id }}"></div>
                     </div>
                     
                     <!-- Swap Info Alert (shown when selecting VACANT_FROM) -->
@@ -565,6 +585,16 @@ Expects context variables:
                         <option value="">Select a room first</option>
                       </select>
                       <div class="form-text small" id="bedInfo{{ sd.booking.id }}">After choosing the room, pick an available bed.</div>
+                    </div>
+                    
+                    <!-- Schedule Swap Date -->
+                    <div class="mb-3">
+                      <label class="form-label fw-semibold" for="swapDate{{ sd.booking.id }}">
+                        Swap Date <small class="text-muted">(Optional - leave empty for immediate swap)</small>
+                      </label>
+                      <input type="date" class="form-control swap-date-input" id="swapDate{{ sd.booking.id }}" name="swap_date" min="{{ today|date:'Y-m-d' }}">
+                      <div class="form-text small">Select a future date to schedule this swap, or leave empty to swap immediately.</div>
+                      <div class="text-danger small d-none" id="swapConflict{{ sd.booking.id }}"></div>
                     </div>
                     
                     <!-- Swap Info Alert (shown when selecting VACANT_FROM) -->

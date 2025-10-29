@@ -574,6 +574,9 @@
       const bedsSel = modal.querySelector('select[name="share_no"]');
       const submitBtn = modal.querySelector('button[type="submit"]');
       const swapWithOccupiedCheckbox = modal.querySelector('.swap-with-occupied-checkbox');
+      const swapDateInput = modal.querySelector('.swap-date-input');
+      const bookingId = modal.dataset.bookingId;
+      const conflictDiv = modal.querySelector(`#swapConflict${bookingId}`);
       
       modal.addEventListener('show.bs.modal', () => loadSwapRooms(modal));
       
@@ -600,12 +603,80 @@
         }
         loadSwapBeds(modal, roomId);
       });
+      
       bedsSel?.addEventListener('change', () => {
         const ready = Boolean(roomsSel.value && bedsSel.value);
         if (submitBtn) submitBtn.disabled = !ready;
+        // Check conflicts when bed changes and date is selected
+        if (swapDateInput && swapDateInput.value && roomsSel.value && bedsSel.value) {
+          checkSwapConflict(modal, roomsSel.value, bedsSel.value, swapDateInput.value);
+        }
       });
+      
+      // Add conflict checking when swap date changes
+      swapDateInput?.addEventListener('change', function() {
+        if (!this.value) {
+          // No date selected = immediate swap, no conflict check needed
+          if (conflictDiv) {
+            conflictDiv.classList.add('d-none');
+            conflictDiv.textContent = '';
+          }
+          // Re-enable submit if room and bed are selected
+          if (submitBtn && roomsSel.value && bedsSel.value) {
+            submitBtn.disabled = false;
+          }
+          return;
+        }
+        
+        // Date selected - check conflicts
+        if (roomsSel.value && bedsSel.value) {
+          checkSwapConflict(modal, roomsSel.value, bedsSel.value, this.value);
+        }
+      });
+      
       modal.dataset.swapInit = '1';
     }
+    
+    function checkSwapConflict(modal, roomId, shareNo, swapDate) {
+      const submitBtn = modal.querySelector('button[type="submit"]');
+      const bookingId = modal.dataset.bookingId;
+      const conflictDiv = modal.querySelector(`#swapConflict${bookingId}`);
+      
+      if (!conflictDiv) return;
+      
+      // Clear previous state
+      conflictDiv.classList.add('d-none');
+      conflictDiv.textContent = '';
+      
+      // Fetch conflict check
+      const url = `/pg/swap-check-conflict/?room=${roomId}&share=${shareNo}&date=${swapDate}`;
+      fetch(url, {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin'
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.valid) {
+          // Show conflicts
+          conflictDiv.textContent = data.conflicts.join('; ');
+          conflictDiv.classList.remove('d-none');
+          if (submitBtn) submitBtn.disabled = true;
+        } else {
+          // Valid - hide conflicts and enable submit
+          conflictDiv.classList.add('d-none');
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      })
+      .catch(err => {
+        console.error('Failed to check conflicts:', err);
+        conflictDiv.textContent = 'Failed to check availability. Please try again.';
+        conflictDiv.classList.remove('d-none');
+        if (submitBtn) submitBtn.disabled = true;
+      });
+    }
+    
     function initShareColumn(col){
       if (!col) return;
       col.querySelectorAll('.leave-modal').forEach(initLeaveModal);
@@ -739,6 +810,24 @@
           setRoomHeaderCounts(res.old_room_id, res.old_room_counts);
           setRoomHeaderCounts(res.new_room_id, res.new_room_counts);
           showToast('Room swapped successfully.', 'success');
+          return;
+        }
+        
+        // Future swap scheduled
+        if (res.action === 'future_swap_scheduled'){
+          const modal = document.getElementById(`swapModal${res.booking_id}`);
+          hideOpenModal(modal);
+          showToast(res.message || `Swap scheduled for ${res.swap_date}.`, 'success');
+          // Optionally reload to show updated state
+          setTimeout(()=>location.reload(), 1500);
+          return;
+        }
+        
+        // Future swap cancelled
+        if (res.action === 'future_swap_cancelled'){
+          showToast(res.message || 'Future swap cancelled successfully.', 'success');
+          // Reload to show updated state (swap button will reappear)
+          setTimeout(()=>location.reload(), 1500);
           return;
         }
       });

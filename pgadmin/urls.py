@@ -28,6 +28,10 @@ urlpatterns = [
     path('bookings/<int:booking_id>/swap/', views.booking_swap_room, name='pg_booking_swap_room'),
     path('bookings/<int:booking_id>/swap/options/rooms/', views.booking_swap_rooms_api, name='pg_booking_swap_rooms_api'),
     path('bookings/<int:booking_id>/swap/options/rooms/<int:room_id>/shares/', views.booking_swap_shares_api, name='pg_booking_swap_shares_api'),
+    path('swap-check-conflict/', views.swap_check_conflict, name='pg_swap_check_conflict'),
+    path('future-swaps/', views.future_swaps, name='pg_future_swaps'),
+    path('future-swaps/<int:swap_id>/cancel/', views.cancel_future_swap, name='pg_cancel_future_swap'),
+    # execute route removed - swaps only execute automatically on scheduled date
     path('bookings/<int:booking_id>/application-email/', views.application_email_send, name='pg_application_email_send'),
     path('booking/<int:booking_id>/join-date/', views.booking_joining_update, name='pg_booking_joining_update'),
     path('booking/<int:booking_id>/payment-date/', views.booking_payment_date_update, name='pg_booking_payment_date_update'),
