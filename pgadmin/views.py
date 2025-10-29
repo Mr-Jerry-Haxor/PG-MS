@@ -288,6 +288,11 @@ def booking_swap_room(request, booking_id: int) -> JsonResponse:
             # Move occupying tenant to current tenant's old room
             occupying_booking.room = old_room
             occupying_booking.share_no = old_share_no
+            # Ensure booking.pg stays in sync with room.pg
+            try:
+                occupying_booking.pg = old_room.pg
+            except Exception:
+                pass
             occupying_booking.save(update_fields=['room', 'pg', 'share_no'])
             
             # Update occupying tenant's application if exists
@@ -338,6 +343,11 @@ def booking_swap_room(request, booking_id: int) -> JsonResponse:
             # Move leaving tenant to current tenant's old room
             leaving_booking.room = old_room
             leaving_booking.share_no = old_share_no
+            # Ensure booking.pg stays in sync with room.pg
+            try:
+                leaving_booking.pg = old_room.pg
+            except Exception:
+                pass
             leaving_booking.save(update_fields=['room', 'pg', 'share_no'])
             
             # Update leaving tenant's application if exists
@@ -409,6 +419,11 @@ def booking_swap_room(request, booking_id: int) -> JsonResponse:
     # Update current tenant's booking to new room
     booking.room = new_room
     booking.share_no = share_no
+    # Keep booking.pg consistent with the new room
+    try:
+        booking.pg = new_room.pg
+    except Exception:
+        pass
     booking.save(update_fields=['room', 'pg', 'share_no'])
 
     # Update current tenant's application if exists
@@ -2958,9 +2973,12 @@ def application_email_send(request, booking_id):
             messages.error(request, "Email was not sent. Please verify email settings.")
     except Exception as e:
         messages.error(request, f"Could not send email: {e}")
-    # Redirect back to applications list if invoked from there
-    if request.GET.get('from') == 'applications':
+    # Redirect back to where the action was invoked from when possible
+    src = request.GET.get('from')
+    if src == 'applications':
         return redirect('pg_resident_applications')
+    if src == 'tenants':
+        return redirect('pg_tenants')
     return redirect('pg_bookings_pending')
 
 
@@ -4943,5 +4961,9 @@ def sync_bed_statuses(request):
     except Exception as e:
         messages.error(request, f"Error syncing bed statuses: {str(e)}")
     
+    # If caller provided a 'next' indicator (e.g. from tenants page), honor it
+    next_target = request.POST.get('next')
+    if next_target == 'pg_tenants':
+        return redirect('pg_tenants')
     return redirect('dashboard')
 

@@ -14,11 +14,11 @@
     }
   }
 </style>
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div class="d-flex align-items-center gap-2">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div class="d-flex align-items-center gap-2 flex-grow-1 flex-wrap">
     <h1 class="h4 mb-0">My PG Tenants</h1>
     {% if pgs and pgs|length > 1 %}
-      <form method="get">
+      <form method="get" class="ms-2">
         <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
           {% for p in pgs %}
             <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
@@ -26,14 +26,27 @@
         </select>
       </form>
     {% elif pg %}
-      <span class="badge bg-light text-dark">{{ pg.name }}</span>
+      <span class="badge bg-light text-dark ms-2">{{ pg.name }}</span>
     {% endif %}
   </div>
-  <div>
-    <a href="{% url 'pg_rooms' %}" class="btn btn-outline-primary">Manage Rooms</a>
+
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <a href="{% url 'pg_rooms' %}" class="btn btn-outline-primary btn-sm">Manage Rooms</a>
+
+    {% if user.is_authenticated and user.profile.is_pg_admin and pg %}
+      <!-- Refresh button (reuses dashboard beds overview endpoint) -->
+      <form method="post" action="{% url 'pg_sync_bed_statuses' %}" class="d-inline ms-1" onsubmit="return confirm('Sync bed statuses based on current bookings?');">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="pg_tenants">
+        <button type="submit" class="btn btn-sm btn-outline-secondary" style="font-size:0.85rem;">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+      </form>
+    {% endif %}
+
     {% if pg %}
-      <a href="{% url 'pg_tenants_export' %}?pg={{ pg.id }}" class="btn btn-primary ms-2">Export Excel</a>
-      <button id="exportPdfBtn" class="btn btn-outline-primary ms-2" onclick="startPdfExport()">
+      <a href="{% url 'pg_tenants_export' %}?pg={{ pg.id }}" class="btn btn-primary btn-sm ms-1">Export Excel</a>
+      <button id="exportPdfBtn" class="btn btn-outline-primary btn-sm ms-1" onclick="startPdfExport()">
         <span id="exportBtnText">Export PDF</span>
         <span id="exportBtnSpinner" class="spinner-border spinner-border-sm ms-1 d-none" role="status"></span>
       </button>

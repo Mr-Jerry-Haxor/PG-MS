@@ -47,23 +47,8 @@ Expects context variables:
             <div class="text-secondary small">Leaving: <span class="tenant-leaving-date" data-booking-id="{{ sd.booking.id }}">{{ sd.booking.leaving_date|default:'—' }}</span></div>
           {% endif %}
         </div>
-
-        {% if sd.future_booking and sd.future_occupant %}
-          <div class="mb-2 border-top pt-2">
-            <div class="fw-semibold">
-              <span class="badge bg-primary-subtle text-dark border me-1" style="font-size:0.65rem;">Next Tenant</span>
-              {{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}
-            </div>
-            <div class="text-secondary small">{{ sd.future_occupant.email }}</div>
-            <div class="text-secondary small">Phone: {{ sd.future_occupant.profile.phone|default:'—' }}</div>
-            <div class="text-secondary small">Joining: {{ sd.future_booking.joining_date|default:'—' }}</div>
-            <div class="text-secondary small">Leaving: {{ sd.future_booking.leaving_date|default:'—' }}</div>
-            {% if sd.future_application %}
-              <button class="btn btn-sm btn-outline-primary mt-1" data-bs-toggle="modal" data-bs-target="#appModal{{ sd.future_booking.id }}">View Application</button>
-            {% endif %}
-          </div>
-        {% endif %}
-
+        
+        {# Actions for the current (present) tenant: placed directly after current details #}
         <div class="d-flex flex-wrap gap-2">
           {% if sd.application %}
             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ sd.booking.id }}">View Application</button>
@@ -76,11 +61,16 @@ Expects context variables:
               <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#refillModal{{ sd.application.id }}">Refill</button>
             {% endif %}
           {% else %}
-            <a href="{% url 'pg_application_email_send' sd.booking.id %}" class="btn btn-sm btn-outline-primary">Send Reminder</a>
+            <a href="{% url 'pg_application_email_send' sd.booking.id %}?from=tenants" class="btn btn-sm btn-outline-primary">Send Reminder</a>
           {% endif %}
           {% if sd.booking.status == 'approved' %}
-            {% if sd.booking.leaving_date and not sd.booking.leaving_confirmed_date %}
-              <button class="btn btn-sm btn-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.booking.id }}" disabled>Leave Pending</button>
+            {# If a leaving date already exists for this booking, disable the Leave action (scheduled or pending) #}
+            {% if sd.booking.leaving_date %}
+              {% if not sd.booking.leaving_confirmed_date %}
+                <button class="btn btn-sm btn-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.booking.id }}" disabled>Leave Pending</button>
+              {% else %}
+                <button class="btn btn-sm btn-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.booking.id }}" disabled>Leave Scheduled</button>
+              {% endif %}
               <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#swapModal{{ sd.booking.id }}" disabled>Swap Room</button>
             {% else %}
               <button class="btn btn-sm btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.booking.id }}">Leave PG</button>
@@ -96,6 +86,155 @@ Expects context variables:
             </form>
           {% endif %}
         </div>
+
+        {% if sd.future_booking and sd.future_occupant %}
+          <div class="mb-2 border-top pt-2">
+            <div class="fw-semibold">
+              <span class="badge bg-primary-subtle text-dark border me-1" style="font-size:0.65rem;">Next Tenant</span>
+              {{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}
+            </div>
+            <div class="text-secondary small">{{ sd.future_occupant.email }}</div>
+            <div class="text-secondary small">Phone: {{ sd.future_occupant.profile.phone|default:'—' }}</div>
+            <div class="text-secondary small">Joining: {{ sd.future_booking.joining_date|default:'—' }}</div>
+            <div class="text-secondary small">Leaving: {{ sd.future_booking.leaving_date|default:'—' }}</div>
+            {% if sd.future_application %}
+              <button class="btn btn-sm btn-outline-primary mt-1" data-bs-toggle="modal" data-bs-target="#appModal{{ sd.future_booking.id }}">View Application</button>
+            {% endif %}
+            
+            <!-- Actions for the future (next) tenant: keep controls separate and use future_booking ids -->
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              {% if sd.future_application %}
+                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ sd.future_booking.id }}">View Application</button>
+                {% if sd.future_application.status != 'confirmed' %}
+                  <form method="post" action="{% url 'pg_application_confirm' sd.future_application.id %}">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-success" type="submit">Confirm</button>
+                  </form>
+                  <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ sd.future_application.id }}">Reject</button>
+                  <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#refillModal{{ sd.future_application.id }}">Refill</button>
+                {% endif %}
+              {% else %}
+                <a href="{% url 'pg_application_email_send' sd.future_booking.id %}?from=tenants" class="btn btn-sm btn-outline-primary">Send Reminder</a>
+              {% endif %}
+
+              {% if sd.future_booking.status == 'approved' %}
+                {# Disable leave control if a leaving date exists for the future booking as well #}
+                {% if sd.future_booking.leaving_date %}
+                  {% if not sd.future_booking.leaving_confirmed_date %}
+                    <button class="btn btn-sm btn-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.future_booking.id }}" disabled>Leave Pending</button>
+                  {% else %}
+                    <button class="btn btn-sm btn-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.future_booking.id }}" disabled>Leave Scheduled</button>
+                  {% endif %}
+                  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#swapModal{{ sd.future_booking.id }}" disabled>Swap Room</button>
+                {% else %}
+                  <button class="btn btn-sm btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.future_booking.id }}">Leave PG</button>
+                  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#swapModal{{ sd.future_booking.id }}">Swap Room</button>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+
+        {# Leave/Swap modals for future booking (so future tenant has independent controls) #}
+        {% if sd.future_booking and sd.future_booking.status == 'approved' %}
+          <div class="modal fade leave-modal" id="leaveModal{{ sd.future_booking.id }}" tabindex="-1" aria-labelledby="leaveModalLabel{{ sd.future_booking.id }}" aria-hidden="true" data-booking-id="{{ sd.future_booking.id }}" data-join-date="{% if sd.future_booking.joining_date %}{{ sd.future_booking.joining_date|date:'Y-m-d' }}{% endif %}" data-today="{{ today|date:'Y-m-d' }}" data-default-date="{% if sd.future_booking.leaving_date %}{{ sd.future_booking.leaving_date|date:'Y-m-d' }}{% else %}{{ today|date:'Y-m-d' }}{% endif %}">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <form method="post" action="{% url 'pg_booking_leave_direct' sd.future_booking.id %}">
+                  {% csrf_token %}
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="leaveModalLabel{{ sd.future_booking.id }}">Confirm Leave — {{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <p class="mb-2">Select the resident's last day in the PG. The request will remain pending until confirmed from the leaving page.</p>
+                    <label class="form-label" for="leaveDate{{ sd.future_booking.id }}">Leaving date</label>
+                    <input type="date" class="form-control" id="leaveDate{{ sd.future_booking.id }}" name="leaving_date" required />
+                    <div class="form-text">Once confirmed, the bed becomes vacant from the selected date.</div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">Submit Request</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal fade swap-modal" id="swapModal{{ sd.future_booking.id }}" tabindex="-1" aria-labelledby="swapModalLabel{{ sd.future_booking.id }}" aria-hidden="true" data-booking-id="{{ sd.future_booking.id }}" data-rooms-endpoint="{% url 'pg_booking_swap_rooms_api' sd.future_booking.id %}" data-shares-endpoint-template="{% url 'pg_booking_swap_shares_api' sd.future_booking.id 0 %}" data-current-room="{{ sd.future_booking.room_id }}" data-current-room-no="{{ sd.future_booking.room.room_no }}" data-current-share="{{ sd.future_booking.share_no }}">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+              <div class="modal-content">
+                <form method="post" action="{% url 'pg_booking_swap_room' sd.future_booking.id %}">
+                  {% csrf_token %}
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="swapModalLabel{{ sd.future_booking.id }}">Swap Room — {{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <!-- Current Booking Info -->
+                    <div class="alert alert-info mb-3">
+                      <h6 class="mb-2"><i class="bi bi-info-circle me-2"></i>Current Details</h6>
+                      <div class="row g-2 small">
+                        <div class="col-6 col-md-6"><strong>Room:</strong> {{ sd.future_booking.room.room_no }}</div>
+                        <div class="col-6 col-md-6"><strong>Bed:</strong> {{ sd.future_booking.share_no }}</div>
+                        <div class="col-12 col-md-6"><strong>Tenant:</strong> <span class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}</span></div>
+                        <div class="col-12 col-md-6"><strong>Phone:</strong> {{ sd.future_occupant.profile.phone|default:"—" }}</div>
+                      </div>
+                    </div>
+                    
+                    <!-- Swap with Occupied Checkbox -->
+                    <div class="form-check mb-3">
+                      <input class="form-check-input swap-with-occupied-checkbox" type="checkbox" id="swapWithOccupied{{ sd.future_booking.id }}" name="swap_with_occupied">
+                      <label class="form-check-label small" for="swapWithOccupied{{ sd.future_booking.id }}">
+                        <strong>Swap with occupied bed</strong> <span class="text-muted">(Exchange rooms with another tenant)</span>
+                      </label>
+                    </div>
+                    
+                    <p class="mb-3 small"><strong>Choose the new room and bed.</strong> Available options include vacant beds and beds that will be vacant soon (occupied by leaving tenants).</p>
+                    
+                    <div class="mb-3">
+                      <label class="form-label fw-semibold" for="swapRoom{{ sd.future_booking.id }}">Target Room</label>
+                      <select class="form-select" id="swapRoom{{ sd.future_booking.id }}" name="room_id" required disabled>
+                        <option value="">Loading rooms…</option>
+                      </select>
+                      <div class="form-text small">Rooms with available or "vacant from" beds are shown.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                      <label class="form-label fw-semibold" for="swapBed{{ sd.future_booking.id }}">Target Bed</label>
+                      <select class="form-select" id="swapBed{{ sd.future_booking.id }}" name="share_no" required disabled>
+                        <option value="">Select a room first</option>
+                      </select>
+                      <div class="form-text small" id="bedInfo{{ sd.future_booking.id }}">After choosing the room, pick an available bed.</div>
+                    </div>
+                    
+                    <!-- Swap Info Alert (shown when selecting VACANT_FROM) -->
+                    <div class="alert alert-warning d-none" id="swapInfo{{ sd.future_booking.id }}">
+                      <h6 class="mb-2 small"><i class="bi bi-arrow-left-right me-2"></i>Exchange Swap</h6>
+                      <p class="small mb-2">This bed is currently occupied by a leaving tenant. Selecting this option will:</p>
+                      <ul class="small mb-2">
+                        <li><strong class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}</strong> will move to the selected bed</li>
+                        <li>The leaving tenant will move to <strong>Room {{ sd.future_booking.room.room_no }}, Bed {{ sd.future_booking.share_no }}</strong></li>
+                      </ul>
+                      <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="confirmSwap{{ sd.future_booking.id }}" name="confirm_exchange" value="1">
+                        <label class="form-check-label small" for="confirmSwap{{ sd.future_booking.id }}">
+                          I understand this will exchange the two tenants' rooms
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm" disabled>Confirm Swap</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        
         {% if sd.booking.leaving_date and not sd.booking.leaving_confirmed_date %}
           <div class="text-warning small leave-note mt-2">Leave requested for {{ sd.booking.leaving_date|date:"Y-m-d" }} (awaiting confirmation).</div>
         {% else %}
@@ -189,6 +328,53 @@ Expects context variables:
                   <a class="btn btn-outline-secondary btn-sm" href="{% url 'pg_application_pdf' sd.future_application.id %}"><i class="bi bi-download me-1"></i>Export PDF</a>
                   <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        {# Reject/Refill modals for future application (if any) #}
+        {% if sd.future_application %}
+          <div class="modal fade" id="rejectModal{{ sd.future_application.id }}" tabindex="-1" aria-labelledby="rejectLabel{{ sd.future_application.id }}" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <form method="post" action="{% url 'pg_application_reject' sd.future_application.id %}">
+                  {% csrf_token %}
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="rejectLabel{{ sd.future_application.id }}">Reject Application</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <label class="form-label">Reason</label>
+                    <textarea class="form-control" name="reason" rows="3" required></textarea>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Reject</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal fade" id="refillModal{{ sd.future_application.id }}" tabindex="-1" aria-labelledby="refillLabel{{ sd.future_application.id }}" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <form method="post" action="{% url 'pg_application_refill' sd.future_application.id %}">
+                  {% csrf_token %}
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="refillLabel{{ sd.future_application.id }}">Request Re-Fill</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <label class="form-label">Comment</label>
+                    <textarea class="form-control" name="comment" rows="3" placeholder="Provide details on what needs updating" required></textarea>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Send</button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
