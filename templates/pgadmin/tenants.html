@@ -508,6 +508,64 @@
         const defaultDate = modal.dataset.defaultDate;
         input.value = defaultDate || input.value || minDate || todayStr;
       });
+      // Additional logic: if the booking has a future joining date, show a clear
+      // warning when the selected leaving date equals the joining date because
+      // the server treats that case as a cancellation (deletes the booking).
+      const joinDate = modal.dataset.joinDate || '';
+      const todayStr = modal.dataset.today || new Date().toISOString().slice(0,10);
+      const leaveInput = modal.querySelector('input[name="leaving_date"]');
+      const warning = modal.querySelector('.leave-cancel-warning');
+      const confirmCheckbox = modal.querySelector('.leave-cancel-confirm');
+      const submitBtn = modal.querySelector('button[type="submit"]');
+
+      function updateCancelWarning() {
+        if (!leaveInput) return;
+        const val = leaveInput.value;
+        if (!val || !joinDate) {
+          if (warning) warning.classList.add('d-none');
+          if (confirmCheckbox) confirmCheckbox.checked = false;
+          if (submitBtn) submitBtn.disabled = false;
+          return;
+        }
+        // if selected date equals joining date and joining date is in the future,
+        // show warning and require explicit checkbox confirmation to proceed
+        try {
+          const sel = new Date(val);
+          const jd = new Date(joinDate);
+          const today = new Date(todayStr);
+          const isEqual = sel.toISOString().slice(0,10) === jd.toISOString().slice(0,10);
+          const joinInFuture = jd > today;
+          if (isEqual && joinInFuture) {
+            if (warning) {
+              const span = warning.querySelector('.join-date-text');
+              if (span) span.textContent = joinDate;
+              warning.classList.remove('d-none');
+            }
+            if (confirmCheckbox) confirmCheckbox.checked = false;
+            if (submitBtn) submitBtn.disabled = true;
+            return;
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+        if (warning) warning.classList.add('d-none');
+        if (confirmCheckbox) confirmCheckbox.checked = false;
+        if (submitBtn) submitBtn.disabled = false;
+      }
+
+      // when the checkbox is toggled, enable/disable submit
+      if (confirmCheckbox) {
+        confirmCheckbox.addEventListener('change', function(){
+          if (!submitBtn) return;
+          submitBtn.disabled = !this.checked;
+        });
+      }
+
+      // when date changes, update warning state
+      if (leaveInput) leaveInput.addEventListener('change', updateCancelWarning);
+
+      // initialize once
+      updateCancelWarning();
       modal.dataset.leaveInit = '1';
     }
     function initSwapModal(modal){
@@ -637,6 +695,35 @@
           }
           if (res.room_id && res.room_counts) setRoomHeaderCounts(res.room_id, res.room_counts);
           showToast(res.message || 'Leave request recorded and pending confirmation.', 'info');
+          return;
+        }
+
+        // Booking deleted (future booking cancelled because leaving_date == joining_date)
+        if (res.action === 'booking_deleted'){
+          // The leave modal for the (now deleted) booking is embedded inside the share card
+          const modal = document.getElementById(`leaveModal${res.booking_id}`);
+          hideOpenModal(modal);
+
+          // Find the parent share column and replace it with a simple Vacant view
+          const col = modal ? modal.closest('.tenant-share-col') : null;
+          if (col){
+            const shareNo = col.dataset.shareNo || '';
+            const cardBody = col.querySelector('.card-body');
+            if (cardBody){
+              cardBody.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <div class="fw-semibold">Bed ${shareNo}</div>
+                  <span class="badge bg-secondary-subtle text-dark border tenant-share-status" data-status="vacant">Vacant</span>
+                </div>
+                <div class="text-secondary small">No current booking.</div>
+              `;
+            }
+            // Re-initialize any share-column hooks (no-op but keeps consistency)
+            initShareColumn(col);
+          }
+
+          if (res.room_id && res.room_counts) setRoomHeaderCounts(res.room_id, res.room_counts);
+          showToast(res.message || 'Booking cancelled and deleted.', 'success');
           return;
         }
 
