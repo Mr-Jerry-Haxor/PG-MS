@@ -427,6 +427,77 @@ def _overlap_days(start: date, end: date | None, m_first: date, m_last: date) ->
     return (stay_end - stay_start).days + 1
 
 
+def _get_payment_cycle_for_month(booking, m_first: date) -> tuple[date, date, date | None, date | None, int, int]:
+    """Return payment-cycle details for the calendar month that starts at ``m_first``.
+
+    Returns a tuple containing:
+        cycle_start: datetime.date - nominal cycle start for this month
+        cycle_end: datetime.date - nominal cycle end (payment day - 1 of next month)
+        effective_start: datetime.date | None - actual start after joining/availability
+        effective_end: datetime.date | None - actual end before leaving (if any)
+        effective_days: int - number of chargeable days within this cycle (>= 0)
+        cycle_days: int - total days in the nominal cycle (>= 0)
+
+    The calculation follows the requested scenarios:
+    - Scenario 1: first month with mid-cycle joining → start at joining date, end at payment-1 next month
+    - Scenario 2: regular cycle → payment date to payment date-1 next month
+    - Scenario 3: leaving mid-cycle → payment date to leaving date
+    """
+
+    payment_anchor = _payment_anchor_for_booking(booking)
+    joining_date = booking.joining_date or booking.start_date or (booking.created_at.date() if getattr(booking, 'created_at', None) else None)
+    leaving_date = booking.leaving_date
+
+    if not payment_anchor and not joining_date:
+        # Fallback: treat as month starting on m_first
+        payment_day = 1
+    else:
+        payment_day = (payment_anchor or joining_date).day if (payment_anchor or joining_date) else 1
+
+    # Nominal cycle start for this month:
+    days_in_month = calendar.monthrange(m_first.year, m_first.month)[1]
+    cycle_start_day = min(payment_day, days_in_month)
+    cycle_start = date(m_first.year, m_first.month, cycle_start_day)
+
+    # Next month calculation
+    if m_first.month == 12:
+        next_month = 1
+        next_year = m_first.year + 1
+    else:
+        next_month = m_first.month + 1
+        next_year = m_first.year
+    days_in_next_month = calendar.monthrange(next_year, next_month)[1]
+    next_cycle_day = min(payment_day, days_in_next_month)
+    next_cycle_date = date(next_year, next_month, next_cycle_day)
+    cycle_end = next_cycle_date - timedelta(days=1)
+
+    # Full cycle days (for pro-rating denominator)
+    cycle_days = max(0, (cycle_end - cycle_start).days + 1)
+
+    # Effective range considering joining/leaving
+    effective_start = cycle_start
+    if joining_date and joining_date > effective_start:
+        effective_start = joining_date
+
+    effective_end = cycle_end
+    if leaving_date and leaving_date < effective_end:
+        effective_end = leaving_date
+
+    if effective_end < cycle_start or (joining_date and joining_date > cycle_end):
+        # No overlap with this cycle
+        return cycle_start, cycle_end, None, None, 0, cycle_days
+
+    if effective_start < cycle_start:
+        effective_start = cycle_start
+
+    if effective_end > cycle_end:
+        effective_end = cycle_end
+
+    effective_days = max(0, (effective_end - effective_start).days + 1)
+
+    return cycle_start, cycle_end, effective_start, effective_end, effective_days, cycle_days
+
+
 def _payment_anchor_for_booking(booking) -> date | None:
     payment_anchor = getattr(booking, 'payment_date', None) or booking.joining_date or booking.start_date
     if not payment_anchor and getattr(booking, 'created_at', None):
@@ -567,20 +638,24 @@ def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None
         # Day-wise bookings are typically immediate, so skip month gating logic.
         return expected
 
+    # Use payment cycle calculation instead of calendar month overlap
+    cycle_start, cycle_end, effective_start, effective_end, effective_days, cycle_days = _get_payment_cycle_for_month(booking, m_first)
+
+    # Fetch swaps that occur within the billing cycle (cycle_start..cycle_end).
+    # Previously we fetched swaps based on the calendar month (m_first..m_last)
+    # which missed swaps that happened in the cycle but fell in the following
+    # calendar month. Querying by cycle bounds ensures segments are split
+    # correctly across the entire billing cycle.
     swaps = RoomSwap.objects.filter(
         booking=booking,
         status=RoomSwap.COMPLETED,
-        effective_date__gte=m_first,
-        effective_date__lte=m_last,
+        effective_date__gte=cycle_start,
+        effective_date__lte=cycle_end,
     ).order_by('effective_date')
 
-    start = booking.joining_date or booking.start_date or booking.created_at.date()
-    end = booking.leaving_date
-    stayed = _overlap_days(start, end, m_first, m_last)
-    if stayed <= 0:
+    if effective_days <= 0 or cycle_days <= 0 or effective_start is None or effective_end is None:
         return 0.0
 
-    days_in_month = (m_last - m_first).days + 1
     resident_rate = ResidentRate.objects.filter(user=u, pg=pg, active=True).first()
     custom_monthly = float(resident_rate.amount) if resident_rate else None
     custom_source = 'Custom rate' if resident_rate else ''
@@ -611,45 +686,54 @@ def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None
         if monthly <= 0:
             return 0.0
 
-        expected = round((monthly * stayed) / days_in_month, 2)
-        actual_start = max(start, m_first)
-        actual_end = min(end or m_last, m_last)
+        # Pro-rate based on payment cycle length (Scenario 1/2/3)
+        expected = round((monthly * effective_days) / cycle_days, 2)
         _add_detail(
             'segment',
             room_no=getattr(room, 'room_no', '—'),
             share_label=share_label,
-            start=actual_start,
-            end=actual_end,
-            days=stayed,
+            start=effective_start,
+            end=effective_end,
+            days=effective_days,
             rate=monthly,
             rate_unit='month',
             amount=expected,
             source=source,
         )
     else:
+        # Handle room swaps within the month
+        # For swaps, we still need to calculate based on the payment cycle
         segments = []
-        period_start = max(start, m_first)
-        period_end = min(end if end else m_last, m_last)
+        
+        # Use cycle_start and cycle_end from payment cycle calculation
+        period_start = effective_start
+        period_end = effective_end
         current_start = period_start
         current_room = None
 
         prior_swaps = RoomSwap.objects.filter(
             booking=booking,
             status=RoomSwap.COMPLETED,
-            effective_date__lt=m_first,
+            effective_date__lt=period_start,
         ).order_by('-effective_date')
 
         if prior_swaps.exists():
-            current_room = prior_swaps.first().to_room
+            current_room = prior_swaps.first().to_room or booking.room
         else:
             first_swap_in_month = swaps.first()
-            current_room = first_swap_in_month.from_room if first_swap_in_month else booking.room
+            current_room = (first_swap_in_month.from_room if first_swap_in_month and getattr(first_swap_in_month, 'from_room', None) else booking.room)
 
         for swap in swaps:
             swap_date = swap.effective_date
+            # normalize datetimes to date objects if necessary
+            if hasattr(swap_date, 'date'):
+                try:
+                    swap_date = swap_date.date()
+                except Exception:
+                    pass
             if current_start < swap_date:
                 segments.append({'start': current_start, 'end': swap_date - timedelta(days=1), 'room': current_room})
-            current_room = swap.to_room
+            current_room = swap.to_room or booking.room
             current_start = swap_date
 
         if current_start <= period_end:
@@ -675,7 +759,8 @@ def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None
             if monthly <= 0:
                 continue
 
-            seg_expected = round((monthly * seg_days) / days_in_month, 2)
+            # Pro-rate based on FULL payment cycle days
+            seg_expected = round((monthly * seg_days) / cycle_days, 2)
             expected += seg_expected
             _add_detail(
                 'segment',
@@ -703,11 +788,16 @@ def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None
     month_marker = (m_first.year, m_first.month)
     today_marker = (today.year, today.month)
 
-    if month_marker > today_marker:
-        return 0.0
+    # For months in the future, compute and return the expected amount so the
+    # UI can display it. Do NOT gate the expected value here — the status
+    # determination (e.g. showing "No Due" until the payment date arrives)
+    # is handled by the status/resolution logic elsewhere.
+    # (Previously we returned 0.0 here which hid expected amounts for future months.)
 
     if payment_anchor:
-        due_day = min(payment_anchor.day, days_in_month)
+        # Calculate due date based on payment_anchor day
+        days_in_current_month = calendar.monthrange(m_first.year, m_first.month)[1]
+        due_day = min(payment_anchor.day, days_in_current_month)
         due_date = date(m_first.year, m_first.month, due_day)
         if month_marker == today_marker and today < due_date:
             return 0.0
@@ -855,6 +945,18 @@ def _collected_for_user_pg_month(u, pg, m_first, m_last) -> float:
 
 def _advance_paid_for_user_pg(u, pg) -> float:
     adv = Payment.objects.filter(user=u, pg=pg, status='success', type='advance').aggregate(total=Sum('amount')).get('total') or 0
+    return float(adv)
+
+
+def _advance_paid_for_user_pg_month(u, pg, m_first: date, m_last: date) -> float:
+    """Return total advance payments (successful) for the user in the given month range.
+
+    This ensures advances are counted only in the month where the payment's transaction
+    date lies (date between m_first and m_last inclusive).
+    """
+    adv = Payment.objects.filter(
+        user=u, pg=pg, status='success', type='advance', date__gte=m_first, date__lte=m_last
+    ).aggregate(total=Sum('amount')).get('total') or 0
     return float(adv)
 
 
@@ -1188,7 +1290,8 @@ def monthly_dashboard(request):
             'joining': earliest_start,
             'leaving': latest_end,
             'whatsapp_phone': digits,
-            'advance': round(_advance_paid_for_user_pg(u, pg), 2),
+            # Advance collected in THIS month only (transaction date within m_first..m_last)
+            'advance': round(_advance_paid_for_user_pg_month(u, pg, m_first, m_last), 2),
             'payment_due_date': payment_due,
             'payment_anchor': payment_anchor,
             'payment_due_day': payment_due_day,
