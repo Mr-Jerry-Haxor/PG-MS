@@ -20,13 +20,14 @@
 <div id="step3BlockBooknow" class="mt-3" style="display:none;">
   <div class="row g-2">
     <div class="col-12 col-lg-8">
-      {% include 'bookings/_application_form_fields.html' with form=form %}
-    </div>
-    <div class="col-12 col-lg-4">
       <div class="mb-2">
         <label class="form-label">Joining Date</label>
         <input type="date" class="form-control" name="joining_date" id="joiningDate" value="{{ joining_date_value|default:'' }}" required {% if has_active %}disabled{% endif %} />
       </div>
+      {% include 'bookings/_application_form_fields.html' with form=form %}
+    </div>
+    <div class="col-12 col-lg-4">
+      
       <div class="text-end mt-3">
         <button type="submit" class="btn btn-primary" id="submitBtnBooknow" {% if has_active %}disabled{% endif %}>
           <span class="spinner-border spinner-border-sm d-none me-1" id="submitSpinnerBooknow" role="status" aria-hidden="true"></span>

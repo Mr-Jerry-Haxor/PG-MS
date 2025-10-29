@@ -102,7 +102,7 @@
   </div>
 
   <div>
-    <div class="fw-semibold mb-1">Payment Date/ Final Joining day</div>
+    <div class="fw-semibold mb-1">Payment Date</div>
     <div class="mb-2">
       <label class="form-label">Preferred Monthly Payment Date (Day of Month)</label>
       <select name="payment_day" id="payment_day" class="form-select" required>
@@ -111,7 +111,7 @@
           <option value="{{ forloop.counter }}"{% if payment_day == forloop.counter %} selected{% endif %}>{{ forloop.counter }}{% if forloop.counter == 1 %}st{% elif forloop.counter == 2 %}nd{% elif forloop.counter == 3 %}rd{% else %}th{% endif %} of the month</option>
         {% endfor %}
       </select>
-      <div class="form-text">This is the date each month when you will pay the PG's monthly fee.</div>
+      <div class="form-text"><strong>Note: This is the date each month when you will pay the PG's monthly fee. and this date might be considered for leaving PG in future.</strong></div>
     </div>
   </div>
 
