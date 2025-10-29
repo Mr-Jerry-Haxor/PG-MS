@@ -10,7 +10,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.html import strip_tags
 
-from bookings.models import Booking
+from bookings.models import Booking, ReferralCredit
 
 from .models import Payment
 
@@ -79,6 +79,41 @@ def _build_receipt_context(payment: Payment) -> dict:
         "If you want to vacate please inform to management before 30 days of your joining date otherwise advance amount will not be refunded.",
     ]
 
+    # Populate joining date for advance receipts and referral info for monthly receipts
+    joining_date_display = ''
+    if payment.type == 'advance' and booking and getattr(booking, 'joining_date', None):
+        joining_date_display = booking.joining_date.strftime('%d %b %Y')
+
+    # Determine month key to look up redeemed referral credits.
+    # Only use explicit `from_date` on the payment as the canonical billing month.
+    # This avoids matching credits when a payment's transaction date falls in a different month.
+    month_key = None
+    if payment.from_date:
+        month_key = payment.from_date.replace(day=1)
+
+    referral_applied = []
+    referral_total = 0
+    # Only include referral credits on monthly ('fee') receipts for the matching month.
+    # Require an explicit `from_date` (billing month) on the payment to avoid accidental matches
+    if payment.type == 'fee' and month_key and pg:
+        credits_qs = ReferralCredit.objects.filter(pg=pg, redeemed_for_month=month_key, redeemed_on__isnull=False).select_related('referrer_user', 'referred_user', 'referrer_booking', 'referred_booking')
+        for c in credits_qs:
+            referrer_name = ''
+            try:
+                ref_user = c.referrer_user
+                referrer_name = (ref_user.get_full_name() or '').strip() or getattr(ref_user, 'email', '') or str(ref_user)
+            except Exception:
+                referrer_name = ''
+            referral_applied.append({
+                'id': c.id,
+                'referrer_name': referrer_name,
+                'amount': f"{c.amount:.2f}" if c.amount is not None else '0.00',
+                'redeemed_amount': f"{(c.redeemed_amount or c.amount or 0):.2f}",
+                'referred_user': getattr(getattr(c, 'referred_user', None), 'email', '') or '',
+                'notes': c.notes or '',
+            })
+            referral_total += float(c.redeemed_amount or c.amount or 0)
+
     return {
         'pg_name': getattr(pg, 'name', '') or 'PG',
         'pg_address_lines': pg_address_lines,
@@ -93,6 +128,10 @@ def _build_receipt_context(payment: Payment) -> dict:
         'from_date': from_date_display,
         'to_date': to_date_display,
         'show_period': show_period,
+        'joining_date': joining_date_display,
+        'referral_applied': referral_applied,
+        'referral_total': f"{referral_total:.2f}",
+        'payment_type': getattr(payment, 'type', ''),
         'note_lines': note_lines,
         'signature_label': 'Signature',
         'payment_notes': payment.notes or '',

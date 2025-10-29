@@ -193,14 +193,19 @@
                     <td>{% if row.receipt.room_number %}{{ row.receipt.room_number }}{% else %}—{% endif %}</td>
                   </tr>
                   <tr>
-                    <td>Payment Date</td>
+                    <td>Date of Transaction</td>
                     <td>{{ row.receipt.payment_date }}</td>
                   </tr>
                   <tr>
                     <td>Mode of Payment</td>
                     <td>{{ row.receipt.payment_mode_label }}</td>
                   </tr>
-                  {% if row.receipt.show_period %}
+                  {% if row.payment.type == 'advance' %}
+                  <tr>
+                    <td>Joining Date</td>
+                    <td>{% if row.receipt.joining_date %}{{ row.receipt.joining_date }}{% else %}—{% endif %}</td>
+                  </tr>
+                  {% elif row.receipt.show_period %}
                   <tr>
                     <td>From Date</td>
                     <td>{% if row.receipt.from_date %}{{ row.receipt.from_date }}{% else %}—{% endif %}</td>
@@ -221,6 +226,32 @@
                   </tr>
                   {% endif %}
                 </table>
+
+                {% if row.payment.type == 'fee' and row.receipt.referral_applied and row.receipt.referral_applied|length > 0 %}
+                  <div class="receipt-section-title" style="margin-top:1rem;">Referral Credits Applied</div>
+                  <table class="receipt-details" role="presentation">
+                    <tbody>
+                      {% for c in row.receipt.referral_applied %}
+                        <tr>
+                          <td>Referrer</td>
+                          <td>{{ c.referrer_name }}{% if c.referred_user %} (referred: {{ c.referred_user }}){% endif %}</td>
+                        </tr>
+                        <tr>
+                          <td>Credit Amount</td>
+                          <td>₹ {{ c.amount }}</td>
+                        </tr>
+                        <tr>
+                          <td>Applied / Redeemed</td>
+                          <td>₹ {{ c.redeemed_amount }}{% if c.notes %} · {{ c.notes }}{% endif %}</td>
+                        </tr>
+                      {% endfor %}
+                      <tr>
+                        <td><strong>Total Applied</strong></td>
+                        <td class="text-success">-₹ {{ row.receipt.referral_total }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                {% endif %}
 
                 <div class="amount-highlight">
                   <span>Amount Paid</span>

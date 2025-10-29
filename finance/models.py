@@ -33,7 +33,7 @@ class Payment(TimeStampedModel):
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='payments')
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='payments')
 	amount = models.DecimalField(max_digits=10, decimal_places=2)
-	date = models.DateField()
+	date = models.DateField(help_text="This date is referred to as the payment date or transaction date.")
 	status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='success')
 	mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='upi')
 	type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='fee')

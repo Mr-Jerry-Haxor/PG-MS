@@ -929,9 +929,14 @@ def expenditure_export_pdf(request):
 
 def _collected_for_user_pg_month(u, pg, m_first, m_last) -> float:
     # Count rent/fee payments for the selected month
-    p_sum = Payment.objects.filter(
-        user=u, pg=pg, status='success', type='fee', date__gte=m_first, date__lte=m_last
-    ).aggregate(total=Sum('amount')).get('total') or 0
+    # Prefer the payment.from_date (canonical billing month) when set so that
+    # payments made earlier but intended for the next billing month are
+    # attributed to that month. Fall back to payment.date only when
+    # from_date is null to avoid double-counting the same payment.
+    p_qs = Payment.objects.filter(user=u, pg=pg, status='success', type='fee').filter(
+        Q(from_date__gte=m_first, from_date__lte=m_last) | Q(from_date__isnull=True, date__gte=m_first, date__lte=m_last)
+    )
+    p_sum = p_qs.aggregate(total=Sum('amount')).get('total') or 0
     
     # Also include credit adjustments as collected (waivers/discounts reduce what's owed)
     # Note: deposit_deduction is NOT included as it's a separate deduction from security deposit
