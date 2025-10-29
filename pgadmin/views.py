@@ -176,6 +176,21 @@ def booking_leave_direct(request, booking_id: int) -> JsonResponse:
     # Otherwise, treat as a leave request (existing behavior)
     update_fields = ['leaving_date']
     booking.leaving_date = leaving_date
+    # Capture optional leaving reason submitted by PG admin
+    leaving_reason = (request.POST.get('leaving_reason') or '').strip()
+    if leaving_reason:
+        booking.leaving_reason = leaving_reason
+        update_fields.append('leaving_reason')
+
+    # Ask whether advance is eligible (checkbox on modal). Default behavior in UI is checked.
+    advance_eligible = request.POST.get('advance_eligible') == 'on'
+    booking.advance_eligible = bool(advance_eligible)
+    update_fields.append('advance_eligible')
+
+    # Record that a leave was initiated by PG admin now
+    booking.leaving_initiated_at = timezone.localtime(timezone.now())
+    update_fields.append('leaving_initiated_at')
+
     if booking.leaving_confirmed_date:
         booking.leaving_confirmed_date = None
         update_fields.append('leaving_confirmed_date')
