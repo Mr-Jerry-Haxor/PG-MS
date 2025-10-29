@@ -196,7 +196,18 @@
               {% endif %}
             </td>
             <td>{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% else %}—{% endif %}</td>
-            <td class="col-advance nowrap" title="One-time advance (not monthly)">₹ {{ r.advance|default:'0.00' }}</td>
+            <td class="col-advance nowrap" title="Advance total for this user">
+              {% if r.advance_details_html %}
+                {# Icon: filled green when there is advance collected in the displayed month, filled blue when only older advances exist #}
+                <a tabindex="0" class="expected-breakdown d-inline-flex align-items-center me-1" role="button" data-bs-toggle="popover" data-breakdown-target="{{ r.advance_breakdown_id }}" data-bs-html="true" data-bs-trigger="focus" aria-label="Advance details for {{ r.user.first_name }} {{ r.user.last_name }}">
+                  <span class="badge {% if r.advance and r.advance > 0 %}bg-success{% else %}bg-primary{% endif %} text-white" style="border-radius:50%;padding:.28rem .45rem;font-size:.75rem;line-height:1">i</span>
+                </a>
+              {% endif %}
+              <span>₹ {{ r.advance_total|default:'0.00' }}</span>
+              {% if r.advance_details_html %}
+                <div id="{{ r.advance_breakdown_id }}" class="d-none">{% autoescape off %}{{ r.advance_details_html }}{% endautoescape %}</div>
+              {% endif %}
+            </td>
             <td>
               <span class="nowrap expected-breakdown d-inline-flex align-items-center" role="button" tabindex="0"
                     data-bs-toggle="popover"

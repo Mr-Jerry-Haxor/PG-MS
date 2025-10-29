@@ -1265,6 +1265,45 @@ def monthly_dashboard(request):
         expected_breakdown_html = format_html_join('', '{}', ((p,) for p in parts))
         expected_breakdown_id = f"expected-breakdown-{u.id}"
 
+        # Build advance payment details (all successful advances for this user in this PG)
+        adv_qs = Payment.objects.filter(user=u, pg=pg, status='success', type='advance').order_by('date')
+        adv_items = []
+        adv_total_all = 0.0
+        for adv in adv_qs:
+            try:
+                amt = float(adv.amount or 0.0)
+            except Exception:
+                amt = 0.0
+            adv_total_all += amt
+            adv_date = getattr(adv, 'date', None)
+            date_label = adv_date.strftime('%d %b %Y') if adv_date else (getattr(adv, 'created_at', None) and adv.created_at.strftime('%d %b %Y')) or '—'
+            # Gather meta: mode, reference/txn id, notes
+            mode_val = (getattr(adv, 'mode', None) or '')
+            txn_val = (getattr(adv, 'reference', None) or getattr(adv, 'txn_id', None) or '')
+            notes_val = (getattr(adv, 'notes', None) or '')
+            meta_parts = []
+            if mode_val:
+                meta_parts.append(str(mode_val))
+            if txn_val:
+                meta_parts.append(f"Txn: {txn_val}")
+            if notes_val:
+                # Truncate long notes for popover preview
+                meta_parts.append(str(notes_val)[:160])
+            meta_html = ' • '.join(meta_parts)
+            amount_display = f"{amt:.2f}"
+            # Link to payment edit/view if URL name exists
+            try:
+                pay_url = reverse('payments_edit', args=[adv.id])
+                link_html = format_html(' <a href="{}" target="_blank" class="ms-2">View</a>', pay_url)
+            except Exception:
+                link_html = format_html('')
+            if meta_html:
+                adv_items.append(format_html('<li><strong>{}</strong>: ₹{} <span class="small text-secondary">{}</span> {}</li>', date_label, amount_display, meta_html, link_html))
+            else:
+                adv_items.append(format_html('<li><strong>{}</strong>: ₹{} {}</li>', date_label, amount_display, link_html))
+        advance_breakdown_html = format_html_join('', '{}', ((line,) for line in adv_items)) if adv_items else format_html('')
+        advance_breakdown_id = f"advance-breakdown-{u.id}"
+
         # Pick joining as earliest start in month; leaving as latest end if present
         earliest_start = min((seg['start'] or m_first) for seg in segs)
         latest_end = None
@@ -1292,6 +1331,10 @@ def monthly_dashboard(request):
             'whatsapp_phone': digits,
             # Advance collected in THIS month only (transaction date within m_first..m_last)
             'advance': round(_advance_paid_for_user_pg_month(u, pg, m_first, m_last), 2),
+            # Advance total (all successful advance payments for this user in this PG)
+            'advance_total': round(adv_total_all, 2),
+            'advance_details_html': advance_breakdown_html,
+            'advance_breakdown_id': advance_breakdown_id,
             'payment_due_date': payment_due,
             'payment_anchor': payment_anchor,
             'payment_due_day': payment_due_day,
@@ -2997,6 +3040,11 @@ def monthly_quick_payment(request):
     if not to_date_val:
         # final guard: ensure to_date always present
         _, to_date_val = _billing_period_from_payment_date(pay_date)
+
+    # If payment type is 'advance', ignore any posted billing from/to (server authoritative)
+    if ptype == 'advance':
+        from_date_val = None
+        to_date_val = None
 
     # Create Payment (success by default)
     try:
