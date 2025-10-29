@@ -12,7 +12,8 @@
     #monthPicker { width: 100% !important; }
     .table thead th.sticky-sm { position: sticky; top: 0; background: #fff; z-index: 1; }
   /* Hide less-critical columns on XS but keep room visible */
-  .col-advance, .col-status, .col-actions { display: none; }
+  /* Keep all columns visible on small screens to match desktop layout */
+  .col-advance, .col-status, .col-actions { display: table-cell; }
   /* Make room column compact on mobile */
   .col-room { display: table-cell; min-width: 48px; width: 56px; }
   .col-room { font-size: .75rem; }
@@ -197,13 +198,14 @@
             <td>{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% else %}—{% endif %}</td>
             <td class="col-advance nowrap" title="One-time advance (not monthly)">₹ {{ r.advance|default:'0.00' }}</td>
             <td>
-              <span class="nowrap expected-breakdown" role="button" tabindex="0"
+              <span class="nowrap expected-breakdown d-inline-flex align-items-center" role="button" tabindex="0"
                     data-bs-toggle="popover"
                     data-breakdown-target="{{ r.expected_breakdown_id }}"
                     data-breakdown-title="Expected breakdown"
                     data-expected-summary="{{ r.expected_tip|escape }}"
                     title="{{ r.expected_tip|escape }}"
                     aria-label="Expected breakdown for {{ r.user.first_name }} {{ r.user.last_name }}">
+                <span class="badge bg-light text-primary border border-primary me-1" style="border-radius:50%;padding:.12rem .4rem;font-size:.7rem;line-height:1">i</span>
                 ₹ {{ r.expected }}
               </span>
               {% if r.segments and r.segments|length > 1 %}
@@ -420,17 +422,28 @@
           </div>
           <div class="row g-2 mt-2">
             <div class="col-12 col-sm-4">
-              <label class="form-label small">Payment Date</label>
+              <label class="form-label small">Transaction Date</label>
               <input type="date" class="form-control" name="date" id="qp_date" value="{% now 'Y-m-d' %}">
             </div>
-            <div class="col-12 col-sm-4">
+            <div class="col-12 col-sm-4" id="qp_from_col">
               <label class="form-label small">From Date</label>
-              <input type="date" class="form-control" name="from_date" id="qp_from_date">
+              <input type="date" class="form-control" name="from_date" id="qp_from_date" readonly>
             </div>
-            <div class="col-12 col-sm-4">
+            <div class="col-12 col-sm-4" id="qp_to_col">
               <label class="form-label small">To Date</label>
-              <input type="date" class="form-control" name="to_date" id="qp_to_date">
-              <div class="form-text">Auto-updates from the payment date; adjust if needed.</div>
+              <input type="date" class="form-control" name="to_date" id="qp_to_date" readonly>
+              <div class="form-text">Auto-populated from the payment cycle.</div>
+            </div>
+          </div>
+          <div class="row g-2 mt-2 align-items-center">
+            <div class="col-6 d-flex align-items-center">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="qp_override_billing">
+                <label class="form-check-label small ms-2" for="qp_override_billing">Override billing period</label>
+              </div>
+            </div>
+            <div class="col-6 text-end">
+              <div class="small text-secondary" id="qp_cycle_label"></div>
             </div>
           </div>
           <div class="row g-2 mt-2">
@@ -905,35 +918,111 @@
   roomLabel.textContent = parts.join(' • ');
         var amtInput = document.getElementById('qp_amount');
         var toggle = document.getElementById('qp_toggle_edit');
-        amtInput.value = amt; amtInput.readOnly = true; toggle.checked = false;
+        // Capture expected amount (from dataset) to use when type == 'fee'
+        var expectedAmt = parseFloat((this.dataset.expected || '') || (this.dataset.pending || '') || '0') || 0;
+        // Initialize amount UI; actual value will depend on the payment type below
+        amtInput.readOnly = true;
+        toggle.checked = false;
         // Overwrite any previous handler to avoid duplicates
         toggle.onchange = function(){
           amtInput.readOnly = !this.checked;
           if (!this.checked) {
-            amtInput.value = amt; // reset to pending when locking
+            // If locking amount, when type is fee we prefer expectedAmt, else preserve pending
+            var curType = (typeSelect ? String(typeSelect.value || '').toLowerCase() : 'fee');
+            if (curType === 'fee') amtInput.value = (expectedAmt || 0).toFixed(2);
+            else amtInput.value = amt; // reset to pending when locking for advance/fallback
           }
         };
           var dateInput = document.getElementById('qp_date');
+          var fromCol = document.getElementById('qp_from_col');
+          var toCol = document.getElementById('qp_to_col');
+          var typeSelect = document.getElementById('qp_type');
+          var overrideCheckbox = document.getElementById('qp_override_billing');
+          var fromInput = document.getElementById('qp_from_date');
+          var toInput = document.getElementById('qp_to_date');
+          // Transaction date defaults to today (editable)
           if (dateInput) {
-            var assignedDue = (this.dataset.dueDate || '').trim();
-            if (assignedDue) {
-              dateInput.value = assignedDue;
+            dateInput.value = todayIsoDate();
+          }
+          // Determine billing-period base: prefer the user's configured due date
+          // (if available on the chip) so From/To reflect the payment cycle.
+          var assignedDue = (this.dataset.dueDate || '').trim();
+          var modalPeriodBase = assignedDue || (dateInput ? dateInput.value : '');
+          // Populate From/To initially from the modal base
+          updateQuickPayBillingPeriod(modalPeriodBase);
+
+          // Ensure From/To are readonly by default; override enables editing
+          if (fromInput) fromInput.readOnly = true;
+          if (toInput) toInput.readOnly = true;
+          if (overrideCheckbox) overrideCheckbox.checked = false;
+          if (overrideCheckbox) {
+            overrideCheckbox.onchange = function(){
+              var editable = this.checked;
+              if (fromInput) fromInput.readOnly = !editable;
+              if (toInput) toInput.readOnly = !editable;
+              // If override is turned off, restore the billing-period values
+              // (overwrite any manual edits) so the modal reflects the
+              // canonical billing cycle when not overridden.
+              if (!editable) {
+                updateQuickPayBillingPeriod(modalPeriodBase);
+              }
+            };
+          }
+
+          // Hide/show From/To when type == 'advance'
+          function applyTypeVisibility(t) {
+            if (!fromCol || !toCol) return;
+            var isAdvance = String(t || '').toLowerCase() === 'advance';
+            if (isAdvance) {
+              fromCol.style.display = 'none';
+              toCol.style.display = 'none';
+              // clear values to represent null
+              if (fromInput) fromInput.value = '';
+              if (toInput) toInput.value = '';
             } else {
-              dateInput.value = todayIsoDate();
+              fromCol.style.display = '';
+              toCol.style.display = '';
+              // When revealing From/To again, repopulate them if not overridden
+              if (fromInput && toInput) {
+                if (overrideCheckbox) {
+                  if (!overrideCheckbox.checked) updateQuickPayBillingPeriod(modalPeriodBase);
+                } else {
+                  // No override control present: ensure fields populated
+                  if (!fromInput.value || !toInput.value) updateQuickPayBillingPeriod(modalPeriodBase);
+                }
+              }
             }
-            updateQuickPayBillingPeriod(dateInput.value);
+          }
+          // Amount behavior when type changes: for Advance -> empty & editable; for Fee -> expected & locked
+          function applyAmountBehavior(t) {
+            var isAdvance = String(t || '').toLowerCase() === 'advance';
+            if (isAdvance) {
+              // clear amount and enable editing
+              if (amtInput) amtInput.value = '';
+              if (toggle) { toggle.checked = true; amtInput.readOnly = false; }
+            } else {
+              // fill expected amount and lock editing
+              if (amtInput) amtInput.value = (expectedAmt || 0).toFixed(2);
+              if (toggle) { toggle.checked = false; amtInput.readOnly = true; }
+            }
+          }
+          // initialize visibility based on current selection
+          if (typeSelect) {
+            applyTypeVisibility(typeSelect.value);
+            applyAmountBehavior(typeSelect.value);
+            // ensure changes to type while modal is open update visibility and amount behavior
+            typeSelect.onchange = function(){ applyTypeVisibility(this.value); applyAmountBehavior(this.value); };
           }
         qpModal.show();
       });
     });
 
+    // Decoupled: changing the Transaction Date should not automatically
+    // update the billing From/To fields. From/To are populated when the
+    // quick-pay modal opens (based on assigned due date or the current
+    // transaction date at open time). Keep a reference to the input
+    // if needed for future enhancements.
     var qpDateInput = document.getElementById('qp_date');
-    if (qpDateInput) {
-      qpDateInput.addEventListener('change', function(){
-        updateQuickPayBillingPeriod(this.value);
-      });
-      updateQuickPayBillingPeriod(qpDateInput.value);
-    }
 
     // Confirm before submit
     // Toast helper
