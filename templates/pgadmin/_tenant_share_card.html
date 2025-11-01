@@ -514,7 +514,7 @@ Expects context variables:
                     <p class="mb-2">Select the resident's last day in the PG. The request will remain pending until confirmed from the leaving page.</p>
                     <label class="form-label" for="leaveDate{{ sd.booking.id }}">Leaving date</label>
                     <input type="date" class="form-control" id="leaveDate{{ sd.booking.id }}" name="leaving_date" required />
-                    <div class="form-text">Once confirmed, the bed becomes vacant from the selected date.</div>
+                    <div class="form-text">Once confirmed, the bed becomes vacant from the selected date. Past dates are allowed for record-keeping.</div>
                     <div class="mt-3">
                       <label class="form-label">Reason (optional)</label>
                       <textarea class="form-control" name="leaving_reason" rows="2" placeholder="Optional: note why the leave was requested by admin"></textarea>
@@ -528,6 +528,13 @@ Expects context variables:
                       <div class="form-check mt-2">
                         <input class="form-check-input leave-cancel-confirm" type="checkbox" id="leaveCancelConfirm{{ sd.booking.id }}">
                         <label class="form-check-label small" for="leaveCancelConfirm{{ sd.booking.id }}">I understand and want to cancel this booking.</label>
+                      </div>
+                    </div>
+                    <div class="alert alert-warning mt-3 d-none leave-past-warning" id="leavePastWarning{{ sd.booking.id }}">
+                      <strong>Warning:</strong> You are setting a past leave date. This may affect billing and records.
+                      <div class="form-check mt-2">
+                        <input class="form-check-input leave-past-confirm" type="checkbox" id="leavePastConfirm{{ sd.booking.id }}">
+                        <label class="form-check-label small" for="leavePastConfirm{{ sd.booking.id }}">I acknowledge this is a past date and understand the implications.</label>
                       </div>
                     </div>
                   </div>

@@ -344,12 +344,23 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <label class="form-label" for="newLeaveDateInput">Leave Date</label>
         <input type="date" class="form-control" id="newLeaveDateInput">
+        <div class="form-text">Past dates are allowed for record-keeping purposes.</div>
         <input type="hidden" id="editBookingId">
+        <input type="hidden" id="originalLeaveDate">
+        
+        <div class="alert alert-warning mt-3 d-none" id="editPastWarning">
+          <strong>Warning:</strong> You are changing to a past leave date. This may affect billing and records.
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="editPastConfirm">
+            <label class="form-check-label small" for="editPastConfirm">I acknowledge this is a past date and understand the implications.</label>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="saveLeaveDate()">Save</button>
+        <button type="button" class="btn btn-primary" id="saveEditLeaveDateBtn" onclick="saveLeaveDate()">Save</button>
       </div>
     </div>
   </div>
@@ -457,24 +468,87 @@ function rejectLeave(bookingId) {
 
 function editLeaveDate(bookingId, currentDate) {
   document.getElementById('editBookingId').value = bookingId;
+  document.getElementById('originalLeaveDate').value = currentDate;
   document.getElementById('newLeaveDateInput').value = currentDate;
-  document.getElementById('newLeaveDateInput').min = new Date().toISOString().split('T')[0];
+  // Remove min date restriction - allow past dates for PG admin
+  document.getElementById('newLeaveDateInput').removeAttribute('min');
+  
+  // Reset warnings
+  const pastWarning = document.getElementById('editPastWarning');
+  const pastConfirm = document.getElementById('editPastConfirm');
+  const saveBtn = document.getElementById('saveEditLeaveDateBtn');
+  if (pastWarning) pastWarning.classList.add('d-none');
+  if (pastConfirm) pastConfirm.checked = false;
+  if (saveBtn) saveBtn.disabled = false;
+  
+  // Add change listener for past date warning
+  const dateInput = document.getElementById('newLeaveDateInput');
+  dateInput.addEventListener('change', function() {
+    updateEditPastWarning(currentDate);
+  });
   
   const modal = new bootstrap.Modal(document.getElementById('editLeaveDateModal'));
   modal.show();
 }
 
+function updateEditPastWarning(originalDate) {
+  const newDate = document.getElementById('newLeaveDateInput').value;
+  const pastWarning = document.getElementById('editPastWarning');
+  const pastConfirm = document.getElementById('editPastConfirm');
+  const saveBtn = document.getElementById('saveEditLeaveDateBtn');
+  
+  if (!newDate) {
+    if (pastWarning) pastWarning.classList.add('d-none');
+    if (pastConfirm) pastConfirm.checked = false;
+    if (saveBtn) saveBtn.disabled = false;
+    return;
+  }
+  
+  const today = new Date().toISOString().split('T')[0];
+  const newDateObj = new Date(newDate);
+  const todayObj = new Date(today);
+  const originalDateObj = originalDate ? new Date(originalDate) : todayObj;
+  
+  // Show warning if changing FROM current/future TO past
+  const isPast = newDateObj < todayObj;
+  const wasCurrentOrFuture = originalDateObj >= todayObj;
+  
+  if (isPast && wasCurrentOrFuture) {
+    if (pastWarning) pastWarning.classList.remove('d-none');
+    if (pastConfirm) pastConfirm.checked = false;
+    if (saveBtn) saveBtn.disabled = true;
+  } else {
+    if (pastWarning) pastWarning.classList.add('d-none');
+    if (pastConfirm) pastConfirm.checked = false;
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
 function saveLeaveDate() {
   const bookingId = document.getElementById('editBookingId').value;
   const newDate = document.getElementById('newLeaveDateInput').value;
+  const pastWarning = document.getElementById('editPastWarning');
+  const pastConfirm = document.getElementById('editPastConfirm');
   
   if (!newDate) {
     alert('Please select a date');
     return;
   }
   
+  // Check if past date warning is shown and not confirmed
+  if (pastWarning && !pastWarning.classList.contains('d-none')) {
+    if (!pastConfirm || !pastConfirm.checked) {
+      alert('Please acknowledge the past date warning to proceed');
+      return;
+    }
+  }
+  
   const formData = new FormData();
   formData.append('new_date', newDate);
+  // If past-date acknowledgement was required, include it so server-side can validate as well
+  if (pastWarning && !pastWarning.classList.contains('d-none') && pastConfirm && pastConfirm.checked) {
+    formData.append('past_ack', '1');
+  }
   
   fetch(`/pg/leave/${bookingId}/edit-date/`, {
     method: 'POST',
@@ -740,6 +814,20 @@ function submitReContinue(bookingId) {
 
 // Event listeners for buttons with data attributes
 document.addEventListener('DOMContentLoaded', function() {
+  // Past date confirmation checkbox for edit modal
+  const editPastConfirm = document.getElementById('editPastConfirm');
+  if (editPastConfirm) {
+    editPastConfirm.addEventListener('change', function() {
+      const saveBtn = document.getElementById('saveEditLeaveDateBtn');
+      if (saveBtn) {
+        const pastWarning = document.getElementById('editPastWarning');
+        if (pastWarning && !pastWarning.classList.contains('d-none')) {
+          saveBtn.disabled = !this.checked;
+        }
+      }
+    });
+  }
+  
   // Edit leave date buttons
   document.querySelectorAll('.edit-leave-date-btn').forEach(btn => {
     btn.addEventListener('click', function() {

@@ -157,9 +157,9 @@ document.addEventListener('DOMContentLoaded', function(){
         joiningDate.setAttribute('min', localYYYYMMDD(today));
         joiningDate.setAttribute('max', localYYYYMMDD(maxDate));
       } else {
-        // Past 7 days to next 7 days from current date
+        // Past 7 years to next 7 days from current date
         const minDate = new Date(today);
-        minDate.setDate(minDate.getDate() - 365); // Allow past 365 days
+        minDate.setDate(minDate.getDate() - (365 * 7)); // Allow past 7 years (2555 days)
         joiningDate.setAttribute('min', localYYYYMMDD(minDate));
         joiningDate.setAttribute('max', localYYYYMMDD(maxDate));
       }

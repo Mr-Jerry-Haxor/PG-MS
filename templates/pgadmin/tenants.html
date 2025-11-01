@@ -502,70 +502,116 @@
         if (!input) return;
         const joinDate = modal.dataset.joinDate || '';
         const todayStr = modal.dataset.today || new Date().toISOString().slice(0,10);
-        let minDate = todayStr;
-        if (joinDate && joinDate > minDate) minDate = joinDate;
-        if (minDate) input.setAttribute('min', minDate);
+        // Remove min date restriction - allow past dates for PG admin
+        input.removeAttribute('min');
         const defaultDate = modal.dataset.defaultDate;
-        input.value = defaultDate || input.value || minDate || todayStr;
+        input.value = defaultDate || input.value || todayStr;
       });
       // Additional logic: if the booking has a future joining date, show a clear
       // warning when the selected leaving date equals the joining date because
       // the server treats that case as a cancellation (deletes the booking).
+      // Also show warning when selecting past dates.
       const joinDate = modal.dataset.joinDate || '';
       const todayStr = modal.dataset.today || new Date().toISOString().slice(0,10);
       const leaveInput = modal.querySelector('input[name="leaving_date"]');
-      const warning = modal.querySelector('.leave-cancel-warning');
+      const cancelWarning = modal.querySelector('.leave-cancel-warning');
+      const pastWarning = modal.querySelector('.leave-past-warning');
       const confirmCheckbox = modal.querySelector('.leave-cancel-confirm');
+      const pastConfirmCheckbox = modal.querySelector('.leave-past-confirm');
       const submitBtn = modal.querySelector('button[type="submit"]');
+      const defaultDate = modal.dataset.defaultDate || '';
 
-      function updateCancelWarning() {
+      function updateWarnings() {
         if (!leaveInput) return;
         const val = leaveInput.value;
-        if (!val || !joinDate) {
-          if (warning) warning.classList.add('d-none');
+        if (!val) {
+          if (cancelWarning) cancelWarning.classList.add('d-none');
+          if (pastWarning) pastWarning.classList.add('d-none');
           if (confirmCheckbox) confirmCheckbox.checked = false;
+          if (pastConfirmCheckbox) pastConfirmCheckbox.checked = false;
           if (submitBtn) submitBtn.disabled = false;
           return;
         }
-        // if selected date equals joining date and joining date is in the future,
-        // show warning and require explicit checkbox confirmation to proceed
+        
+        let showCancelWarning = false;
+        let showPastWarning = false;
+        
         try {
           const sel = new Date(val);
-          const jd = new Date(joinDate);
           const today = new Date(todayStr);
-          const isEqual = sel.toISOString().slice(0,10) === jd.toISOString().slice(0,10);
-          const joinInFuture = jd > today;
-          if (isEqual && joinInFuture) {
-            if (warning) {
-              const span = warning.querySelector('.join-date-text');
-              if (span) span.textContent = joinDate;
-              warning.classList.remove('d-none');
+          
+          // Check if joining date cancellation warning needed
+          if (joinDate) {
+            const jd = new Date(joinDate);
+            const isEqual = sel.toISOString().slice(0,10) === jd.toISOString().slice(0,10);
+            const joinInFuture = jd > today;
+            if (isEqual && joinInFuture) {
+              showCancelWarning = true;
             }
-            if (confirmCheckbox) confirmCheckbox.checked = false;
-            if (submitBtn) submitBtn.disabled = true;
-            return;
+          }
+          
+          // Check if past date warning needed (only if changing FROM current/future TO past)
+          const isPast = sel < today;
+          const wasCurrentOrFuture = !defaultDate || new Date(defaultDate) >= today;
+          if (isPast && wasCurrentOrFuture) {
+            showPastWarning = true;
           }
         } catch (e) {
           // ignore parse errors
         }
-        if (warning) warning.classList.add('d-none');
-        if (confirmCheckbox) confirmCheckbox.checked = false;
-        if (submitBtn) submitBtn.disabled = false;
+        
+        // Show/hide cancel warning
+        if (showCancelWarning) {
+          if (cancelWarning) {
+            const span = cancelWarning.querySelector('.join-date-text');
+            if (span) span.textContent = joinDate;
+            cancelWarning.classList.remove('d-none');
+          }
+          if (confirmCheckbox) confirmCheckbox.checked = false;
+        } else {
+          if (cancelWarning) cancelWarning.classList.add('d-none');
+          if (confirmCheckbox) confirmCheckbox.checked = false;
+        }
+        
+        // Show/hide past date warning
+        if (showPastWarning) {
+          if (pastWarning) pastWarning.classList.remove('d-none');
+          if (pastConfirmCheckbox) pastConfirmCheckbox.checked = false;
+        } else {
+          if (pastWarning) pastWarning.classList.add('d-none');
+          if (pastConfirmCheckbox) pastConfirmCheckbox.checked = false;
+        }
+        
+        // Update submit button state
+        if (submitBtn) {
+          const cancelNeedsConfirm = showCancelWarning && (!confirmCheckbox || !confirmCheckbox.checked);
+          const pastNeedsConfirm = showPastWarning && (!pastConfirmCheckbox || !pastConfirmCheckbox.checked);
+          submitBtn.disabled = cancelNeedsConfirm || pastNeedsConfirm;
+        }
       }
 
-      // when the checkbox is toggled, enable/disable submit
+      // when the checkboxes are toggled, update submit button state
       if (confirmCheckbox) {
         confirmCheckbox.addEventListener('change', function(){
           if (!submitBtn) return;
-          submitBtn.disabled = !this.checked;
+          const pastNeedsConfirm = pastWarning && !pastWarning.classList.contains('d-none') && (!pastConfirmCheckbox || !pastConfirmCheckbox.checked);
+          submitBtn.disabled = !this.checked || pastNeedsConfirm;
+        });
+      }
+      
+      if (pastConfirmCheckbox) {
+        pastConfirmCheckbox.addEventListener('change', function(){
+          if (!submitBtn) return;
+          const cancelNeedsConfirm = cancelWarning && !cancelWarning.classList.contains('d-none') && (!confirmCheckbox || !confirmCheckbox.checked);
+          submitBtn.disabled = !this.checked || cancelNeedsConfirm;
         });
       }
 
       // when date changes, update warning state
-      if (leaveInput) leaveInput.addEventListener('change', updateCancelWarning);
+      if (leaveInput) leaveInput.addEventListener('change', updateWarnings);
 
       // initialize once
-      updateCancelWarning();
+      updateWarnings();
       modal.dataset.leaveInit = '1';
     }
     function initSwapModal(modal){

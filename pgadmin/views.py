@@ -4433,8 +4433,15 @@ def edit_leave_date(request, booking_id):
     except:
         return JsonResponse({'error': 'Invalid date format'}, status=400)
     
+    # Allow past dates for record-keeping, but require explicit acknowledgement
+    # when changing from a current/future leaving date to a past date.
     if new_date < date.today():
-        return JsonResponse({'error': 'Date cannot be in the past'}, status=400)
+        old_date = booking.leaving_date
+        # If the original leaving date was today or in the future, require an explicit acknowledgement
+        if old_date and old_date >= date.today():
+            if request.POST.get('past_ack') != '1':
+                return JsonResponse({'error': 'Past date acknowledgement required'}, status=400)
+        # otherwise (editing an already-past date or no prior date) allow the change
     
     # Recalculate advance eligibility
     if booking.leaving_initiated_at:

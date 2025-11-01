@@ -500,8 +500,8 @@ def handle_booknow_booking(request, pg, has_active, context):
     else:
         # Book Now: joining date validation based on PG settings
         if getattr(pg, 'past_joining_date_allowed', False):
-            # Allow past dates (up to 365 days in the past) to 7 days in the future
-            min_date = today - timedelta(days=365)
+            # Allow past dates (up to 7 years in the past) to 7 days in the future
+            min_date = today - timedelta(days=365*7)  # 7 years back
             max_date = today + timedelta(days=7)
             if joining_date < min_date or joining_date > max_date:
                 errors.append(f'For Book Now, joining date must be between {min_date} and {max_date}.')
