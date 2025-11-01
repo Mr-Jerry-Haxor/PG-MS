@@ -262,9 +262,9 @@
             
             <!-- Reason Modal -->
             {% if booking.leaving_reason %}
-            <div class="modal fade" id="reasonModal{{ booking.id }}" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="true">
+            <div class="modal fade" id="reasonModal{{ booking.id }}" tabindex="-1" data-bs-backdrop="true" data-bs-keyboard="true">
               <div class="modal-dialog">
-                <div class="modal-content" style="z-index: 1052;">
+                <div class="modal-content">
                   <div class="modal-header">
                     <h5 class="modal-title">Leave Reason - {{ booking.user.get_full_name }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -281,9 +281,9 @@
             {% endif %}
 
             {% if booking.leaving_confirmed_date %}
-            <div class="modal fade" id="deleteModal{{ booking.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ booking.id }}" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="true">
+            <div class="modal fade" id="deleteModal{{ booking.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ booking.id }}" aria-hidden="true" data-bs-backdrop="true" data-bs-keyboard="true">
               <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content" style="z-index: 1052;">
+                <div class="modal-content">
                   <div class="modal-header">
                     <h5 class="modal-title" id="deleteModalLabel{{ booking.id }}">Delete Resident Data</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -336,9 +336,9 @@
 </div>
 
 <!-- Edit Leave Date Modal -->
-<div class="modal fade" id="editLeaveDateModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="true">
+<div class="modal fade" id="editLeaveDateModal" tabindex="-1" data-bs-backdrop="true" data-bs-keyboard="true">
   <div class="modal-dialog">
-    <div class="modal-content" style="z-index: 1052;">
+    <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Edit Leave Date</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -367,9 +367,9 @@
 </div>
 
 <!-- Mark Advance Returned Modal -->
-<div class="modal fade" id="markAdvanceModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="true">
+<div class="modal fade" id="markAdvanceModal" tabindex="-1" data-bs-backdrop="true" data-bs-keyboard="true">
   <div class="modal-dialog">
-    <div class="modal-content" style="z-index: 1052;">
+    <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Mark Advance as Returned</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -391,9 +391,9 @@
 </div>
 
 <!-- Edit Advance Amount Modal -->
-<div class="modal fade" id="editAdvanceAmountModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="true">
+<div class="modal fade" id="editAdvanceAmountModal" tabindex="-1" data-bs-backdrop="true" data-bs-keyboard="true">
   <div class="modal-dialog">
-    <div class="modal-content" style="z-index: 1052;">
+    <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Edit Advance Returned Amount</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
