@@ -94,9 +94,19 @@ def _build_receipt_context(payment: Payment) -> dict:
     referral_applied = []
     referral_total = 0
     # Only include referral credits on monthly ('fee') receipts for the matching month.
-    # Require an explicit `from_date` (billing month) on the payment to avoid accidental matches
-    if payment.type == 'fee' and month_key and pg:
-        credits_qs = ReferralCredit.objects.filter(pg=pg, redeemed_for_month=month_key, redeemed_on__isnull=False).select_related('referrer_user', 'referred_user', 'referrer_booking', 'referred_booking')
+    # CRITICAL: Only show referral credits to the referrer_user (the person who earned the credit)
+    # Filter by:
+    # 1. PG match
+    # 2. redeemed_for_month matches the payment's billing month (from_date)
+    # 3. redeemed_on is not null (credit was actually applied)
+    # 4. referrer_user matches the payment user (ONLY show to the person who earned the credit)
+    if payment.type == 'fee' and month_key and pg and user:
+        credits_qs = ReferralCredit.objects.filter(
+            pg=pg, 
+            redeemed_for_month=month_key, 
+            redeemed_on__isnull=False,
+            referrer_user=user  # CRITICAL: Only show credits earned by this user
+        ).select_related('referrer_user', 'referred_user', 'referrer_booking', 'referred_booking')
         for c in credits_qs:
             referrer_name = ''
             try:
