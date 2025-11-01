@@ -1573,6 +1573,14 @@ def tenants_export_pdf(request):
     today = timezone.now().date()
     current_month_year = datetime.now().strftime('%B %Y')  # e.g., "October 2025"
     
+    # Calculate current month range for expected rent calculation
+    import calendar
+    year = today.year
+    month = today.month
+    m_first = date(year, month, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    m_last = date(year, month, last_day)
+    
     # PERFORMANCE FIX: Skip images for large PGs to avoid 502 timeout
     total_rooms = Room.objects.filter(pg=pg).count()
     SKIP_IMAGES = total_rooms > 50  # Skip images if more than 50 rooms
@@ -1711,6 +1719,47 @@ def tenants_export_pdf(request):
                 payment_str = payment.strftime('%d/%m/%y') if payment else '—'
                 leaving = booking.leaving_date
                 leaving_str = leaving.strftime('%d/%m/%y') if leaving else '—'
+                
+                # Get monthly fee for this tenant (expected rent for current month)
+                # This calculation works even with leaving_date - it will be pro-rated
+                from finance.views import _expected_rent_for_user_pg_month
+                try:
+                    monthly_fee = _expected_rent_for_user_pg_month(user, pg, booking, m_first, m_last, today=today)
+                    
+                    # If current month expected is 0 (e.g., tenant joining next month or already left)
+                    # calculate next payment cycle
+                    next_cycle_fee = 0.0
+                    next_payment_date = None
+                    if monthly_fee == 0 or monthly_fee < 0.01:
+                        # Calculate next month range
+                        next_month = month + 1 if month < 12 else 1
+                        next_year = year if month < 12 else year + 1
+                        next_m_first = date(next_year, next_month, 1)
+                        next_last_day = calendar.monthrange(next_year, next_month)[1]
+                        next_m_last = date(next_year, next_month, next_last_day)
+                        
+                        # Only calculate next cycle if tenant will still be present
+                        # (no leaving date or leaving date is after next cycle starts)
+                        if not leaving or leaving >= next_m_first:
+                            try:
+                                next_cycle_fee = _expected_rent_for_user_pg_month(user, pg, booking, next_m_first, next_m_last, today=today)
+                                # Get the payment date for next cycle
+                                if booking.payment_date:
+                                    next_payment_date = booking.payment_date
+                            except Exception:
+                                pass
+                except Exception:
+                    # Fallback to static fee if calculation fails
+                    from finance.models import ResidentRate, Fees
+                    resident_rate = ResidentRate.objects.filter(user=user, pg=pg, active=True).first()
+                    if resident_rate:
+                        monthly_fee = float(resident_rate.amount)
+                    else:
+                        room_share_type = str(room.total_shares or '')
+                        fee_obj = Fees.objects.filter(pg=pg, share_type=room_share_type).first()
+                        monthly_fee = float(fee_obj.amount) if fee_obj else 0.0
+                    next_cycle_fee = 0.0
+                    next_payment_date = None
 
                 # Column 1: Selfie
                 if selfie_img:
@@ -1723,33 +1772,36 @@ def tenants_export_pdf(request):
                 advance_amount = booking.advance_paid if booking.advance_paid is not None else Decimal('0')
                 advance_str = f"Rs.{advance_amount:.2f}"
 
+                # Build monthly fee display
+                if monthly_fee > 0:
+                    monthly_fee_str = f"Monthly Fee: Rs.{monthly_fee:.0f}"
+                elif next_cycle_fee > 0:
+                    # Show next cycle fee with payment date
+                    if next_payment_date:
+                        monthly_fee_str = f"Monthly Fee: Rs.{next_cycle_fee:.0f} (Next: {next_payment_date.strftime('%d/%m/%y')})"
+                    else:
+                        monthly_fee_str = f"Monthly Fee: Rs.{next_cycle_fee:.0f} (Next cycle)"
+                else:
+                    monthly_fee_str = "Monthly Fee: Rs.0"
+
                 details_lines = [
                     f"<b>{name}</b>",
                     f"Phone: {phone}",
                     f"Join: {joining_str}",
                     f"Pay: {payment_str}",
                     f"Leave: {leaving_str}",
-                    f"Advance: {advance_str}"
+                    f"Advance: {advance_str}",
+                    monthly_fee_str
                 ]
-                
-                # Add future booking details if exists
-                if future_booking:
-                    future_user = future_booking.user
-                    future_name = f"{future_user.first_name} {future_user.last_name}".strip() or future_user.email
-                    future_joining = future_booking.joining_date
-                    future_joining_str = future_joining.strftime('%d/%m/%y') if future_joining else '—'
-                    details_lines.append("<b>---NEXT---</b>")
-                    details_lines.append(f"<b>{future_name}</b>")
-                    details_lines.append(f"Join: {future_joining_str}")
                 
                 details_cell = Paragraph("<br/>".join(details_lines), detail_style)
                 
                 # Column 3: Checkbox
                 checkbox_cell = OutlinedCheckbox(size=4*mm)
                 
-                # Build card
+                # Build card for current booking
                 single_card_data = [[selfie_cell, details_cell, checkbox_cell]]
-                single_card = Table(single_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
+                single_card = Table(single_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[26*mm])
                 single_card.setStyle(TableStyle([
                     ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
                     ('VALIGN', (1, 0), (1, 0), 'TOP'),
@@ -1763,6 +1815,102 @@ def tenants_export_pdf(request):
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
                 ]))
                 all_cards.append(single_card)
+                
+                # Add future booking card separately if exists
+                if future_booking:
+                    future_user = future_booking.user
+                    future_name = f"{future_user.first_name} {future_user.last_name}".strip() or future_user.email
+                    future_joining = future_booking.joining_date
+                    future_joining_str = future_joining.strftime('%d/%m/%y') if future_joining else '—'
+                    future_leaving = future_booking.leaving_date
+                    
+                    # Get future tenant's photo
+                    future_app = getattr(future_booking, 'application', None)
+                    future_selfie_url = getattr(future_app, 'selfie_url', None) or getattr(getattr(future_user, 'profile', None), 'selfie_url', None)
+                    future_selfie_img = _image_cache.get(future_selfie_url) if future_selfie_url else None
+                    
+                    # Get monthly fee for future tenant (expected rent for current month)
+                    # This calculation works even with leaving_date - it will be pro-rated
+                    try:
+                        future_monthly_fee = _expected_rent_for_user_pg_month(future_user, pg, future_booking, m_first, m_last, today=today)
+                        
+                        # If current month expected is 0, calculate next payment cycle
+                        future_next_cycle_fee = 0.0
+                        future_next_payment_date = None
+                        if future_monthly_fee == 0 or future_monthly_fee < 0.01:
+                            # Calculate next month range
+                            next_month = month + 1 if month < 12 else 1
+                            next_year = year if month < 12 else year + 1
+                            next_m_first = date(next_year, next_month, 1)
+                            next_last_day = calendar.monthrange(next_year, next_month)[1]
+                            next_m_last = date(next_year, next_month, next_last_day)
+                            
+                            # Only calculate next cycle if tenant will still be present
+                            if not future_leaving or future_leaving >= next_m_first:
+                                try:
+                                    future_next_cycle_fee = _expected_rent_for_user_pg_month(future_user, pg, future_booking, next_m_first, next_m_last, today=today)
+                                    # Get the payment date for next cycle
+                                    if future_booking.payment_date:
+                                        future_next_payment_date = future_booking.payment_date
+                                except Exception:
+                                    pass
+                    except Exception:
+                        # Fallback: try to get custom rate or use same as current tenant
+                        from finance.models import ResidentRate
+                        future_resident_rate = ResidentRate.objects.filter(user=future_user, pg=pg, active=True).first()
+                        if future_resident_rate:
+                            future_monthly_fee = float(future_resident_rate.amount)
+                        else:
+                            future_monthly_fee = monthly_fee  # Use same as current if not set
+                        future_next_cycle_fee = 0.0
+                        future_next_payment_date = None
+                    
+                    # Future tenant selfie
+                    if future_selfie_img:
+                        future_selfie_cell = future_selfie_img
+                    else:
+                        future_selfie_cell = Paragraph("<i>No Photo</i>", ParagraphStyle('TinyText', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER))
+                    
+                    # Future tenant details
+                    # Build monthly fee display for future tenant
+                    if future_monthly_fee > 0:
+                        future_fee_str = f"Monthly Fee: Rs.{future_monthly_fee:.0f}"
+                    elif future_next_cycle_fee > 0:
+                        # Show next cycle fee with payment date
+                        if future_next_payment_date:
+                            future_fee_str = f"Monthly Fee: Rs.{future_next_cycle_fee:.0f} (Next: {future_next_payment_date.strftime('%d/%m/%y')})"
+                        else:
+                            future_fee_str = f"Monthly Fee: Rs.{future_next_cycle_fee:.0f} (Next cycle)"
+                    else:
+                        future_fee_str = "Monthly Fee: Rs.0"
+                    
+                    future_details_lines = [
+                        "<b>---NEXT---</b>",
+                        f"<b>{future_name}</b>",
+                        f"Join: {future_joining_str}",
+                        future_fee_str
+                    ]
+                    future_details_cell = Paragraph("<br/>".join(future_details_lines), detail_style)
+                    
+                    # Future tenant checkbox
+                    future_checkbox_cell = OutlinedCheckbox(size=4*mm)
+                    
+                    # Build separate card for future booking
+                    future_card_data = [[future_selfie_cell, future_details_cell, future_checkbox_cell]]
+                    future_card = Table(future_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
+                    future_card.setStyle(TableStyle([
+                        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+                        ('VALIGN', (1, 0), (1, 0), 'TOP'),
+                        ('VALIGN', (2, 0), (2, 0), 'MIDDLE'),
+                        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                        ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+                        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#90EE90')),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+                        ('TOPPADDING', (0, 0), (-1, -1), 2),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                    ]))
+                    all_cards.append(future_card)
             else:
                 # Empty bed card
                 vacant_text = Paragraph("<i>VACANT</i>", ParagraphStyle('VacantText', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER, textColor=colors.grey))
@@ -1770,7 +1918,7 @@ def tenants_export_pdf(request):
                 checkbox_cell = OutlinedCheckbox(size=4*mm)
                 
                 empty_card_data = [[vacant_text, empty_detail, checkbox_cell]]
-                empty_card = Table(empty_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
+                empty_card = Table(empty_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[26*mm])
                 empty_card.setStyle(TableStyle([
                     ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
                     ('VALIGN', (1, 0), (1, 0), 'MIDDLE'),
@@ -3846,6 +3994,14 @@ def _generate_pdf_async(task_id, user_id, pg_id):
         today = timezone.now().date()
         current_month_year = datetime.now().strftime('%B %Y')
         
+        # Calculate current month range for expected rent calculation
+        import calendar
+        year = today.year
+        month = today.month
+        m_first = date(year, month, 1)
+        last_day = calendar.monthrange(year, month)[1]
+        m_last = date(year, month, last_day)
+        
         PDFTaskManager.update_task(
             task_id,
             progress=15,
@@ -4132,6 +4288,47 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                     leaving = booking.leaving_date
                     leaving_str = leaving.strftime('%d/%m/%y') if leaving else '—'
                     
+                    # Get monthly fee for this tenant (expected rent for current month)
+                    # This calculation works even with leaving_date - it will be pro-rated
+                    from finance.views import _expected_rent_for_user_pg_month
+                    try:
+                        monthly_fee = _expected_rent_for_user_pg_month(user, pg, booking, m_first, m_last, today=today)
+                        
+                        # If current month expected is 0 (e.g., tenant joining next month or already left)
+                        # calculate next payment cycle
+                        next_cycle_fee = 0.0
+                        next_payment_date = None
+                        if monthly_fee == 0 or monthly_fee < 0.01:
+                            # Calculate next month range
+                            next_month = month + 1 if month < 12 else 1
+                            next_year = year if month < 12 else year + 1
+                            next_m_first = date(next_year, next_month, 1)
+                            next_last_day = calendar.monthrange(next_year, next_month)[1]
+                            next_m_last = date(next_year, next_month, next_last_day)
+                            
+                            # Only calculate next cycle if tenant will still be present
+                            # (no leaving date or leaving date is after next cycle starts)
+                            if not leaving or leaving >= next_m_first:
+                                try:
+                                    next_cycle_fee = _expected_rent_for_user_pg_month(user, pg, booking, next_m_first, next_m_last, today=today)
+                                    # Get the payment date for next cycle
+                                    if booking.payment_date:
+                                        next_payment_date = booking.payment_date
+                                except Exception:
+                                    pass
+                    except Exception:
+                        # Fallback to static fee if calculation fails
+                        from finance.models import ResidentRate, Fees
+                        resident_rate = ResidentRate.objects.filter(user=user, pg=pg, active=True).first()
+                        if resident_rate:
+                            monthly_fee = float(resident_rate.amount)
+                        else:
+                            room_share_type = str(room.total_shares or '')
+                            fee_obj = Fees.objects.filter(pg=pg, share_type=room_share_type).first()
+                            monthly_fee = float(fee_obj.amount) if fee_obj else 0.0
+                        next_cycle_fee = 0.0
+                        next_payment_date = None
+                    
                     # Column 1: Selfie
                     if selfie_img:
                         selfie_cell = selfie_img
@@ -4143,33 +4340,36 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                     advance_amount = booking.advance_paid if booking.advance_paid is not None else Decimal('0')
                     advance_str = f"Rs.{advance_amount:.2f}"
 
+                    # Build monthly fee display
+                    if monthly_fee > 0:
+                        monthly_fee_str = f"Monthly Fee: Rs.{monthly_fee:.0f}"
+                    elif next_cycle_fee > 0:
+                        # Show next cycle fee with payment date
+                        if next_payment_date:
+                            monthly_fee_str = f"Monthly Fee: Rs.{next_cycle_fee:.0f} (Next: {next_payment_date.strftime('%d/%m/%y')})"
+                        else:
+                            monthly_fee_str = f"Monthly Fee: Rs.{next_cycle_fee:.0f} (Next cycle)"
+                    else:
+                        monthly_fee_str = "Monthly Fee: Rs.0"
+
                     details_lines = [
                         f"<b>{name}</b>",
                         f"Phone: {phone}",
                         f"Join: {joining_str}",
                         f"Pay: {payment_str}",
                         f"Leave: {leaving_str}",
-                        f"Advance: {advance_str}"
+                        f"Advance: {advance_str}",
+                        monthly_fee_str
                     ]
-                    
-                    # Add future booking details if exists
-                    if future_booking:
-                        future_user = future_booking.user
-                        future_name = f"{future_user.first_name} {future_user.last_name}".strip() or future_user.email
-                        future_joining = future_booking.joining_date
-                        future_joining_str = future_joining.strftime('%d/%m/%y') if future_joining else '—'
-                        details_lines.append("<b>---NEXT---</b>")
-                        details_lines.append(f"<b>{future_name}</b>")
-                        details_lines.append(f"Join: {future_joining_str}")
                     
                     details_cell = Paragraph("<br/>".join(details_lines), detail_style)
                     
                     # Column 3: Checkbox
                     checkbox_cell = OutlinedCheckbox(size=4*mm)
                     
-                    # Build card
+                    # Build card for current booking
                     single_card_data = [[selfie_cell, details_cell, checkbox_cell]]
-                    single_card = Table(single_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
+                    single_card = Table(single_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[26*mm])
                     single_card.setStyle(TableStyle([
                         ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
                         ('VALIGN', (1, 0), (1, 0), 'TOP'),
@@ -4183,6 +4383,115 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
                     ]))
                     all_cards.append(single_card)
+                    
+                    # Add future booking details if exists - as a separate card
+                    if future_booking:
+                        future_user = future_booking.user
+                        future_name = f"{future_user.first_name} {future_user.last_name}".strip() or future_user.email
+                        future_joining = future_booking.joining_date
+                        future_joining_str = future_joining.strftime('%d/%m/%y') if future_joining else '—'
+                        future_leaving = future_booking.leaving_date
+                        
+                        # Get future tenant's photo
+                        future_app = share_detail.get('future_application')
+                        future_selfie_url = getattr(future_app, 'selfie_url', None) or getattr(getattr(future_user, 'profile', None), 'selfie_url', None)
+                        
+                        # Normalize future selfie URL
+                        future_normalized_url = None
+                        if future_selfie_url:
+                            future_normalized_url = future_selfie_url
+                            if 'drive.google.com/file/d/' in future_normalized_url:
+                                parts = future_normalized_url.split('/d/')
+                                if len(parts) > 1:
+                                    file_id = parts[1].split('/')[0]
+                                    future_normalized_url = f'https://drive.google.com/uc?export=download&id={file_id}'
+                            elif 'dropbox.com' in future_normalized_url and '?dl=0' in future_normalized_url:
+                                future_normalized_url = future_normalized_url.replace('?dl=0', '?dl=1')
+                        
+                        future_selfie_img = _image_cache.get(future_normalized_url) if future_normalized_url else None
+                        
+                        # Get monthly fee for future tenant (expected rent for current month)
+                        # This calculation works even with leaving_date - it will be pro-rated
+                        try:
+                            future_monthly_fee = _expected_rent_for_user_pg_month(future_user, pg, future_booking, m_first, m_last, today=today)
+                            
+                            # If current month expected is 0, calculate next payment cycle
+                            future_next_cycle_fee = 0.0
+                            future_next_payment_date = None
+                            if future_monthly_fee == 0 or future_monthly_fee < 0.01:
+                                # Calculate next month range
+                                next_month = month + 1 if month < 12 else 1
+                                next_year = year if month < 12 else year + 1
+                                next_m_first = date(next_year, next_month, 1)
+                                next_last_day = calendar.monthrange(next_year, next_month)[1]
+                                next_m_last = date(next_year, next_month, next_last_day)
+                                
+                                # Only calculate next cycle if tenant will still be present
+                                if not future_leaving or future_leaving >= next_m_first:
+                                    try:
+                                        future_next_cycle_fee = _expected_rent_for_user_pg_month(future_user, pg, future_booking, next_m_first, next_m_last, today=today)
+                                        # Get the payment date for next cycle
+                                        if future_booking.payment_date:
+                                            future_next_payment_date = future_booking.payment_date
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            # Fallback: try to get custom rate or use same as current tenant
+                            from finance.models import ResidentRate
+                            future_resident_rate = ResidentRate.objects.filter(user=future_user, pg=pg, active=True).first()
+                            if future_resident_rate:
+                                future_monthly_fee = float(future_resident_rate.amount)
+                            else:
+                                future_monthly_fee = monthly_fee  # Use same as current if not set
+                            future_next_cycle_fee = 0.0
+                            future_next_payment_date = None
+                        
+                        # Future tenant selfie
+                        if future_selfie_img:
+                            future_selfie_cell = future_selfie_img
+                        else:
+                            future_selfie_cell = Paragraph("<i>No Photo</i>", ParagraphStyle('TinyText', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER))
+                        
+                        # Future tenant details
+                        # Build monthly fee display for future tenant
+                        if future_monthly_fee > 0:
+                            future_fee_str = f"Monthly Fee: Rs.{future_monthly_fee:.0f}"
+                        elif future_next_cycle_fee > 0:
+                            # Show next cycle fee with payment date
+                            if future_next_payment_date:
+                                future_fee_str = f"Monthly Fee: Rs.{future_next_cycle_fee:.0f} (Next: {future_next_payment_date.strftime('%d/%m/%y')})"
+                            else:
+                                future_fee_str = f"Monthly Fee: Rs.{future_next_cycle_fee:.0f} (Next cycle)"
+                        else:
+                            future_fee_str = "Monthly Fee: Rs.0"
+                        
+                        future_details_lines = [
+                            "<b>---NEXT---</b>",
+                            f"<b>{future_name}</b>",
+                            f"Join: {future_joining_str}",
+                            future_fee_str
+                        ]
+                        future_details_cell = Paragraph("<br/>".join(future_details_lines), detail_style)
+                        
+                        # Future tenant checkbox
+                        future_checkbox_cell = OutlinedCheckbox(size=4*mm)
+                        
+                        # Build separate card for future booking
+                        future_card_data = [[future_selfie_cell, future_details_cell, future_checkbox_cell]]
+                        future_card = Table(future_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
+                        future_card.setStyle(TableStyle([
+                            ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+                            ('VALIGN', (1, 0), (1, 0), 'TOP'),
+                            ('VALIGN', (2, 0), (2, 0), 'MIDDLE'),
+                            ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                            ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+                            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#90EE90')),
+                            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+                            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+                            ('TOPPADDING', (0, 0), (-1, -1), 2),
+                            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                        ]))
+                        all_cards.append(future_card)
                 else:
                     # Empty bed card
                     vacant_text = Paragraph("<i>VACANT</i>", ParagraphStyle('VacantText', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER, textColor=colors.grey))
@@ -4190,7 +4499,7 @@ def _generate_pdf_async(task_id, user_id, pg_id):
                     checkbox_cell = OutlinedCheckbox(size=4*mm)
                     
                     empty_card_data = [[vacant_text, empty_detail, checkbox_cell]]
-                    empty_card = Table(empty_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[22*mm])
+                    empty_card = Table(empty_card_data, colWidths=[18*mm, 35*mm, 7*mm], rowHeights=[26*mm])
                     empty_card.setStyle(TableStyle([
                         ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
                         ('VALIGN', (1, 0), (1, 0), 'MIDDLE'),

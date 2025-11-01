@@ -145,22 +145,17 @@
     <h2>Documents</h2>
     <div class="row g-3">
       <div class="col-12 col-lg-6 order-1 order-lg-1">
-  <label class="form-label">Aadhaar / Other Card (PDF or Images)</label>
-  <input type="file" name="aadhaar_pdf" id="aadhaarPdfInput" class="form-control" accept="application/pdf,image/*" multiple />
-    <div class="form-text">Upload either one PDF, or one/two images (front/back). If you don't select a new document, the existing one will be kept.</div>
-        <div id="aadhaarStatus" class="aadhaar-status"></div>
-        <canvas id="aadhaarCanvas"></canvas>
-        <div id="aadhaarImageWrap" class="d-none mt-2">
-          <div class="small text-secondary mb-1">Image 1</div>
-          <img id="aadhaarImgPreview" alt="Aadhaar image preview" class="img-fluid border rounded doc-thumb-sm" />
+        <div class="mb-3">
+          <label class="form-label">Aadhaar Document 1 <span class="required-asterisk">*</span></label>
+          <input type="file" name="aadhaar_pdf" id="aadhaarDoc1" class="form-control" accept="application/pdf,image/*" />
+          <div class="form-text">Upload front side image or complete PDF. If you don't select a new document, the existing one will be kept.</div>
+          <div id="aadhaarPreview1" class="mt-2"></div>
         </div>
-        <div id="aadhaarImageWrap2" class="d-none mt-2">
-          <div class="small text-secondary mb-1">Image 2</div>
-          <img id="aadhaarImgPreview2" alt="Aadhaar second image preview" class="img-fluid border rounded doc-thumb-sm" />
-        </div>
-        <div id="aadhaarEmbedWrap" class="d-none mt-2">
-          <div class="small text-muted mb-1">Fallback Preview</div>
-          <iframe id="aadhaarEmbed" title="Aadhaar PDF Fallback Preview"></iframe>
+        <div>
+          <label class="form-label">Aadhaar Document 2 (Optional)</label>
+          <input type="file" name="aadhaar_pdf_2" id="aadhaarDoc2" class="form-control" accept="image/*" disabled />
+          <div class="form-text">Upload back side image (if not using PDF above).</div>
+          <div id="aadhaarPreview2" class="mt-2"></div>
         </div>
       </div>
   <div class="col-12 col-lg-6 order-2 order-lg-2">
@@ -314,9 +309,7 @@
   }
   phoneInputs.forEach(el=> bindDigits(el, 10));
   bindDigits(aadhaarInput, 12);
-  // Prefer explicit ID
-  const pdfInput = document.getElementById('aadhaarPdfInput') || document.querySelector('input[name="aadhaar_pdf"]');
-  // Django renders a hidden input + the actual checkbox for BooleanField; ensure we grab the checkbox
+  
   // Vehicle radios (simplified implementation)
   (function(){
     const radios = Array.from(document.querySelectorAll('input[name="has_vehicle"]'));
@@ -336,7 +329,6 @@
     setTimeout(updateVehicle,120);
   })();
   let selfieOk = false;
-  let pdfOk = false;
 
   // Live selfie capture elements
   const videoEl = document.getElementById('selfieVideo');
@@ -496,120 +488,241 @@
     if (!ok) { e.target.value = ''; selfieOk = false; }
   });
 
-  // Aadhaar PDF preview & validation
-  const aadhaarStatus = document.getElementById('aadhaarStatus');
-  const aadhaarCanvas = document.getElementById('aadhaarCanvas');
-  const aadhaarCtx = aadhaarCanvas?.getContext('2d');
-  const aadhaarEmbedWrap = document.getElementById('aadhaarEmbedWrap');
-  const aadhaarEmbed = document.getElementById('aadhaarEmbed');
-  const aadhaarImgWrap = document.getElementById('aadhaarImageWrap');
-  const aadhaarImgPreview = document.getElementById('aadhaarImgPreview');
-  const aadhaarImgWrap2 = document.getElementById('aadhaarImageWrap2');
-  const aadhaarImgPreview2 = document.getElementById('aadhaarImgPreview2');
-  let currentAadhaarBlobUrl = null;
-  let currentAadhaarImageUrls = [];
-  function setAadhaarStatus(msg, cls){ if(!aadhaarStatus) return; aadhaarStatus.textContent=msg; aadhaarStatus.className='aadhaar-status '+(cls||''); }
-  // If modifying, and there is a current doc, we keep server-rendered preview. Selecting a new file will replace the preview below.
-  pdfInput?.addEventListener('change', e => {
-    const files = Array.from(e.target.files || []);
-    console.log('[aadhaar] change event', files);
-    // Reset previous previews
-    if (aadhaarCanvas) { aadhaarCanvas.style.display='none'; }
-    if (aadhaarImgWrap) aadhaarImgWrap.classList.add('d-none');
-    if (aadhaarImgPreview) aadhaarImgPreview.removeAttribute('src');
-    if (aadhaarImgWrap2) aadhaarImgWrap2.classList.add('d-none');
-    if (aadhaarImgPreview2) aadhaarImgPreview2.removeAttribute('src');
-    if (aadhaarEmbedWrap) { aadhaarEmbedWrap.classList.add('d-none'); }
-    if (aadhaarEmbed && aadhaarEmbed.getAttribute('src')) { aadhaarEmbed.removeAttribute('src'); }
-    // Revoke previously created object URLs for images
-    if (currentAadhaarImageUrls && currentAadhaarImageUrls.length) {
-      try { currentAadhaarImageUrls.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(_){} }); } catch(_){}
-    }
-    currentAadhaarImageUrls = [];
-    if (!files.length) { setAadhaarStatus('', ''); pdfOk = false; return; }
+  // Aadhaar Document 1 & 2 handling (separate fields)
+  const input1 = document.getElementById('aadhaarDoc1');
+  const input2 = document.getElementById('aadhaarDoc2');
+  const preview1 = document.getElementById('aadhaarPreview1');
+  const preview2 = document.getElementById('aadhaarPreview2');
+  const selfieCameraBtn = document.getElementById('btnStartSelfie');
 
-    const pdfs = files.filter(f => (f.type === 'application/pdf') || (f.name||'').toLowerCase().endsWith('.pdf'));
-    const imgs = files.filter(f => f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(f.name||''));
-    // Validate: either exactly 1 PDF or 1-2 images; no mix
-    if (pdfs.length && imgs.length) {
-      setAadhaarStatus('Please upload either a single PDF or up to two images, not both.','error'); e.target.value=''; pdfOk=false; return;
+  function ensureToastContainer(){
+    if (!document.getElementById('toastContainer')) {
+      const container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container position-fixed top-0 end-0 p-3';
+      container.style.zIndex = '9999';
+      document.body.appendChild(container);
     }
-    if (pdfs.length) {
-      if (pdfs.length !== 1) { setAadhaarStatus('Upload exactly one PDF.','error'); e.target.value=''; pdfOk=false; return; }
-      const file = pdfs[0];
-      const fileName = file.name || '';
-      if (!window.pdfjsLib) { setAadhaarStatus('PDF preview library not loaded. You can still submit.','error'); pdfOk = true; return; }
-      if (currentAadhaarBlobUrl) { try { URL.revokeObjectURL(currentAadhaarBlobUrl); } catch(_){} currentAadhaarBlobUrl=null; }
-      const fr = new FileReader();
-      fr.onerror = () => { setAadhaarStatus('Failed to read file.','error'); pdfOk=false; };
-      fr.onload = async () => {
-        try {
-          const bytes = new Uint8Array(fr.result);
-          const loadingTask = pdfjsLib.getDocument({ data: bytes });
-          const pdf = await loadingTask.promise;
-          setAadhaarStatus('PDF loaded: '+fileName,'success');
-          pdfOk = true;
-          const page = await pdf.getPage(1);
-          const baseViewport = page.getViewport({ scale: 1 });
-          const maxW = 220;
-          const scale = Math.min(1.4, maxW / baseViewport.width);
-          const viewport = page.getViewport({ scale });
-          aadhaarCanvas.width = viewport.width; aadhaarCanvas.height = viewport.height;
-          aadhaarCtx.fillStyle='#fff';
-          aadhaarCtx.fillRect(0,0,viewport.width,viewport.height);
-          await page.render({ canvasContext: aadhaarCtx, viewport }).promise;
-          aadhaarCanvas.style.display='block';
-          console.log('[aadhaar] first page rendered');
-        } catch(err){
-          console.warn('[aadhaar] render error', err);
-          if(err && err.name === 'PasswordException') {
-            setAadhaarStatus('Password protected PDF not allowed.','error');
-            e.target.value='';
-            pdfOk = false;
-            if (aadhaarCtx && aadhaarCanvas) { aadhaarCtx.clearRect(0,0,aadhaarCanvas.width,aadhaarCanvas.height); aadhaarCanvas.style.display='none'; }
-            return;
-          }
-          setAadhaarStatus('Canvas preview failed; attempting fallback viewer...','error');
-          try {
-            currentAadhaarBlobUrl = URL.createObjectURL(file);
-            if (aadhaarEmbed) aadhaarEmbed.src = currentAadhaarBlobUrl + '#page=1&zoom=85';
-            if (aadhaarEmbedWrap) aadhaarEmbedWrap.classList.remove('d-none');
-            pdfOk = true;
-            console.log('[aadhaar] fallback iframe shown');
-          } catch(fbErr){
-            console.warn('[aadhaar] fallback iframe failed', fbErr);
-            setAadhaarStatus('Unable to preview PDF. You may try another file.','error');
-            pdfOk = false;
-            e.target.value='';
-          } finally {
-            if (aadhaarCtx && aadhaarCanvas) { aadhaarCtx.clearRect(0,0,aadhaarCanvas.width,aadhaarCanvas.height); aadhaarCanvas.style.display='none'; }
-          }
-        }
-      };
-      fr.readAsArrayBuffer(file);
+  }
+
+  function showToast(msg, variant){
+    ensureToastContainer();
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${variant} border-0`;
+    toast.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    document.getElementById('toastContainer').appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    toast.addEventListener('hidden.bs.toast', ()=> toast.remove());
+  }
+
+  function clearPreview(previewEl){ if (previewEl) previewEl.innerHTML = ''; }
+
+  function urlFor(file){ return URL.createObjectURL(file); }
+
+  function revokeAll(previewEl){
+    if (!previewEl) return;
+    const imgs = previewEl.querySelectorAll('img');
+    imgs.forEach(img=> {
+      if (img.src && img.src.startsWith('blob:')) {
+        try { URL.revokeObjectURL(img.src); } catch(_){}
+      }
+    });
+    const iframes = previewEl.querySelectorAll('iframe');
+    iframes.forEach(iframe=> {
+      if (iframe.src && iframe.src.startsWith('blob:')) {
+        try { URL.revokeObjectURL(iframe.src); } catch(_){}
+      }
+    });
+  }
+
+  function renderImage(file, previewEl){
+    if (!previewEl) return;
+    revokeAll(previewEl);
+    clearPreview(previewEl);
+    const url = urlFor(file);
+    const img = document.createElement('img');
+    img.src = url;
+    img.className = 'img-fluid border rounded doc-thumb-sm';
+    img.alt = 'Document preview';
+    previewEl.appendChild(img);
+  }
+
+  async function renderPdf(file, previewEl){
+    if (!previewEl) return;
+    revokeAll(previewEl);
+    clearPreview(previewEl);
+    
+    if (!window.pdfjsLib) {
+      previewEl.innerHTML = '<div class="alert alert-warning small">PDF preview unavailable (library not loaded)</div>';
       return;
     }
-    // Images branch
-    if (!(imgs.length >= 1 && imgs.length <= 2)) {
-      setAadhaarStatus('Upload one or two images (front/back).','error'); e.target.value=''; pdfOk=false; return;
+
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'text-muted small';
+    loadingDiv.textContent = 'Loading PDF...';
+    previewEl.appendChild(loadingDiv);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      
+      // Check for password protection
+      loadingTask.onPassword = (updateCallback, reason) => {
+        clearPreview(previewEl);
+        previewEl.innerHTML = '<div class="alert alert-danger small">Password-protected PDFs are not allowed.</div>';
+        input1.value = '';
+        throw new Error('Password protected PDF');
+      };
+
+      const pdf = await loadingTask.promise;
+      clearPreview(previewEl);
+
+      // Render first page as canvas
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 1.2 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.className = 'border rounded';
+      canvas.style.maxWidth = '100%';
+      canvas.style.height = 'auto';
+      
+      const ctx = canvas.getContext('2d');
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      
+      previewEl.appendChild(canvas);
+
+      // Add link to open full PDF
+      const url = urlFor(file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.className = 'btn btn-sm btn-outline-primary mt-2';
+      link.innerHTML = '<i class="bi bi-file-pdf"></i> View Full PDF';
+      previewEl.appendChild(link);
+      
+    } catch (err) {
+      console.error('[PDF] Render error:', err);
+      if (err.message !== 'Password protected PDF') {
+        clearPreview(previewEl);
+        previewEl.innerHTML = '<div class="alert alert-danger small">Failed to load PDF preview.</div>';
+      }
     }
-    // Show preview for first image
-    const first = imgs[0];
-    const url1 = URL.createObjectURL(first);
-    currentAadhaarImageUrls.push(url1);
-    if (aadhaarImgPreview) aadhaarImgPreview.src = url1;
-    if (aadhaarImgWrap) aadhaarImgWrap.classList.remove('d-none');
-    // If second image present, preview it too
-    if (imgs.length === 2) {
-      const second = imgs[1];
-      const url2 = URL.createObjectURL(second);
-      currentAadhaarImageUrls.push(url2);
-      if (aadhaarImgPreview2) aadhaarImgPreview2.src = url2;
-      if (aadhaarImgWrap2) aadhaarImgWrap2.classList.remove('d-none');
+  }
+
+  function bytesToMB(b){ return (b/1048576).toFixed(2); }
+
+  async function pdfLooksEncrypted(file){
+    try {
+      if (!window.pdfjsLib) return false;
+      const ab = await file.arrayBuffer();
+      const task = pdfjsLib.getDocument({ data: ab });
+      let encrypted = false;
+      task.onPassword = ()=> { encrypted = true; };
+      try { await task.promise; } catch(_){}
+      return encrypted;
+    } catch(_){ return false; }
+  }
+
+  function checkAndEnableSelfie(){
+    const doc1HasFile = input1 && input1.files && input1.files.length > 0;
+    if (selfieCameraBtn) selfieCameraBtn.disabled = !doc1HasFile;
+  }
+
+  // Handler for Document 1 (required - PDF or image)
+  input1 && input1.addEventListener('change', async function(){
+    const file = this.files && this.files[0];
+    revokeAll(preview1);
+    clearPreview(preview1);
+    
+    if (!file) {
+      if (input2) { input2.disabled = true; input2.value = ''; }
+      revokeAll(preview2);
+      clearPreview(preview2);
+      checkAndEnableSelfie();
+      return;
     }
-    setAadhaarStatus(`Image${imgs.length>1?'s':''} selected (${imgs.length})`, 'success');
-    pdfOk = true;
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isImage = file.type.startsWith('image/');
+
+    if (!isPdf && !isImage) {
+      showToast('Please upload a PDF or image file.', 'danger');
+      this.value = '';
+      if (input2) { input2.disabled = true; input2.value = ''; }
+      revokeAll(preview2);
+      clearPreview(preview2);
+      checkAndEnableSelfie();
+      return;
+    }
+
+    if (file.size > 2097152) {
+      showToast(`File too large (${bytesToMB(file.size)} MB). Maximum 2 MB allowed.`, 'danger');
+      this.value = '';
+      if (input2) { input2.disabled = true; input2.value = ''; }
+      revokeAll(preview2);
+      clearPreview(preview2);
+      checkAndEnableSelfie();
+      return;
+    }
+
+    if (isPdf) {
+      const encrypted = await pdfLooksEncrypted(file);
+      if (encrypted) {
+        showToast('Password-protected PDFs are not allowed.', 'danger');
+        this.value = '';
+        if (input2) { input2.disabled = true; input2.value = ''; }
+        revokeAll(preview2);
+        clearPreview(preview2);
+        checkAndEnableSelfie();
+        return;
+      }
+      await renderPdf(file, preview1);
+      if (input2) {
+        input2.disabled = true;
+        input2.value = '';
+        revokeAll(preview2);
+        clearPreview(preview2);
+      }
+    } else {
+      renderImage(file, preview1);
+      if (input2) input2.disabled = false;
+    }
+    
+    checkAndEnableSelfie();
   });
+
+  // Handler for Document 2 (optional - image only, for back side)
+  input2 && input2.addEventListener('change', async function(){
+    const file = this.files && this.files[0];
+    revokeAll(preview2);
+    clearPreview(preview2);
+    
+    if (!file) return;
+
+    const isImage = file.type.startsWith('image/');
+    if (!isImage) {
+      showToast('Document 2 must be an image file.', 'danger');
+      this.value = '';
+      return;
+    }
+
+    if (file.size > 2097152) {
+      showToast(`File too large (${bytesToMB(file.size)} MB). Maximum 2 MB allowed.`, 'danger');
+      this.value = '';
+      return;
+    }
+
+    renderImage(file, preview2);
+  });
+
+  // Initialize
+  checkAndEnableSelfie();
+  if (input2) {
+    const doc1HasFile = input1 && input1.files && input1.files.length > 0;
+    if (!doc1HasFile) input2.disabled = true;
+  }
 
   form?.addEventListener('submit', async (e) => {
     // Debounce guard and spinner handling
@@ -638,9 +751,16 @@
     }
     // Validate selfie only when a new one is provided
     if (newSelfieSelected && !selfieOk) { e.preventDefault(); alert('Please provide a valid face-only selfie.'); return; }
-    if (pdfInput?.files?.length) {
-      if (!pdfOk) { e.preventDefault(); alert('Please upload a valid Aadhaar document (PDF or image).'); return; }
+    
+    // Validate Aadhaar documents: at least Document 1 must be provided (either new file or existing)
+    const hasExistingAadhaar = '{{ app.aadhaar_file_url|default:"" }}' !== '';
+    const newDoc1Selected = !!(input1?.files?.length);
+    if (!hasExistingAadhaar && !newDoc1Selected) {
+      e.preventDefault();
+      alert('Aadhaar Document 1 is required. Please upload a document.');
+      return;
     }
+    
     const hasVehicleRadio = document.querySelector('input[name="has_vehicle"][value="true"]:checked');
     if (hasVehicleRadio) {
       const num = document.getElementById('id_vehicle_number');

@@ -30,13 +30,20 @@ class MultiFileField(forms.Field):
 
 class ResidentApplicationForm(forms.ModelForm):
     selfie = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={"class": "form-control"}))
-    # Accept multiple files for other card: either 1 PDF or up to 2 images
-    aadhaar_pdf = MultiFileField(
+    # Document 1: Required - PDF or image (front side or complete PDF)
+    aadhaar_pdf = forms.FileField(
         required=False,
-        widget=MultiFileInput(attrs={
+        widget=forms.ClearableFileInput(attrs={
             "class": "form-control",
             "accept": "application/pdf,image/*",
-            "multiple": True,
+        })
+    )
+    # Document 2: Optional - Image only (back side when Document 1 is an image)
+    aadhaar_pdf_2 = forms.FileField(
+        required=False,
+        widget=forms.ClearableFileInput(attrs={
+            "class": "form-control",
+            "accept": "image/*",
         })
     )
 
@@ -61,47 +68,73 @@ class ResidentApplicationForm(forms.ModelForm):
         })
 
     def clean_aadhaar_pdf(self):
-        # Prefer normalized cleaned value from custom field, fallback to FILES list
-        files = self.cleaned_data.get('aadhaar_pdf') or self.files.getlist('aadhaar_pdf') or []
-        if not files:
+        # Document 1 validation: must be PDF or image
+        file1 = self.cleaned_data.get('aadhaar_pdf') or self.files.get('aadhaar_pdf')
+        if not file1:
             return None
-        # Rule: either exactly 1 PDF, or 1-2 images. Mixed types not allowed.
-        imgs = []
-        pdfs = []
-        for f in files:
-            name = (getattr(f, 'name', '') or '').lower()
-            ctype = getattr(f, 'content_type', '') or ''
-            if ctype == 'application/pdf' or name.endswith('.pdf'):
-                pdfs.append(f)
-            elif ctype.startswith('image/') or any(name.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp')):
-                imgs.append(f)
-            else:
-                raise forms.ValidationError('Only PDF or image files are allowed (PDF, JPG, PNG, WEBP).')
-        if pdfs and imgs:
-            raise forms.ValidationError('Please upload either a single PDF or up to two images, not both.')
-        if pdfs:
-            if len(pdfs) != 1:
-                raise forms.ValidationError('Upload exactly one PDF.')
-            # Optional: basic encrypted check best-effort
+        
+        # Check file size (2MB limit)
+        if file1.size > 2*1024*1024:
+            raise forms.ValidationError(f'File too large ({file1.size/1048576:.2f} MB). Max allowed is 2 MB.')
+        
+        name = (getattr(file1, 'name', '') or '').lower()
+        ctype = getattr(file1, 'content_type', '') or ''
+        
+        if ctype == 'application/pdf' or name.endswith('.pdf'):
+            # Validate PDF is not encrypted
             try:
                 import PyPDF2  # type: ignore
-                reader = PyPDF2.PdfReader(pdfs[0])
+                reader = PyPDF2.PdfReader(file1)
                 if getattr(reader, 'is_encrypted', False):
                     raise forms.ValidationError('Password-protected PDFs are not allowed.')
             except Exception:
                 pass
-            return pdfs
-        # Images path
-        if not (1 <= len(imgs) <= 2):
-            raise forms.ValidationError('Upload one or two images (front/back).')
-        return imgs
+            return file1
+        elif ctype.startswith('image/') or any(name.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp')):
+            return file1
+        else:
+            raise forms.ValidationError('Only PDF or image files are allowed.')
+    
+    def clean_aadhaar_pdf_2(self):
+        # Document 2 validation: optional, must be image if provided
+        file2 = self.cleaned_data.get('aadhaar_pdf_2') or self.files.get('aadhaar_pdf_2')
+        if not file2:
+            return None
+        
+        # Check file size (2MB limit)
+        if file2.size > 2*1024*1024:
+            raise forms.ValidationError(f'File too large ({file2.size/1048576:.2f} MB). Max allowed is 2 MB.')
+        
+        ctype = getattr(file2, 'content_type', '') or ''
+        name = (getattr(file2, 'name', '') or '').lower()
+        
+        if not (ctype.startswith('image/') or any(name.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp'))):
+            raise forms.ValidationError('Document 2 must be an image file.')
+        
+        return file2
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        file1 = cleaned_data.get('aadhaar_pdf')
+        file2 = cleaned_data.get('aadhaar_pdf_2')
+        
+        # If Document 1 is PDF, Document 2 should not be provided
+        if file1:
+            name1 = (getattr(file1, 'name', '') or '').lower()
+            ctype1 = getattr(file1, 'content_type', '') or ''
+            is_pdf = ctype1 == 'application/pdf' or name1.endswith('.pdf')
+            
+            if is_pdf and file2:
+                raise forms.ValidationError('When uploading a complete PDF in Document 1, do not upload Document 2.')
+        
+        return cleaned_data
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Make all included fields required
         for name, field in self.fields.items():
             # keep file fields handled by view on create
-            if name in ('selfie', 'aadhaar_pdf', 'vehicle_number', 'vehicle_model', 'has_vehicle'):
+            if name in ('selfie', 'aadhaar_pdf', 'aadhaar_pdf_2', 'vehicle_number', 'vehicle_model', 'has_vehicle'):
                 continue
             field.required = True
         # Age should be readonly; auto-calculated from DOB

@@ -582,7 +582,7 @@ def handle_booknow_booking(request, pg, has_active, context):
         errors.append('Selfie photo is required.')
     if not aadhaar_in_form:
         # Either no files or validation failed; add explicit error
-        errors.append('Aadhaar/Document upload is required.')
+        errors.append('Aadhaar Document 1 is required.')
 
     if errors:
         context.update({
@@ -640,50 +640,54 @@ def handle_booknow_booking(request, pg, has_active, context):
             inst.decl_deposit = True
             inst.decl_truth = True
 
-            # Files handling (same rules as application_fill)
+            # Files handling with two separate Aadhaar fields
             selfie_file = request.FILES.get('selfie')
-            aadhaar_files = form.cleaned_data.get('aadhaar_pdf') or []
+            aadhaar_file_1 = form.cleaned_data.get('aadhaar_pdf')
+            aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
+            
             if selfie_file:
                 up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
                 if up:
                     _fid, preview = up
                     inst.selfie_url = preview
-            if aadhaar_files:
-                imgs, pdfs = [], []
-                for f in aadhaar_files:
-                    name = (getattr(f, 'name', '') or '').lower()
-                    ctype = getattr(f, 'content_type', '') or ''
-                    if ctype == 'application/pdf' or name.endswith('.pdf'):
-                        pdfs.append(f)
-                    elif ctype.startswith('image/') or any(name.endswith(ext) for ext in ('.jpg','.jpeg','.png','.webp')):
-                        imgs.append(f)
-                folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
-                if pdfs:
-                    f = pdfs[0]
-                    up = drive_upload(f, f"aadhaar_{request.user.id}.pdf", folder)
+            
+            # Handle Aadhaar Document 1 (required)
+            folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
+            if aadhaar_file_1:
+                name = (getattr(aadhaar_file_1, 'name', '') or '').lower()
+                ctype = getattr(aadhaar_file_1, 'content_type', '') or ''
+                is_pdf = ctype == 'application/pdf' or name.endswith('.pdf')
+                
+                if is_pdf:
+                    # Upload PDF
+                    up = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}.pdf", folder)
                     if up:
                         _fid, preview = up
                         inst.aadhaar_file_url = preview
                         inst.aadhaar_file_url_2 = ''
-                elif imgs:
-                    inst.aadhaar_file_url_2 = ''
+                else:
+                    # Upload image (front side)
                     def _pick_ext(nm: str):
                         if nm.endswith('.png'): return '.png'
                         if nm.endswith('.webp'): return '.webp'
                         return '.jpg'
-                    f1 = imgs[0]
-                    ext1 = _pick_ext((getattr(f1, 'name', '') or '').lower())
-                    up1 = drive_upload(f1, f"aadhaar_{request.user.id}_front{ext1}", folder)
+                    ext1 = _pick_ext(name)
+                    up1 = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}_front{ext1}", folder)
                     if up1:
                         _fid1, preview1 = up1
                         inst.aadhaar_file_url = preview1
-                    if len(imgs) > 1:
-                        f2 = imgs[1]
-                        ext2 = _pick_ext((getattr(f2, 'name', '') or '').lower())
-                        up2 = drive_upload(f2, f"aadhaar_{request.user.id}_back{ext2}", folder)
+                    
+                    # Handle Aadhaar Document 2 (optional - back side)
+                    if aadhaar_file_2:
+                        name2 = (getattr(aadhaar_file_2, 'name', '') or '').lower()
+                        ext2 = _pick_ext(name2)
+                        up2 = drive_upload(aadhaar_file_2, f"aadhaar_{request.user.id}_back{ext2}", folder)
                         if up2:
                             _fid2, preview2 = up2
                             inst.aadhaar_file_url_2 = preview2
+                    else:
+                        inst.aadhaar_file_url_2 = ''
+
 
             inst.status = ResidentApplication.SUBMITTED
             inst.save()
@@ -856,7 +860,7 @@ def handle_booknow_booking(request, pg, has_active, context):
         errors.append('Selfie photo is required.')
     if not aadhaar_in_form:
         # Either no files or validation failed; add explicit error
-        errors.append('Aadhaar/Document upload is required.')
+        errors.append('Aadhaar Document 1 is required.')
 
     if errors:
         context.update({
@@ -914,50 +918,54 @@ def handle_booknow_booking(request, pg, has_active, context):
             inst.decl_deposit = True
             inst.decl_truth = True
 
-            # Files handling (same rules as application_fill)
+            # Files handling with two separate Aadhaar fields
             selfie_file = request.FILES.get('selfie')
-            aadhaar_files = form.cleaned_data.get('aadhaar_pdf') or []
+            aadhaar_file_1 = form.cleaned_data.get('aadhaar_pdf')
+            aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
+            
             if selfie_file:
                 up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
                 if up:
                     _fid, preview = up
                     inst.selfie_url = preview
-            if aadhaar_files:
-                imgs, pdfs = [], []
-                for f in aadhaar_files:
-                    name = (getattr(f, 'name', '') or '').lower()
-                    ctype = getattr(f, 'content_type', '') or ''
-                    if ctype == 'application/pdf' or name.endswith('.pdf'):
-                        pdfs.append(f)
-                    elif ctype.startswith('image/') or any(name.endswith(ext) for ext in ('.jpg','.jpeg','.png','.webp')):
-                        imgs.append(f)
-                folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
-                if pdfs:
-                    f = pdfs[0]
-                    up = drive_upload(f, f"aadhaar_{request.user.id}.pdf", folder)
+            
+            # Handle Aadhaar Document 1 (required)
+            folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
+            if aadhaar_file_1:
+                name = (getattr(aadhaar_file_1, 'name', '') or '').lower()
+                ctype = getattr(aadhaar_file_1, 'content_type', '') or ''
+                is_pdf = ctype == 'application/pdf' or name.endswith('.pdf')
+                
+                if is_pdf:
+                    # Upload PDF
+                    up = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}.pdf", folder)
                     if up:
                         _fid, preview = up
                         inst.aadhaar_file_url = preview
                         inst.aadhaar_file_url_2 = ''
-                elif imgs:
-                    inst.aadhaar_file_url_2 = ''
+                else:
+                    # Upload image (front side)
                     def _pick_ext(nm: str):
                         if nm.endswith('.png'): return '.png'
                         if nm.endswith('.webp'): return '.webp'
                         return '.jpg'
-                    f1 = imgs[0]
-                    ext1 = _pick_ext((getattr(f1, 'name', '') or '').lower())
-                    up1 = drive_upload(f1, f"aadhaar_{request.user.id}_front{ext1}", folder)
+                    ext1 = _pick_ext(name)
+                    up1 = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}_front{ext1}", folder)
                     if up1:
                         _fid1, preview1 = up1
                         inst.aadhaar_file_url = preview1
-                    if len(imgs) > 1:
-                        f2 = imgs[1]
-                        ext2 = _pick_ext((getattr(f2, 'name', '') or '').lower())
-                        up2 = drive_upload(f2, f"aadhaar_{request.user.id}_back{ext2}", folder)
+                    
+                    # Handle Aadhaar Document 2 (optional - back side)
+                    if aadhaar_file_2:
+                        name2 = (getattr(aadhaar_file_2, 'name', '') or '').lower()
+                        ext2 = _pick_ext(name2)
+                        up2 = drive_upload(aadhaar_file_2, f"aadhaar_{request.user.id}_back{ext2}", folder)
                         if up2:
                             _fid2, preview2 = up2
                             inst.aadhaar_file_url_2 = preview2
+                    else:
+                        inst.aadhaar_file_url_2 = ''
+
 
             inst.status = ResidentApplication.SUBMITTED
             inst.save()
@@ -1498,13 +1506,14 @@ def application_fill(request, booking_id):
                 messages.error(request, "Selfie is required. Capture or upload a clear face photo.")
                 return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
             # Aadhaar file (PDF or Image) required on first submission
-            if app is None and not request.FILES.get('aadhaar_pdf'):
-                messages.error(request, "Aadhaar document is required (PDF or Image).")
+            if app is None and not form.cleaned_data.get('aadhaar_pdf'):
+                messages.error(request, "Aadhaar Document 1 is required.")
                 return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
-            # Upload files to Drive
+            # Upload files to Drive with two separate Aadhaar fields
             selfie_file = request.FILES.get('selfie')
-            # Accept multiple files for Aadhaar/other card: either one PDF or up to two images
-            aadhaar_files = form.cleaned_data.get('aadhaar_pdf') or []
+            aadhaar_file_1 = form.cleaned_data.get('aadhaar_pdf')
+            aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
+            
             if selfie_file:
                 up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
                 if up:
@@ -1514,25 +1523,20 @@ def application_fill(request, booking_id):
                 # keep existing
                 if app:
                     inst.selfie_url = app.selfie_url
-            if aadhaar_files:
-                # Separate images and PDFs by content type/extension
-                imgs, pdfs = [], []
-                for f in aadhaar_files:
-                    name = (getattr(f, 'name', '') or '').lower()
-                    ctype = getattr(f, 'content_type', '') or ''
-                    if ctype == 'application/pdf' or name.endswith('.pdf'):
-                        pdfs.append(f)
-                    elif ctype.startswith('image/') or any(name.endswith(ext) for ext in ('.jpg','.jpeg','.png','.webp')):
-                        imgs.append(f)
-                folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
-                if pdfs:
-                    # Take the first/only PDF
-                    # When modifying: delete old images if switching from images to PDF
-                    old_url_1 = app.aadhaar_file_url if app else None
-                    old_url_2 = getattr(app, 'aadhaar_file_url_2', None) if app else None
-                    
-                    f = pdfs[0]
-                    up = drive_upload(f, f"aadhaar_{request.user.id}.pdf", folder)
+            
+            # Handle Aadhaar Document 1 and optionally Document 2
+            folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
+            if aadhaar_file_1:
+                old_url_1 = app.aadhaar_file_url if app else None
+                old_url_2 = getattr(app, 'aadhaar_file_url_2', None) if app else None
+                
+                name = (getattr(aadhaar_file_1, 'name', '') or '').lower()
+                ctype = getattr(aadhaar_file_1, 'content_type', '') or ''
+                is_pdf = ctype == 'application/pdf' or name.endswith('.pdf')
+                
+                if is_pdf:
+                    # Upload PDF - delete old files if switching from images
+                    up = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}.pdf", folder)
                     if up:
                         _fid, preview = up
                         inst.aadhaar_file_url = preview
@@ -1548,54 +1552,47 @@ def application_fill(request, booking_id):
                                 drive_delete(old_url_2)
                             except Exception:
                                 pass
-                elif imgs:
-                    # Upload up to two images as front/back
-                    # When modifying: if user uploads fewer images than before, delete old ones
-                    old_url_1 = app.aadhaar_file_url if app else None
-                    old_url_2 = getattr(app, 'aadhaar_file_url_2', None) if app else None
-                    
+                else:
+                    # Upload image as front
                     def _pick_ext(nm: str):
                         if nm.endswith('.png'): return '.png'
                         if nm.endswith('.webp'): return '.webp'
                         return '.jpg'
                     
-                    # First image
-                    f1 = imgs[0]
-                    ext1 = _pick_ext((getattr(f1, 'name', '') or '').lower())
-                    up1 = drive_upload(f1, f"aadhaar_{request.user.id}_front{ext1}", folder)
+                    ext1 = _pick_ext(name)
+                    up1 = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}_front{ext1}", folder)
                     if up1:
                         _fid1, preview1 = up1
                         inst.aadhaar_file_url = preview1
-                        # Delete old first image if it's different
+                        # Delete old file if different
                         if old_url_1 and old_url_1 != preview1:
                             try:
                                 drive_delete(old_url_1)
                             except Exception:
-                                pass  # Non-fatal: deletion failure shouldn't block the update
+                                pass
                     
-                    # Second image handling
-                    if len(imgs) > 1:
-                        # User uploaded 2 images
-                        f2 = imgs[1]
-                        ext2 = _pick_ext((getattr(f2, 'name', '') or '').lower())
-                        up2 = drive_upload(f2, f"aadhaar_{request.user.id}_back{ext2}", folder)
+                    # Handle optional Document 2 (back side)
+                    if aadhaar_file_2:
+                        name2 = (getattr(aadhaar_file_2, 'name', '') or '').lower()
+                        ext2 = _pick_ext(name2)
+                        up2 = drive_upload(aadhaar_file_2, f"aadhaar_{request.user.id}_back{ext2}", folder)
                         if up2:
                             _fid2, preview2 = up2
                             inst.aadhaar_file_url_2 = preview2
-                            # Delete old second image if it's different
+                            # Delete old back file if different
                             if old_url_2 and old_url_2 != preview2:
                                 try:
                                     drive_delete(old_url_2)
                                 except Exception:
                                     pass
                     else:
-                        # User uploaded only 1 image - clear and delete old second image
+                        # No back image provided - clear and delete old
                         inst.aadhaar_file_url_2 = ''
                         if old_url_2:
                             try:
                                 drive_delete(old_url_2)
                             except Exception:
-                                pass  # Non-fatal
+                                pass
             else:
                 if app:
                     inst.aadhaar_file_url = app.aadhaar_file_url

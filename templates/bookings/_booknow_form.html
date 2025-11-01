@@ -115,20 +115,20 @@ document.addEventListener('DOMContentLoaded', function(){
     shareSel.dispatchEvent(new Event('change'));
   }
 
-  // Load rooms with vacancy
-  fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/')
+  // Load rooms with vacancy (including vacant_from rooms)
+  fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/?include_vacant_from=true')
     .then(r=>r.json())
     .then(json=> setRooms(json.rooms))
     .catch(()=>{ roomSel.innerHTML = '<option value="">Failed to load rooms</option>'; roomSel.disabled = true; });
 
-  // When room changes, load its vacant beds
+  // When room changes, load its vacant beds (including vacant_from beds)
   roomSel.addEventListener('change', function(){
     shareSel.innerHTML = '<option value="">Loading…</option>';
     shareSel.disabled = true;
     const rid = roomSel.value;
     if (!rid) { shareSel.innerHTML = '<option value="">Select a room first</option>'; hideStep3(); return; }
     hideStep3();
-    fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/' + rid + '/shares/')
+    fetch(window.location.pathname.replace(/\/$/, '') + '/api/rooms/' + rid + '/shares/?include_vacant_from=true')
       .then(r=>r.json())
       .then(json=> setBeds(json.beds || json.shares || json.vacant_beds || json.vacant_shares))
       .catch(()=>{ shareSel.innerHTML = '<option value="">Failed to load beds</option>'; shareSel.disabled = true; });
@@ -169,7 +169,15 @@ document.addEventListener('DOMContentLoaded', function(){
       if (availableFrom){
         shareHint.textContent = `This bed will be vacant from ${availableFrom}. Please select a joining date on or after this date.`;
         joiningDate.value = '';
-        joiningDate.setAttribute('min', availableFrom);
+        // For vacant_from beds: min is the later of (vacant_from or today if pastAllowed=false)
+        const vacantFromDate = new Date(availableFrom);
+        let minDate;
+        if (!pastAllowed && vacantFromDate < today) {
+          minDate = today;
+        } else {
+          minDate = vacantFromDate;
+        }
+        joiningDate.setAttribute('min', localYYYYMMDD(minDate));
         joiningDate.setAttribute('max', localYYYYMMDD(maxDate));
       } else {
         shareHint.textContent = 'This bed is not yet available. Please choose a different bed or pick a later joining date.';

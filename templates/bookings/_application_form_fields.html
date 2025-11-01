@@ -71,10 +71,16 @@
     <div class="fw-semibold mb-1">Documents</div>
     <div class="row g-2">
       <div class="col-md-6">
-        <label class="form-label">Aadhaar / Other Card (PDF or Images)</label>
-        <input type="file" name="aadhaar_pdf" class="form-control" accept="application/pdf,image/*" multiple required />
-        <div class="form-text">Upload one PDF, or one/two images.</div>
-        <div id="aadhaarPreview" class="mt-2"></div>
+        <label class="form-label">Aadhaar Document <span class="text-danger">*</span></label>
+        <input type="file" name="aadhaar_pdf" id="aadhaarDoc1" class="form-control" accept="application/pdf,image/*" required />
+        <div class="form-text">Upload front side image or complete PDF</div>
+        <div id="aadhaarPreview1" class="mt-2"></div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Aadhaar Document 2 <span class="text-muted">(Optional)</span></label>
+        <input type="file" name="aadhaar_pdf_2" id="aadhaarDoc2" class="form-control" accept="image/*" />
+        <div class="form-text">Upload back side image (if not using PDF above)</div>
+        <div id="aadhaarPreview2" class="mt-2"></div>
       </div>
       <div class="col-md-6">
         <label class="form-label mb-1">Profile Photo (Live Capture)</label>
@@ -250,10 +256,12 @@
     if (dobInput.value) syncAge();
   })();
 
-  // Aadhaar/PDF/Image preview with validation and password-protected PDF detection
+  // Aadhaar/PDF/Image preview with validation for two separate fields
   (function(){
-    const input = document.querySelector('input[name="aadhaar_pdf"]');
-    const preview = document.getElementById('aadhaarPreview');
+    const input1 = document.getElementById('aadhaarDoc1');
+    const input2 = document.getElementById('aadhaarDoc2');
+    const preview1 = document.getElementById('aadhaarPreview1');
+    const preview2 = document.getElementById('aadhaarPreview2');
     const startBtn = document.getElementById('qbBtnStartSelfie');
     const capBtn = document.getElementById('qbBtnCaptureSelfie');
     const retakeBtn = document.getElementById('qbBtnRetakeSelfie');
@@ -309,13 +317,13 @@
       try { new bootstrap.Toast(el, { delay: 4500 }).show(); } catch(e) { /* ignore */ }
     }
 
-    function clearPreview(){ preview.innerHTML = ''; }
+    function clearPreview(previewEl){ if (previewEl) previewEl.innerHTML = ''; }
 
     function urlFor(file){ return URL.createObjectURL(file); }
 
-    function revokeAll(){
-      // Best-effort: revoke any object URLs we created
-      preview.querySelectorAll('iframe,img,object,a').forEach(n=>{
+    function revokeAll(previewEl){
+      if (!previewEl) return;
+      previewEl.querySelectorAll('iframe,img,object,a').forEach(n=>{
         try {
           const url = n.tagName === 'A' ? n.getAttribute('href') : n.getAttribute('src') || n.getAttribute('data');
           if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
@@ -323,51 +331,40 @@
       });
     }
 
-    function invalidSelection(msg){
-      showToast(msg || 'Invalid selection.', 'danger');
-      input.value = '';
-      clearPreview();
-      setSelfieEnabled(false);
+    function renderImage(file, previewEl){
+      clearPreview(previewEl);
+      const img = document.createElement('img');
+      img.src = urlFor(file);
+      img.alt = file.name;
+      img.style.width = '100%';
+      img.style.maxWidth = '200px';
+      img.style.height = 'auto';
+      img.className = 'border rounded';
+      previewEl.appendChild(img);
     }
 
-    function renderImages(files){
-      clearPreview();
-      const wrap = document.createElement('div');
-      wrap.className = 'd-flex flex-wrap gap-2';
-      files.forEach(f=>{
-        const img = document.createElement('img');
-        img.src = urlFor(f); img.alt = f.name; img.style.width = '120px'; img.style.height='120px'; img.style.objectFit='cover';
-        img.className = 'border rounded';
-        wrap.appendChild(img);
-      });
-      preview.appendChild(wrap);
-    }
-
-    async function renderPdf(file){
-      clearPreview();
+    async function renderPdf(file, previewEl){
+      clearPreview(previewEl);
       const blobUrl = urlFor(file);
-      // Container for canvas
       const canvas = document.createElement('canvas');
       canvas.style.width = '100%';
       canvas.style.height = 'auto';
       canvas.style.border = '1px solid #e2e8f0';
       canvas.className = 'rounded w-100';
-      preview.appendChild(canvas);
+      previewEl.appendChild(canvas);
       const ctx = canvas.getContext('2d');
 
-      // PDF.js setup
       const pdfjsLib = window['pdfjs-dist/build/pdf'];
       if (!pdfjsLib || !pdfjsLib.getDocument){
-        // Fallback: open in new tab
-        const a = document.createElement('a'); a.href = blobUrl; a.target = '_blank'; a.textContent = 'Open PDF in new tab';
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.target = '_blank';
+        a.textContent = 'Open PDF in new tab';
         a.className = 'btn btn-outline-secondary btn-sm';
-        preview.appendChild(document.createElement('div')).appendChild(a);
-        showToast('Inline PDF preview not available. Opened link as fallback.', 'info');
-        // Consider this a valid selection -> enable selfie
-        setSelfieEnabled(true);
-        return;
+        previewEl.appendChild(document.createElement('div')).appendChild(a);
+        return true;
       }
-      // Worker source (pdf.worker.js is auto-resolved in modern builds, but set if needed)
+
       try {
         if (!pdfjsLib.GlobalWorkerOptions.workerSrc){
           pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
@@ -376,15 +373,13 @@
 
       try {
         const loadingTask = pdfjsLib.getDocument({ url: blobUrl });
-        loadingTask.onPassword = (updatePassword, reason) => {
-          // We don't support passwords
+        loadingTask.onPassword = () => {
           showToast('Please select a PDF which is not password protected.', 'danger');
-          input.value = ''; clearPreview();
+          return false;
         };
-  const pdf = await loadingTask.promise;
+        const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1);
-        // Responsive scale: fit to container width
-        const containerWidth = preview.clientWidth || canvas.clientWidth || 600;
+        const containerWidth = previewEl.clientWidth || canvas.clientWidth || 300;
         const viewport = page.getViewport({ scale: 1.0 });
         const scale = containerWidth / viewport.width;
         const scaledViewport = page.getViewport({ scale });
@@ -392,23 +387,21 @@
         canvas.height = scaledViewport.height;
         await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
 
-        // Offer open-in-new-tab link
         const linkWrap = document.createElement('div');
         linkWrap.className = 'mt-2';
         const openLink = document.createElement('a');
-        openLink.href = blobUrl; openLink.target = '_blank'; openLink.rel = 'noopener';
-        openLink.textContent = 'Open full PDF in new tab';
+        openLink.href = blobUrl;
+        openLink.target = '_blank';
+        openLink.rel = 'noopener';
+        openLink.textContent = 'Open full PDF';
         openLink.className = 'btn btn-outline-secondary btn-sm';
         linkWrap.appendChild(openLink);
-        preview.appendChild(linkWrap);
-        // Valid PDF selection -> enable selfie
-        setSelfieEnabled(true);
+        previewEl.appendChild(linkWrap);
+        return true;
       } catch (err){
         console.error('PDF.js render error', err);
         showToast('Unable to preview PDF. It may be encrypted or corrupted.', 'danger');
-        input.value = '';
-        clearPreview();
-        setSelfieEnabled(false);
+        return false;
       }
     }
 
@@ -418,67 +411,112 @@
       try {
         const buf = await file.arrayBuffer();
         const text = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(buf).slice(0, 1_048_576));
-        // Heuristic: encrypted PDFs usually contain "/Encrypt"
         return /\/Encrypt\b/.test(text);
       } catch (e){
         return false;
       }
     }
 
-    input && input.addEventListener('change', async function(){
-      revokeAll();
-      clearPreview();
-      const files = Array.from(input.files || []);
-      if (!files.length) { setSelfieEnabled(false); return; }
+    function checkAndEnableSelfie(){
+      // Enable selfie if Document 1 has a file
+      const hasDoc1 = input1 && input1.files && input1.files.length > 0;
+      setSelfieEnabled(hasDoc1);
+    }
 
-      // Enforce per-file size limit (2MB)
-      const tooLarge = files.find(f => f.size > 2*1024*1024);
-      if (tooLarge){
-        invalidSelection(`File too large: ${tooLarge.name} (${bytesToMB(tooLarge.size)} MB). Max allowed is 2 MB.`);
-        return;
-      }
-
-      const pdfs = files.filter(f=> f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-      const images = files.filter(f=> f.type.startsWith('image/'));
-
-      // Enforce rules: either 1 PDF, or up to 2 images
-      if (pdfs.length > 0 && images.length > 0){
-        return invalidSelection('Please select either one PDF or images, not both.');
-      }
-      if (pdfs.length > 1){
-        return invalidSelection('Please select only one PDF.');
-      }
-      if (images.length > 2){
-        return invalidSelection('Please select a maximum of two images.');
-      }
-
-      if (pdfs.length === 1){
-        // Detect password protection heuristically
-        if (await pdfLooksEncrypted(pdfs[0])){
-          return invalidSelection('Please select a PDF which is not password protected.');
+    // Handler for Document 1 (required - PDF or image)
+    input1 && input1.addEventListener('change', async function(){
+      revokeAll(preview1);
+      clearPreview(preview1);
+      
+      const file = input1.files && input1.files.length > 0 ? input1.files[0] : null;
+      if (!file) {
+        checkAndEnableSelfie();
+        // Clear Document 2 if Document 1 is removed
+        if (input2) {
+          input2.value = '';
+          input2.disabled = true;
         }
-        renderPdf(pdfs[0]);
+        clearPreview(preview2);
         return;
       }
 
-      if (images.length >= 1){
-        renderImages(images.slice(0,2));
-        // Valid image(s) selection -> enable selfie
-        setSelfieEnabled(true);
+      // Check file size (2MB limit)
+      if (file.size > 2*1024*1024){
+        showToast(`File too large: ${file.name} (${bytesToMB(file.size)} MB). Max allowed is 2 MB.`, 'danger');
+        input1.value = '';
+        checkAndEnableSelfie();
         return;
       }
 
-      // Unknown file types — clear
-      invalidSelection('Unsupported file type. Please upload a PDF or images.');
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const isImage = file.type.startsWith('image/');
+
+      if (!isPdf && !isImage){
+        showToast('Please upload a PDF or image file.', 'danger');
+        input1.value = '';
+        checkAndEnableSelfie();
+        return;
+      }
+
+      if (isPdf){
+        // If PDF, disable Document 2 and clear it
+        if (await pdfLooksEncrypted(file)){
+          showToast('Please select a PDF which is not password protected.', 'danger');
+          input1.value = '';
+          checkAndEnableSelfie();
+          return;
+        }
+        const success = await renderPdf(file, preview1);
+        if (success){
+          if (input2) {
+            input2.value = '';
+            input2.disabled = true;
+            clearPreview(preview2);
+          }
+          checkAndEnableSelfie();
+        } else {
+          input1.value = '';
+          checkAndEnableSelfie();
+        }
+      } else {
+        // Image - enable Document 2
+        renderImage(file, preview1);
+        if (input2) {
+          input2.disabled = false;
+        }
+        checkAndEnableSelfie();
+      }
     });
 
-    // Initialize gating on load based on whether a document is already present
-    if (input){
-      if (input.files && input.files.length > 0){
-        setSelfieEnabled(true);
-      } else {
-        setSelfieEnabled(false);
+    // Handler for Document 2 (optional - image only, for back side)
+    input2 && input2.addEventListener('change', async function(){
+      revokeAll(preview2);
+      clearPreview(preview2);
+      
+      const file = input2.files && input2.files.length > 0 ? input2.files[0] : null;
+      if (!file) return;
+
+      // Check file size (2MB limit)
+      if (file.size > 2*1024*1024){
+        showToast(`File too large: ${file.name} (${bytesToMB(file.size)} MB). Max allowed is 2 MB.`, 'danger');
+        input2.value = '';
+        return;
       }
+
+      const isImage = file.type.startsWith('image/');
+      if (!isImage){
+        showToast('Document 2 must be an image file.', 'danger');
+        input2.value = '';
+        return;
+      }
+
+      renderImage(file, preview2);
+    });
+
+    // Initialize
+    checkAndEnableSelfie();
+    if (input2) {
+      input2.disabled = true; // Disabled until Document 1 is an image
     }
   })();
 
