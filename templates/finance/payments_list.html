@@ -62,24 +62,34 @@
       <tbody>
       {% for i in items %}
         <tr>
-          <td>{{ i.user.email }}</td>
+          <td>
+            <div class="fw-semibold">{{ i.user.get_full_name|default:i.user.username }}</div>
+            <div class="small text-muted">{{ i.user.email }}</div>
+          </td>
           <td class="nowrap">₹ {{ i.amount }}</td>
           <td>{{ i.date }}</td>
           <td>{{ i.mode }}</td>
           <td>{{ i.type }}</td>
           <td class="text-truncate" style="max-width:260px">{{ i.notes|default:'—' }}</td>
           <td class="text-end">
-            <form method="post" action="{% url 'payments_delete' i.id %}" id="delete-form-{{ i.id }}">
-              {% csrf_token %}
+            <div class="d-flex gap-1 justify-content-end">
+              <a href="{% url 'payments_edit' i.id %}" class="btn btn-sm btn-outline-primary" title="Edit payment">
+                <i class="bi bi-pencil"></i>
+              </a>
               <button type="button" class="btn btn-sm btn-outline-danger"
                       data-bs-toggle="modal"
                       data-bs-target="#confirmDeleteModal"
                       data-form-id="delete-form-{{ i.id }}"
-                      data-user="{{ i.user.email }}"
+                      data-user="{{ i.user.get_full_name|default:i.user.username }}"
+                      data-email="{{ i.user.email }}"
                       data-amount="{{ i.amount }}"
-                      data-date="{{ i.date }}">
-                Delete
+                      data-date="{{ i.date }}"
+                      title="Delete payment">
+                <i class="bi bi-trash"></i>
               </button>
+            </div>
+            <form method="post" action="{% url 'payments_delete' i.id %}" id="delete-form-{{ i.id }}" class="d-none">
+              {% csrf_token %}
             </form>
           </td>
         </tr>
@@ -112,6 +122,7 @@
         <p class="mb-2">Are you sure you want to delete this payment?</p>
         <div class="small text-secondary">
           <div><span class="fw-semibold">User:</span> <span id="delUser">—</span></div>
+          <div class="ms-3 small"><span id="delEmail">—</span></div>
           <div><span class="fw-semibold">Amount:</span> ₹ <span id="delAmount">—</span></div>
           <div><span class="fw-semibold">Date:</span> <span id="delDate">—</span></div>
         </div>
@@ -136,9 +147,11 @@
       formIdToSubmit = button.getAttribute('data-form-id');
       // Populate info
       var user = button.getAttribute('data-user') || '—';
+      var email = button.getAttribute('data-email') || '—';
       var amount = button.getAttribute('data-amount') || '—';
       var date = button.getAttribute('data-date') || '—';
       document.getElementById('delUser').textContent = user;
+      document.getElementById('delEmail').textContent = email;
       document.getElementById('delAmount').textContent = amount;
       document.getElementById('delDate').textContent = date;
     });
