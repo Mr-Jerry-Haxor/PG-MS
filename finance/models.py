@@ -27,7 +27,7 @@ class Fees(TimeStampedModel):
 
 class Payment(TimeStampedModel):
 	STATUS_CHOICES = [('success', 'Success'), ('failed', 'Failed'), ('pending', 'Pending')]
-	MODE_CHOICES = [('cash', 'Cash'), ('upi', 'UPI'), ('bank', 'Bank Transfer')]
+	MODE_CHOICES = [('cash', 'Cash'), ('upi', 'UPI'), ('upi_cash', 'UPI+CASH')]
 	TYPE_CHOICES = [('fee', 'Fee'), ('advance', 'Advance'), ('daywise', 'Day-wise')]
 
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='payments')
@@ -40,6 +40,8 @@ class Payment(TimeStampedModel):
 	notes = models.TextField(blank=True)
 	from_date = models.DateField(null=True, blank=True, help_text='Billing period start date')
 	to_date = models.DateField(null=True, blank=True, help_text='Billing period end date')
+	upi_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='UPI component when mode is UPI+CASH')
+	cash_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Cash component when mode is UPI+CASH')
 
 	def __str__(self):
 		return f"{self.user} - {self.pg} - {self.amount}"

@@ -121,6 +121,13 @@
   <input type="hidden" name="year" value="{{ summary.year }}">
   <input type="hidden" name="month" value="{{ summary.month }}">
   <div class="card border-0 shadow-sm">
+    <!-- Search Box Above Table -->
+    <div class="card-body border-bottom">
+      <div class="input-group input-group-sm" style="max-width:350px;">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input id="searchBox" type="text" class="form-control" placeholder="Search by Name / Email / Room...">
+      </div>
+    </div>
     <div class="table-responsive">
       <table class="table align-middle mb-0" id="monthlyTable">
         <thead>
@@ -243,7 +250,12 @@
               <div class="d-flex flex-wrap gap-1">
                 <a class="btn btn-sm btn-outline-secondary" href="{% url 'finance_monthly_remind' r.user.id %}?year={{ summary.year }}&month={{ summary.month }}">Send Reminder</a>
                 {% if r.whatsapp_phone %}
-                  <a class="btn btn-sm btn-outline-success" target="_blank" href="https://wa.me/{{ r.whatsapp_phone }}?text={{ 'Hello%20this%20is%20a%20rent%20reminder' }}">WhatsApp</a>
+                  <a class="btn btn-sm btn-outline-primary" href="tel:{{ r.whatsapp_phone }}" title="Call {{ r.user.first_name }}">
+                    <i class="bi bi-telephone-fill"></i>
+                  </a>
+                  <a class="btn btn-sm btn-outline-success" target="_blank" href="https://wa.me/{{ r.whatsapp_phone }}?text={{ 'Hello%20this%20is%20a%20rent%20reminder' }}" title="WhatsApp {{ r.user.first_name }}">
+                    <i class="bi bi-whatsapp"></i>
+                  </a>
                 {% endif %}
               </div>
               {% for credit in r.referral_pending %}
@@ -328,15 +340,11 @@
     </div>
     <div class="card-body">
       <div class="d-flex gap-2 align-items-center flex-wrap">
-        <div class="input-group input-group-sm" style="max-width:280px;">
-          <span class="input-group-text">Search</span>
-          <input id="searchBox" type="text" class="form-control" placeholder="Name / Email / Room">
-        </div>
-        <div class="btn-group btn-group-sm ms-auto">
+        <div class="btn-group btn-group-sm">
           <button class="btn btn-outline-secondary" type="button" id="btnSelectUnpaid">Select Unpaid</button>
           <button class="btn btn-outline-secondary" type="button" id="btnClearSelection">Clear</button>
         </div>
-        <button class="btn btn-primary" type="submit">Send Bulk Reminder (Email)</button>
+        <button class="btn btn-primary ms-auto" type="submit">Send Bulk Reminder (Email)</button>
       </div>
     </div>
   </div>
@@ -463,7 +471,7 @@
               <select class="form-select" name="mode" id="qp_mode">
                 <option value="upi">UPI</option>
                 <option value="cash">Cash</option>
-                <option value="bank">Bank Transfer</option>
+                <option value="upi_cash">UPI+CASH</option>
               </select>
             </div>
             <div class="col">
@@ -472,6 +480,16 @@
                 <option value="fee">Fee</option>
                 <option value="advance">Advance</option>
               </select>
+            </div>
+          </div>
+          <div class="row g-2 mt-2 d-none" id="qp_upi_cash_fields">
+            <div class="col-6">
+              <label class="form-label small">UPI Amount</label>
+              <input type="number" class="form-control" step="0.01" min="0" name="upi_amount" id="qp_upi_amount">
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Cash Amount</label>
+              <input type="number" class="form-control" step="0.01" min="0" name="cash_amount" id="qp_cash_amount">
             </div>
           </div>
           <div class="mt-2">
@@ -1024,6 +1042,24 @@
             // ensure changes to type while modal is open update visibility and amount behavior
             typeSelect.onchange = function(){ applyTypeVisibility(this.value); applyAmountBehavior(this.value); };
           }
+          
+          // Handle UPI+CASH mode toggle
+          var modeSelect = document.getElementById('qp_mode');
+          var upiCashFields = document.getElementById('qp_upi_cash_fields');
+          function toggleQpUpiCashFields() {
+            if (modeSelect && upiCashFields) {
+              if (modeSelect.value === 'upi_cash') {
+                upiCashFields.classList.remove('d-none');
+              } else {
+                upiCashFields.classList.add('d-none');
+              }
+            }
+          }
+          if (modeSelect) {
+            modeSelect.onchange = toggleQpUpiCashFields;
+            toggleQpUpiCashFields(); // Initialize on modal open
+          }
+          
         qpModal.show();
       });
     });
@@ -1094,6 +1130,24 @@
         if (!(amt > 0)) { showToast('Please enter a valid amount greater than 0.', 'danger'); return; }
         var mode = document.getElementById('qp_mode').value;
         var type = document.getElementById('qp_type').value;
+
+        // If UPI+CASH mode, validate component fields are provided and sum to total
+        if (mode === 'upi_cash') {
+          var upiVal = parseFloat((document.getElementById('qp_upi_amount')?.value) || '0');
+          var cashVal = parseFloat((document.getElementById('qp_cash_amount')?.value) || '0');
+          if (isNaN(upiVal) || isNaN(cashVal) || upiVal <= 0 || cashVal <= 0) {
+            showToast('Enter both UPI and Cash amounts greater than 0 for UPI+CASH mode.', 'danger');
+            return;
+          }
+          // Allow tiny rounding differences by comparing with 2 decimal precision
+          var sum = Math.round((upiVal + cashVal) * 100) / 100;
+          var amtRounded = Math.round(amt * 100) / 100;
+          if (sum !== amtRounded) {
+            showToast('UPI + Cash must equal the total Amount.', 'danger');
+            return;
+          }
+        }
+
         var confirmMsg = 'Confirm to record payment of ₹' + amt.toFixed(2) + ' (' + type + ', ' + mode.toUpperCase() + ')?';
         if (!confirm(confirmMsg)) { return; }
         lastSubmitTime = now;

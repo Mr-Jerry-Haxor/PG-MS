@@ -205,6 +205,13 @@ def payments_edit(request, pk=None):
     if not _require_pg_admin(request.user):
         messages.error(request, "PG Admin access required.")
         return redirect('dashboard')
+    
+    # Restrict edit to website admins only
+    if pk and not (getattr(request.user, 'is_superuser', False) or 
+                    (hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False))):
+        messages.error(request, 'Only website administrators can edit payments.')
+        return redirect('payments_list')
+    
     req_pg = request.GET.get('pg')
     if req_pg and not _is_authorized_pg(request.user, req_pg):
         messages.error(request, "You do not have access to the requested PG.")
@@ -264,11 +271,19 @@ def payments_edit(request, pk=None):
 def payments_delete(request, pk: int):
     """Delete a payment entry. POST only.
     - Requires PG admin privileges and access to the payment's PG.
+    - Restricted to website administrators only.
     - After deletion, redirect back to payments list for that PG.
     """
     if not _require_pg_admin(request.user):
         messages.error(request, "PG Admin access required.")
         return redirect('dashboard')
+    
+    # Restrict delete to website admins only
+    if not (getattr(request.user, 'is_superuser', False) or 
+            (hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False))):
+        messages.error(request, 'Only website administrators can delete payments.')
+        return redirect('payments_list')
+    
     # Only allow POST to delete
     if request.method != 'POST':
         messages.error(request, "Invalid request method.")
@@ -480,8 +495,11 @@ def _get_payment_cycle_for_month(booking, m_first: date) -> tuple[date, date, da
         effective_start = joining_date
 
     effective_end = cycle_end
-    if leaving_date and leaving_date < effective_end:
-        effective_end = leaving_date
+    if leaving_date:
+        # When there's a leaving date, calculate until leaving_date - 1
+        adjusted_leaving = leaving_date - timedelta(days=1)
+        if adjusted_leaving < effective_end:
+            effective_end = adjusted_leaving
 
     if effective_end < cycle_start or (joining_date and joining_date > cycle_end):
         # No overlap with this cycle
@@ -3014,8 +3032,26 @@ def monthly_quick_payment(request):
         messages.error(request, 'Amount should be greater than 0.')
         return redirect('finance_monthly')
     mode = (request.POST.get('mode') or 'upi').lower()
-    if mode not in ('upi', 'cash', 'bank'):
+    if mode not in ('upi', 'cash', 'upi_cash'):
         mode = 'upi'
+
+    # Handle UPI+CASH mode: extract component amounts
+    upi_amount_val = None
+    cash_amount_val = None
+    if mode == 'upi_cash':
+        upi_raw = (request.POST.get('upi_amount') or '').strip()
+        cash_raw = (request.POST.get('cash_amount') or '').strip()
+        try:
+            if upi_raw:
+                upi_amount_val = Decimal(upi_raw)
+        except (InvalidOperation, TypeError):
+            upi_amount_val = None
+        try:
+            if cash_raw:
+                cash_amount_val = Decimal(cash_raw)
+        except (InvalidOperation, TypeError):
+            cash_amount_val = None
+
     ptype = (request.POST.get('type') or 'fee').lower()
     if ptype not in ('fee', 'advance'):
         ptype = 'fee'
@@ -3053,10 +3089,18 @@ def monthly_quick_payment(request):
 
     # Create Payment (success by default)
     try:
+        # Server-side validation for UPI+CASH: require the split and ensure sum equals amount
+        if mode == 'upi_cash':
+            if upi_amount_val is None or cash_amount_val is None:
+                raise ValueError('Both UPI and Cash amounts are required for UPI+CASH mode.')
+            if (upi_amount_val + cash_amount_val) != amount:
+                raise ValueError('UPI amount plus Cash amount must equal the total Amount.')
+
         payment = Payment.objects.create(
             user=u, pg=pg, amount=amount, date=pay_date,
             status='success', mode=mode, type=ptype, notes=notes,
             from_date=from_date_val, to_date=to_date_val,
+            upi_amount=upi_amount_val, cash_amount=cash_amount_val,
         )
         
         # If payment type is 'advance', update the user's booking based on payment date

@@ -108,6 +108,16 @@
         {{ form.type }}
       </div>
     </div>
+    <div class="row g-3 mt-2 d-none" id="upiCashFields">
+      <div class="col-md-6">
+        <label class="form-label">UPI Amount</label>
+        {{ form.upi_amount }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Cash Amount</label>
+        {{ form.cash_amount }}
+      </div>
+    </div>
     <div class="mt-3">
       <label class="form-label">Notes</label>
       {{ form.notes }}
@@ -186,6 +196,34 @@ document.addEventListener('DOMContentLoaded', function() {
     if (dateInput.value && !fromDateInput.value && !toDateInput.value) {
       dateInput.dispatchEvent(new Event('change'));
     }
+  }
+
+  // Show/hide UPI+CASH fields based on mode selection
+  const modeSelect = document.querySelector('#id_mode');
+  const upiCashFields = document.querySelector('#upiCashFields');
+  
+  function toggleUpiCashFields() {
+    if (modeSelect && upiCashFields) {
+      if (modeSelect.value === 'upi_cash') {
+        upiCashFields.classList.remove('d-none');
+        var iu = document.getElementById('id_upi_amount');
+        var ic = document.getElementById('id_cash_amount');
+        if (iu) iu.required = true;
+        if (ic) ic.required = true;
+      } else {
+        upiCashFields.classList.add('d-none');
+        var iu = document.getElementById('id_upi_amount');
+        var ic = document.getElementById('id_cash_amount');
+        if (iu) { iu.required = false; iu.value = ''; }
+        if (ic) { ic.required = false; ic.value = ''; }
+      }
+    }
+  }
+  
+  if (modeSelect) {
+    modeSelect.addEventListener('change', toggleUpiCashFields);
+    // Initialize on page load
+    toggleUpiCashFields();
   }
 });
 </script>

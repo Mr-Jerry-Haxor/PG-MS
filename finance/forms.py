@@ -43,7 +43,7 @@ class PaymentForm(forms.ModelForm):
 
     class Meta:
         model = Payment
-        fields = ["user", "amount", "date", "from_date", "to_date", "status", "mode", "type", "notes"]
+        fields = ["user", "amount", "date", "from_date", "to_date", "status", "mode", "type", "notes", "upi_amount", "cash_amount"]
         widgets = {
             "amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
@@ -53,7 +53,42 @@ class PaymentForm(forms.ModelForm):
             "mode": forms.Select(attrs={"class": "form-select"}),
             "type": forms.Select(attrs={"class": "form-select"}),
             "notes": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+            "upi_amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+            "cash_amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        mode = cleaned.get('mode')
+        amount = cleaned.get('amount')
+        upi_amount = cleaned.get('upi_amount')
+        cash_amount = cleaned.get('cash_amount')
+
+        # When mode is UPI+CASH, require both component fields and ensure they sum to total
+        if mode == 'upi_cash':
+            errors = {}
+            if upi_amount is None:
+                errors['upi_amount'] = forms.ValidationError('Enter UPI amount for UPI+CASH mode.')
+            if cash_amount is None:
+                errors['cash_amount'] = forms.ValidationError('Enter cash amount for UPI+CASH mode.')
+
+            # If both present and amount provided, ensure they add up to amount
+            if upi_amount is not None and cash_amount is not None and amount is not None:
+                try:
+                    # Use Decimal arithmetic via the fields (already Decimal)
+                    total = upi_amount + cash_amount
+                    if total != amount:
+                        msg = 'UPI + Cash must equal the total Amount.'
+                        errors['upi_amount'] = forms.ValidationError(msg)
+                        errors['cash_amount'] = forms.ValidationError(msg)
+                except Exception:
+                    # Ignore arithmetic exceptions and let field-level validation handle types
+                    pass
+
+            if errors:
+                raise forms.ValidationError(errors)
+
+        return cleaned
 
 
 class ExpenditureForm(forms.ModelForm):
