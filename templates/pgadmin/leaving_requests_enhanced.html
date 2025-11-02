@@ -37,6 +37,118 @@
       -webkit-transform: none !important;
     }
   }
+  
+  /* Delete modal higher z-index */
+  .modal.delete-modal {
+    z-index: 1500 !important;
+  }
+  
+  .modal.delete-modal + .modal-backdrop {
+    z-index: 1490 !important;
+  }
+  
+  /* Search box styling */
+  .search-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 0.5rem;
+    padding: 0.3rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .search-container .form-control {
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+  }
+  
+  .search-container .form-control:focus {
+    border-color: #fff;
+    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25);
+  }
+  
+  /* Accordion styling improvements */
+  .filters-accordion .accordion-button {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    color: #2d3748;
+    font-weight: 600;
+    padding: 0.875rem 1.25rem;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+  
+  .filters-accordion .accordion-button:not(.collapsed) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
+  
+  .filters-accordion .accordion-button:focus {
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+  }
+  
+  .filters-accordion .accordion-body {
+    background: #f8f9fa;
+    border-top: 2px solid #dee2e6;
+  }
+  
+  /* Filter button enhancements */
+  .filter-btn {
+    transition: all 0.2s ease;
+    font-weight: 500;
+  }
+  
+  .filter-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .filter-btn.active {
+    transform: translateY(0);
+    font-weight: 600;
+  }
+  
+  /* Count badge enhancement */
+  #filterCount {
+    animation: pulse 2s ease-in-out infinite;
+  }
+  
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  
+  /* Table enhancements */
+  .table-hover tbody tr {
+    transition: all 0.2s ease;
+  }
+  
+  .table-hover tbody tr:hover {
+    transform: translateX(4px);
+    box-shadow: -4px 0 0 0 #667eea;
+  }
+  
+  /* Pagination styling */
+  .pagination .page-item.active .page-link {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: #667eea;
+    font-weight: 600;
+  }
+  
+  .pagination .page-link {
+    color: #667eea;
+    transition: all 0.2s ease;
+  }
+  
+  .pagination .page-link:hover {
+    color: #764ba2;
+    background-color: #f5f7fa;
+  }
+  
+  #paginationTop, #paginationBottom {
+    padding: 1rem;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
 </style>
 {% endblock %}
 
@@ -68,52 +180,100 @@
     </div>
   </div>
 
-  <!-- Filters -->
-  <div class="card shadow-sm mb-3">
-    <div class="card-body py-2">
-      <div class="d-flex flex-wrap align-items-center gap-2">
-        <span class="fw-semibold text-muted" style="font-size: 0.75rem;">FILTERS:</span>
-        
-        <!-- Status Filters -->
-        <div class="btn-group btn-group-sm" role="group" id="statusFilterGroup">
-          <button type="button" class="btn btn-outline-primary filter-btn active" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="all">All</button>
-          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="pending">Pending</button>
-          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="confirmed">Confirmed</button>
-          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="scheduled">Scheduled Leave</button>
-          <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="vacated">Vacated</button>
-        </div>
-        
-        <span class="text-muted" style="font-size: 0.875rem;">|</span>
-        
-        <!-- Advance Filters -->
-        <div class="btn-group btn-group-sm" role="group" id="advanceFilterGroup">
-          <button type="button" class="btn btn-outline-success filter-btn active" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="all">All Advance</button>
-          <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="eligible">Eligible</button>
-          <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="not-eligible">Not Eligible</button>
-          <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="pending">Pending Return</button>
-          <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance" data-filter-value="returned">Returned</button>
-        </div>
-        
-        <span class="text-muted" style="font-size: 0.875rem;">|</span>
-        
-        <!-- Booking Type Filters -->
-        <div class="btn-group btn-group-sm" role="group" id="bookingTypeFilterGroup">
-          <button type="button" class="btn btn-outline-info filter-btn active" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="all">All Types</button>
-          <button type="button" class="btn btn-outline-info filter-btn" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="regular">Regular</button>
-          <button type="button" class="btn btn-outline-info filter-btn" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="daywise">Day-wise</button>
-        </div>
-        
-        <span class="text-muted" style="font-size: 0.875rem;">|</span>
-        
-        <!-- Reset Button -->
-        <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size: 0.75rem;" id="resetFilters">
-          <i class="bi bi-arrow-clockwise me-1"></i>Reset
+  <!-- Filters Accordion -->
+  <div class="accordion filters-accordion mb-3" id="filtersAccordion">
+    <div class="accordion-item border-0 shadow-sm">
+      <h2 class="accordion-header">
+        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#filtersCollapse" aria-expanded="true">
+          <i class="bi bi-funnel-fill me-2"></i>
+          <span class="fw-bold">Filters</span>
+          <span class="ms-2 badge bg-white text-dark" id="filterCount">
+            Showing: <span id="visibleCount">0</span> of <span id="totalCount">0</span>
+          </span>
         </button>
-        
-        <!-- Count Display -->
-        <span class="ms-auto badge bg-secondary" style="font-size: 0.75rem;" id="filterCount">Showing: <span id="visibleCount">0</span> of <span id="totalCount">0</span></span>
+      </h2>
+      <div id="filtersCollapse" class="accordion-collapse collapse show">
+        <div class="accordion-body">
+          <div class="d-flex flex-wrap align-items-center gap-3">
+            <!-- Status Filters -->
+            <div>
+              <label class="small text-muted fw-semibold mb-1 d-block">STATUS</label>
+              <div class="btn-group btn-group-sm" role="group" id="statusFilterGroup">
+                <button type="button" class="btn btn-outline-primary filter-btn active" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="all">All</button>
+                <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="pending">Pending</button>
+                <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="scheduled">Scheduled</button>
+                <button type="button" class="btn btn-outline-primary filter-btn" style="font-size: 0.75rem;" data-filter-type="status" data-filter-value="vacated">Vacated</button>
+              </div>
+            </div>
+            
+            <!-- Advance Eligibility Filters -->
+            <div>
+              <label class="small text-muted fw-semibold mb-1 d-block">ADVANCE ELIGIBILITY</label>
+              <div class="btn-group btn-group-sm" role="group" id="advanceEligibilityFilterGroup">
+                <button type="button" class="btn btn-outline-success filter-btn active" style="font-size: 0.75rem;" data-filter-type="advance-eligibility" data-filter-value="all">All</button>
+                <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance-eligibility" data-filter-value="eligible">Eligible</button>
+                <button type="button" class="btn btn-outline-success filter-btn" style="font-size: 0.75rem;" data-filter-type="advance-eligibility" data-filter-value="not-eligible">Not Eligible</button>
+              </div>
+            </div>
+            
+            <!-- Advance Return Status Filters -->
+            <div>
+              <label class="small text-muted fw-semibold mb-1 d-block">ADVANCE RETURN</label>
+              <div class="btn-group btn-group-sm" role="group" id="advanceReturnFilterGroup">
+                <button type="button" class="btn btn-outline-info filter-btn active" style="font-size: 0.75rem;" data-filter-type="advance-return" data-filter-value="all">All</button>
+                <button type="button" class="btn btn-outline-info filter-btn" style="font-size: 0.75rem;" data-filter-type="advance-return" data-filter-value="pending">Pending</button>
+                <button type="button" class="btn btn-outline-info filter-btn" style="font-size: 0.75rem;" data-filter-type="advance-return" data-filter-value="returned">Returned</button>
+              </div>
+            </div>
+            
+            <!-- Booking Type Filters -->
+            <div>
+              <label class="small text-muted fw-semibold mb-1 d-block">BOOKING TYPE</label>
+              <div class="btn-group btn-group-sm" role="group" id="bookingTypeFilterGroup">
+                <button type="button" class="btn btn-outline-warning filter-btn active" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="all">All</button>
+                <button type="button" class="btn btn-outline-warning filter-btn" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="regular">Regular</button>
+                <button type="button" class="btn btn-outline-warning filter-btn" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="daywise">Day-wise</button>
+              </div>
+            </div>
+            
+            <!-- Reset Button -->
+            <div class="ms-auto">
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="resetFilters">
+                <i class="bi bi-arrow-clockwise me-1"></i>Reset All
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
+  </div>
+
+  <!-- Search Box -->
+  <div class="search-container mb-3">
+    <div class="input-group">
+      <span class="input-group-text bg-white border-0">
+        <i class="bi bi-search"></i>
+      </span>
+      <input type="text" class="form-control border-0" id="searchInput" placeholder="Search by tenant name, email, room, bed, or reason..." aria-label="Search leave requests">
+      <button class="btn btn-outline-light" type="button" id="clearSearch" style="display: none;">
+        <i class="bi bi-x-circle"></i>
+      </button>
+    </div>
+    <div class="small text-white mt-2" id="searchResults" style="display: none;">
+      <i class="bi bi-info-circle me-1"></i>
+      Found <span id="searchCount">0</span> matching result(s)
+    </div>
+  </div>
+
+  <!-- Pagination Controls (Top) -->
+  <div class="d-flex justify-content-between align-items-center mb-3" id="paginationTop" style="display: none !important;">
+    <div class="text-muted small">
+      Showing <span id="pageStartTop">0</span>-<span id="pageEndTop">0</span> of <span id="totalFilteredTop">0</span> results
+    </div>
+    <nav aria-label="Page navigation">
+      <ul class="pagination pagination-sm mb-0" id="paginationListTop">
+      </ul>
+    </nav>
   </div>
 
   <!-- Leave Requests Table -->
@@ -143,8 +303,10 @@
           <tbody>
             {% for booking in leave_requests %}
             <tr id="leaveRow{{ booking.id }}" class="leave-row" 
-                data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_date < today %}vacated{% elif booking.leaving_date >= today %}scheduled{% else %}confirmed{% endif %}"
-                data-advance="{% if booking.advance_returned %}returned{% elif not booking.advance_eligible %}not-eligible{% elif booking.leaving_confirmed_date %}pending{% else %}eligible{% endif %}"
+                data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_date < today %}vacated{% else %}scheduled{% endif %}"
+                data-advance="{% if booking.advance_returned %}returned{% elif not booking.advance_eligible %}not-eligible{% elif booking.advance_eligible and booking.leaving_confirmed_date %}pending{% else %}eligible{% endif %}"
+                data-advance-eligibility="{% if booking.advance_eligible %}eligible{% else %}not-eligible{% endif %}"
+                data-advance-return="{% if booking.advance_returned %}returned{% else %}pending{% endif %}"
                 data-booking-type="{% if booking.booking_type == 'daywise' %}daywise{% else %}regular{% endif %}">
               <td>
                 <div class="d-flex align-items-center gap-2">
@@ -281,31 +443,49 @@
             {% endif %}
 
             {% if booking.leaving_confirmed_date %}
-            <div class="modal fade" id="deleteModal{{ booking.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ booking.id }}" aria-hidden="true" data-bs-backdrop="true" data-bs-keyboard="true">
+            <div class="modal fade delete-modal" id="deleteModal{{ booking.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ booking.id }}" aria-hidden="true" data-bs-backdrop="true" data-bs-keyboard="true">
               <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
-                  <div class="modal-header">
-                    <h5 class="modal-title" id="deleteModalLabel{{ booking.id }}">Delete Resident Data</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="deleteModalLabel{{ booking.id }}">
+                      <i class="bi bi-exclamation-triangle-fill me-2"></i>Delete Resident Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
                     <div class="alert alert-warning d-flex align-items-start">
-                      <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                      <i class="bi bi-exclamation-triangle-fill me-2 fs-4"></i>
                       <div>
-                        Deleting this resident will permanently remove their booking, application, and stored documents.
+                        <strong>This action cannot be undone!</strong>
+                        <p class="mb-0 mt-2">Deleting this resident will permanently remove their booking, application, and stored documents.</p>
+                      </div>
+                    </div>
+                    <div class="card bg-light mb-3">
+                      <div class="card-body">
+                        <h6 class="card-title">Resident Details:</h6>
+                        <ul class="mb-0">
+                          <li><strong>Name:</strong> {{ booking.user.get_full_name }}</li>
+                          <li><strong>Email:</strong> {{ booking.user.email }}</li>
+                          <li><strong>Room:</strong> {{ booking.room.room_no }}, Bed {{ booking.share_no }}</li>
+                          <li><strong>Leave Date:</strong> {{ booking.leaving_date|date:"M d, Y" }}</li>
+                        </ul>
                       </div>
                     </div>
                     <ul class="small text-muted mb-0 ps-3">
                       <li>Booking and application records are permanently deleted.</li>
                       <li>Linked identity files are removed where possible.</li>
-                      <li>This action cannot be undone.</li>
+                      <li>Payment history may be retained for accounting purposes.</li>
                     </ul>
                   </div>
                   <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep Data</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                      <i class="bi bi-x-circle me-1"></i>Keep Data
+                    </button>
                     <form method="post" action="{% url 'pg_leaving_delete' booking.id %}" class="m-0" style="display: inline;">
                       {% csrf_token %}
-                      <button type="submit" class="btn btn-danger">Delete Permanently</button>
+                      <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash-fill me-1"></i>Delete Permanently
+                      </button>
                     </form>
                   </div>
                 </div>
@@ -318,6 +498,18 @@
       </div>
     </div>
   </div>
+  
+  <!-- Pagination Controls (Bottom) -->
+  <div class="d-flex justify-content-between align-items-center mt-3" id="paginationBottom" style="display: none !important;">
+    <div class="text-muted small">
+      Showing <span id="pageStartBottom">0</span>-<span id="pageEndBottom">0</span> of <span id="totalFilteredBottom">0</span> results
+    </div>
+    <nav aria-label="Page navigation">
+      <ul class="pagination pagination-sm mb-0" id="paginationListBottom">
+      </ul>
+    </nav>
+  </div>
+  
   {% else %}
   <div class="card shadow-sm">
     <div class="card-body text-center py-5">
@@ -870,37 +1062,219 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
   
-  // Client-side filtering
+  // Client-side filtering with pagination
   const filterState = {
     status: 'all',
-    advance: 'all',
-    'booking-type': 'all'
+    'advance-eligibility': 'all',
+    'advance-return': 'all',
+    'booking-type': 'all',
+    search: '',
+    currentPage: 1,
+    itemsPerPage: 10
   };
   
   function applyFilters() {
     const rows = document.querySelectorAll('.leave-row');
-    let visibleCount = 0;
+    const searchTerm = filterState.search.toLowerCase();
+    
+    // First pass: determine which rows match filters (not pagination)
+    const matchedRows = [];
     
     rows.forEach(row => {
       const rowStatus = row.dataset.status;
-      const rowAdvance = row.dataset.advance;
+      const rowAdvanceEligibility = row.dataset.advanceEligibility;
+      const rowAdvanceReturn = row.dataset.advanceReturn;
       const rowBookingType = row.dataset.bookingType;
-      const statusMatch = filterState.status === 'all' || rowStatus === filterState.status;
-      const advanceMatch = filterState.advance === 'all' || rowAdvance === filterState.advance;
-      const bookingTypeMatch = filterState['booking-type'] === 'all' || rowBookingType === filterState['booking-type'];
       
-      if (statusMatch && advanceMatch && bookingTypeMatch) {
-        row.style.display = '';
-        visibleCount++;
-      } else {
-        row.style.display = 'none';
+      // Get searchable text from the row
+      const rowText = row.textContent.toLowerCase();
+      
+      const statusMatch = filterState.status === 'all' || rowStatus === filterState.status;
+      const advanceEligibilityMatch = filterState['advance-eligibility'] === 'all' || rowAdvanceEligibility === filterState['advance-eligibility'];
+      const advanceReturnMatch = filterState['advance-return'] === 'all' || rowAdvanceReturn === filterState['advance-return'];
+      const bookingTypeMatch = filterState['booking-type'] === 'all' || rowBookingType === filterState['booking-type'];
+      const searchMatch = !searchTerm || rowText.includes(searchTerm);
+      
+      if (statusMatch && advanceEligibilityMatch && advanceReturnMatch && bookingTypeMatch && searchMatch) {
+        matchedRows.push(row);
       }
     });
     
-    // Update count
-    document.getElementById('visibleCount').textContent = visibleCount;
+    const totalMatched = matchedRows.length;
+    const totalPages = Math.ceil(totalMatched / filterState.itemsPerPage);
+    
+    // Ensure current page is valid
+    if (filterState.currentPage > totalPages && totalPages > 0) {
+      filterState.currentPage = totalPages;
+    }
+    if (filterState.currentPage < 1) {
+      filterState.currentPage = 1;
+    }
+    
+    // Calculate pagination range
+    const startIndex = (filterState.currentPage - 1) * filterState.itemsPerPage;
+    const endIndex = startIndex + filterState.itemsPerPage;
+    
+    // Hide all rows first
+    rows.forEach(row => row.style.display = 'none');
+    
+    // Show only the rows for current page
+    matchedRows.forEach((row, index) => {
+      if (index >= startIndex && index < endIndex) {
+        row.style.display = '';
+      }
+    });
+    
+    // Update counts
+    document.getElementById('visibleCount').textContent = totalMatched;
     document.getElementById('totalCount').textContent = rows.length;
+    
+    // Update search results display
+    const searchResults = document.getElementById('searchResults');
+    const searchCount = document.getElementById('searchCount');
+    if (searchTerm) {
+      searchCount.textContent = totalMatched;
+      searchResults.style.display = 'block';
+    } else {
+      searchResults.style.display = 'none';
+    }
+    
+    // Update pagination
+    updatePagination(totalMatched, totalPages, startIndex, endIndex);
   }
+  
+  function updatePagination(totalMatched, totalPages, startIndex, endIndex) {
+    const paginationTop = document.getElementById('paginationTop');
+    const paginationBottom = document.getElementById('paginationBottom');
+    
+    // Show/hide pagination based on whether we have multiple pages
+    if (totalPages > 1) {
+      paginationTop.style.display = 'flex';
+      paginationBottom.style.display = 'flex';
+    } else {
+      paginationTop.style.display = 'none';
+      paginationBottom.style.display = 'none';
+    }
+    
+    // Update page info (top and bottom)
+    const pageStart = totalMatched > 0 ? startIndex + 1 : 0;
+    const pageEnd = Math.min(endIndex, totalMatched);
+    
+    document.getElementById('pageStartTop').textContent = pageStart;
+    document.getElementById('pageEndTop').textContent = pageEnd;
+    document.getElementById('totalFilteredTop').textContent = totalMatched;
+    
+    document.getElementById('pageStartBottom').textContent = pageStart;
+    document.getElementById('pageEndBottom').textContent = pageEnd;
+    document.getElementById('totalFilteredBottom').textContent = totalMatched;
+    
+    // Build pagination buttons
+    const paginationHTML = buildPaginationHTML(totalPages);
+    document.getElementById('paginationListTop').innerHTML = paginationHTML;
+    document.getElementById('paginationListBottom').innerHTML = paginationHTML;
+    
+    // Add click handlers to pagination buttons
+    document.querySelectorAll('.page-link-custom').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const page = parseInt(this.dataset.page);
+        if (!isNaN(page)) {
+          filterState.currentPage = page;
+          applyFilters();
+          // Scroll to top of table
+          document.querySelector('.table-responsive').scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    });
+  }
+  
+  function buildPaginationHTML(totalPages) {
+    if (totalPages <= 1) return '';
+    
+    let html = '';
+    const currentPage = filterState.currentPage;
+    
+    // Previous button
+    html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+      <a class="page-link page-link-custom" href="#" data-page="${currentPage - 1}" aria-label="Previous">
+        <span aria-hidden="true">&laquo;</span>
+      </a>
+    </li>`;
+    
+    // Page numbers (show max 7 pages)
+    let startPage = Math.max(1, currentPage - 3);
+    let endPage = Math.min(totalPages, currentPage + 3);
+    
+    // Adjust if near start or end
+    if (currentPage <= 4) {
+      endPage = Math.min(7, totalPages);
+    }
+    if (currentPage >= totalPages - 3) {
+      startPage = Math.max(1, totalPages - 6);
+    }
+    
+    // First page + ellipsis
+    if (startPage > 1) {
+      html += `<li class="page-item">
+        <a class="page-link page-link-custom" href="#" data-page="1">1</a>
+      </li>`;
+      if (startPage > 2) {
+        html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+      }
+    }
+    
+    // Page numbers
+    for (let i = startPage; i <= endPage; i++) {
+      html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+        <a class="page-link page-link-custom" href="#" data-page="${i}">${i}</a>
+      </li>`;
+    }
+    
+    // Ellipsis + last page
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+      }
+      html += `<li class="page-item">
+        <a class="page-link page-link-custom" href="#" data-page="${totalPages}">${totalPages}</a>
+      </li>`;
+    }
+    
+    // Next button
+    html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+      <a class="page-link page-link-custom" href="#" data-page="${currentPage + 1}" aria-label="Next">
+        <span aria-hidden="true">&raquo;</span>
+      </a>
+    </li>`;
+    
+    return html;
+  }
+  
+  // Search input handler
+  const searchInput = document.getElementById('searchInput');
+  const clearSearchBtn = document.getElementById('clearSearch');
+  
+  searchInput.addEventListener('input', function() {
+    filterState.search = this.value;
+    filterState.currentPage = 1; // Reset to page 1 on search
+    applyFilters();
+    
+    // Show/hide clear button
+    if (this.value) {
+      clearSearchBtn.style.display = 'block';
+    } else {
+      clearSearchBtn.style.display = 'none';
+    }
+  });
+  
+  clearSearchBtn.addEventListener('click', function() {
+    searchInput.value = '';
+    filterState.search = '';
+    filterState.currentPage = 1;
+    this.style.display = 'none';
+    applyFilters();
+    searchInput.focus();
+  });
   
   // Filter button click handlers
   document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -917,6 +1291,9 @@ document.addEventListener('DOMContentLoaded', function() {
       // Update filter state
       filterState[filterType] = filterValue;
       
+      // Reset to page 1 when filter changes
+      filterState.currentPage = 1;
+      
       // Apply filters
       applyFilters();
     });
@@ -926,8 +1303,15 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('resetFilters').addEventListener('click', function() {
     // Reset filter state
     filterState.status = 'all';
-    filterState.advance = 'all';
+    filterState['advance-eligibility'] = 'all';
+    filterState['advance-return'] = 'all';
     filterState['booking-type'] = 'all';
+    filterState.search = '';
+    filterState.currentPage = 1;
+    
+    // Reset search input
+    searchInput.value = '';
+    clearSearchBtn.style.display = 'none';
     
     // Reset active buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
