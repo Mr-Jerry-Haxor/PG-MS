@@ -426,6 +426,9 @@
           }
           bedsSel.parentNode.replaceChild(newBedsSel, bedsSel);
           
+          // Reset selection to the first option (placeholder) AFTER cloning
+          newBedsSel.selectedIndex = 0;
+          
           // Add change listener to bed selection to show swap info
           newBedsSel.addEventListener('change', function() {
             const selectedOption = this.options[this.selectedIndex];
