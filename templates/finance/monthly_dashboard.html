@@ -19,13 +19,19 @@
   .col-room { font-size: .75rem; }
     /* Tighten table spacing on mobile */
     table.table td, table.table th { padding: .35rem .5rem; }
-    /* Summary cards: display as 2x2 grid and reduce font sizes */
-    .row.g-3.mb-3 { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; }
-    .row.g-3.mb-3 .card-body .small { font-size: .65rem; }
-    .row.g-3.mb-3 .card-body .fs-5 { font-size: 1rem; }
+    /* Summary table on mobile */
+    #summaryTableBody td, #summaryTableBody th { font-size: 0.8rem; padding: 0.4rem 0.5rem; }
+    .pagination-info { font-size: 0.7rem; }
+    .pagination { font-size: 0.75rem; }
+    /* Summary table on mobile */
+    #summaryTableBody td, #summaryTableBody th { font-size: 0.8rem; padding: 0.4rem 0.5rem; }
+    .pagination-info { font-size: 0.7rem; }
+    .pagination { font-size: 0.75rem; }
   }
   /* Keep currency values on one line */
   .nowrap { white-space: nowrap; }
+  .pagination-info { font-size: 0.875rem; color: #6c757d; }
+  .pagination-info { font-size: 0.875rem; color: #6c757d; }
 </style>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div class="d-flex align-items-center gap-2">
@@ -82,37 +88,45 @@
     <button class="btn btn-primary btn-sm" type="submit">Apply</button>
   </div>
 </form>
-<div class="row g-3 mb-3">
-  <div class="col-sm-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="small text-secondary">Expected</div>
-        <div class="fs-5 fw-semibold" id="sumExpected">₹ {{ summary.total_expected }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="small text-secondary">Collected</div>
-        <div class="fs-5 fw-semibold" id="sumCollected">₹ {{ summary.total_collected }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="small text-secondary">Pending</div>
-        <div class="fs-5 fw-semibold" id="sumPending">₹ {{ summary.total_pending }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body">
-        <div class="small text-secondary">Advance</div>
-        <div class="fs-5 fw-semibold" id="sumAdvance">₹ {{ summary.total_advance|default:'0.00' }}</div>
-      </div>
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Metric</th>
+            <th class="text-end">Amount</th>
+            <th class="text-end pe-3">Count</th>
+          </tr>
+        </thead>
+        <tbody id="summaryTableBody">
+          <tr>
+            <td class="ps-3"><span class="text-primary fw-semibold">Expected</span></td>
+            <td class="text-end nowrap fw-semibold text-primary">₹ <span id="summaryExpected">{{ summary.total_expected|default:"0.00" }}</span></td>
+            <td class="text-end pe-3"><span class="badge bg-primary-subtle text-primary" id="summaryExpectedCount">0</span></td>
+          </tr>
+          <tr>
+            <td class="ps-3"><span class="text-success fw-semibold">Collected</span></td>
+            <td class="text-end nowrap fw-semibold text-success">₹ <span id="summaryCollected">{{ summary.total_collected|default:"0.00" }}</span></td>
+            <td class="text-end pe-3"><span class="badge bg-success-subtle text-success" id="summaryCollectedCount">0</span></td>
+          </tr>
+          <tr class="table-light">
+            <td class="ps-3 ps-md-5"><small class="text-muted">↳ Today's Collection <span class="text-muted" style="font-weight:600;">({{ today|date:'Y-m-d' }})</span></small></td>
+            <td class="text-end nowrap"><small class="fw-semibold text-success">₹ <span id="summaryTodayCollection">{{ summary.today_collection|default:"0.00" }}</span></small></td>
+            <td class="text-end pe-3"><small><span class="badge bg-success-subtle text-success" style="font-size: 0.65rem;" id="summaryTodayCount">{{ summary.today_collection_count|default:"0" }}</span></small></td>
+          </tr>
+          <tr>
+            <td class="ps-3"><span class="text-warning fw-semibold">Pending</span></td>
+            <td class="text-end nowrap fw-semibold text-warning">₹ <span id="summaryPending">{{ summary.total_pending|default:"0.00" }}</span></td>
+            <td class="text-end pe-3"><span class="badge bg-warning-subtle text-warning" id="summaryPendingCount">0</span></td>
+          </tr>
+          <tr>
+            <td class="ps-3"><span class="text-info fw-semibold">Advance</span></td>
+            <td class="text-end nowrap fw-semibold text-info">₹ <span id="summaryAdvance">{{ summary.total_advance|default:"0.00" }}</span></td>
+            <td class="text-end pe-3"><span class="badge bg-info-subtle text-info" id="summaryAdvanceCount">0</span></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -148,7 +162,10 @@
         </thead>
         <tbody>
         {% for r in rows %}
-          <tr data-status="{{ r.status }}" data-user-id="{{ r.user.id }}">
+          <tr data-status="{{ r.status }}" data-user-id="{{ r.user.id }}"
+              data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
+              data-expected="{{ r.expected }}" data-collected="{{ r.collected }}"
+              data-pending="{{ r.pending }}" data-advance="{{ r.advance|default:'0' }}">
             <td><input type="checkbox" class="rowchk" name="user_ids" value="{{ r.user.id }}" {% if r.status == 'paid' %}disabled{% endif %}></td>
             <td>
               <a href="{% url 'finance_ledger' r.user.id %}">{{ r.user.first_name }} {{ r.user.last_name }}</a>
@@ -339,13 +356,33 @@
       </table>
     </div>
     <div class="card-body">
-      <div class="d-flex gap-2 align-items-center flex-wrap">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-secondary" type="button" id="btnSelectUnpaid">Select Unpaid</button>
-          <button class="btn btn-outline-secondary" type="button" id="btnClearSelection">Clear</button>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" type="button" id="btnSelectUnpaid">Select Unpaid</button>
+            <button class="btn btn-outline-secondary" type="button" id="btnClearSelection">Clear</button>
+          </div>
+          <button class="btn btn-primary" type="submit">Send Bulk Reminder (Email)</button>
         </div>
-        <button class="btn btn-primary ms-auto" type="submit">Send Bulk Reminder (Email)</button>
+        <div class="d-flex gap-2 align-items-center">
+          <div class="pagination-info small text-muted">
+            Showing <span id="pageStart">0</span> to <span id="pageEnd">0</span> of <span id="totalRecords">0</span> residents
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <label class="small mb-0">Per page:</label>
+            <select id="pageSize" class="form-select form-select-sm" style="width: auto;">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="999999">All</option>
+            </select>
+          </div>
+        </div>
       </div>
+      <nav class="mt-2">
+        <ul class="pagination pagination-sm mb-0 justify-content-center" id="pagination"></ul>
+      </nav>
     </div>
   </div>
 </form>
@@ -510,6 +547,185 @@
   </div>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    // Pagination state
+    let currentPage = 1;
+    let pageSize = 25;
+    let allRows = [];
+    let filteredRows = [];
+    
+    // Initialize pagination data
+    function initializePaginationData() {
+      allRows = Array.from(document.querySelectorAll('#monthlyTable tbody tr[data-user-name]'));
+      applySearchAndPagination();
+    }
+    
+    // Update summary counts based on ALL data (not filtered by search)
+    function updateSummaryCounts() {
+      let expectedCount = 0;
+      let collectedCount = 0;
+      let pendingCount = 0;
+      let advanceCount = 0;
+      
+      // Count from ALL rows, not just filtered ones
+      allRows.forEach(function(tr) {
+        const expected = parseFloat(tr.dataset.expected || 0);
+        const collected = parseFloat(tr.dataset.collected || 0);
+        const pending = parseFloat(tr.dataset.pending || 0);
+        const advance = parseFloat(tr.dataset.advance || 0);
+        
+        // Use a small threshold to handle floating point precision
+        const threshold = 0.01;
+        if (expected > threshold) expectedCount++;
+        if (collected > threshold) collectedCount++;
+        if (pending > threshold) pendingCount++;
+        if (advance > threshold) advanceCount++;
+      });
+      
+      document.getElementById('summaryExpectedCount').textContent = expectedCount;
+      document.getElementById('summaryCollectedCount').textContent = collectedCount;
+      document.getElementById('summaryPendingCount').textContent = pendingCount;
+      document.getElementById('summaryAdvanceCount').textContent = advanceCount;
+      // Today's collection is set from backend, don't override it
+    }
+    
+    function applySearchAndPagination() {
+      var searchBox = document.getElementById('searchBox');
+      var query = (searchBox ? searchBox.value : '').toLowerCase();
+      
+      // Filter rows based on search
+      filteredRows = allRows.filter(function(tr) {
+        var name = (tr.dataset.userName || '').toLowerCase();
+        return name.includes(query);
+      });
+      
+      // Update display
+      updatePaginationDisplay();
+      updateSummaryCounts();
+    }
+    
+    function updatePaginationDisplay() {
+      const start = (currentPage - 1) * pageSize;
+      const end = Math.min(start + pageSize, filteredRows.length);
+      
+      // Hide all rows first
+      allRows.forEach(function(tr) {
+        tr.style.display = 'none';
+        // Also hide associated stays row
+        var staysId = 'stays-' + tr.dataset.userId;
+        var staysRow = document.getElementById(staysId);
+        if (staysRow) staysRow.style.display = 'none';
+      });
+      
+      // Show paginated filtered rows
+      for (let i = start; i < end; i++) {
+        filteredRows[i].style.display = '';
+        // Show associated stays row if it's expanded
+        var staysId = 'stays-' + filteredRows[i].dataset.userId;
+        var staysRow = document.getElementById(staysId);
+        if (staysRow && staysRow.classList.contains('show')) {
+          staysRow.style.display = '';
+        }
+      }
+      
+      updatePaginationControls();
+    }
+    
+    function updatePaginationControls() {
+      const totalPages = Math.ceil(filteredRows.length / pageSize);
+      const start = filteredRows.length > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+      const end = Math.min(currentPage * pageSize, filteredRows.length);
+      
+      document.getElementById('pageStart').textContent = start;
+      document.getElementById('pageEnd').textContent = end;
+      document.getElementById('totalRecords').textContent = filteredRows.length;
+      
+      const pagination = document.getElementById('pagination');
+      pagination.innerHTML = '';
+      
+      if (totalPages <= 1) return;
+      
+      // Previous button
+      const prevLi = document.createElement('li');
+      prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+      prevLi.innerHTML = `<a class="page-link" href="#" data-page="${currentPage - 1}">Previous</a>`;
+      pagination.appendChild(prevLi);
+      
+      // Page numbers (show max 5 pages)
+      const startPage = Math.max(1, currentPage - 2);
+      const endPage = Math.min(totalPages, currentPage + 2);
+      
+      if (startPage > 1) {
+        const firstLi = document.createElement('li');
+        firstLi.className = 'page-item';
+        firstLi.innerHTML = `<a class="page-link" href="#" data-page="1">1</a>`;
+        pagination.appendChild(firstLi);
+        if (startPage > 2) {
+          const dotsLi = document.createElement('li');
+          dotsLi.className = 'page-item disabled';
+          dotsLi.innerHTML = '<span class="page-link">...</span>';
+          pagination.appendChild(dotsLi);
+        }
+      }
+      
+      for (let i = startPage; i <= endPage; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#" data-page="${i}">${i}</a>`;
+        pagination.appendChild(li);
+      }
+      
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+          const dotsLi = document.createElement('li');
+          dotsLi.className = 'page-item disabled';
+          dotsLi.innerHTML = '<span class="page-link">...</span>';
+          pagination.appendChild(dotsLi);
+        }
+        const lastLi = document.createElement('li');
+        lastLi.className = 'page-item';
+        lastLi.innerHTML = `<a class="page-link" href="#" data-page="${totalPages}">${totalPages}</a>`;
+        pagination.appendChild(lastLi);
+      }
+      
+      // Next button
+      const nextLi = document.createElement('li');
+      nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+      nextLi.innerHTML = `<a class="page-link" href="#" data-page="${currentPage + 1}">Next</a>`;
+      pagination.appendChild(nextLi);
+      
+      // Add click handlers
+      pagination.querySelectorAll('a').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+          e.preventDefault();
+          const page = parseInt(a.dataset.page);
+          if (page >= 1 && page <= totalPages) {
+            currentPage = page;
+            updatePaginationDisplay();
+          }
+        });
+      });
+    }
+    
+    // Page size change
+    document.getElementById('pageSize').addEventListener('change', function() {
+      pageSize = parseInt(this.value);
+      if (pageSize === 999999) pageSize = 999999; // "All"
+      currentPage = 1;
+      updatePaginationDisplay();
+    });
+
+    // Client-side search
+    var searchBox = document.getElementById('searchBox');
+    if (searchBox) {
+      searchBox.addEventListener('input', function(){
+        currentPage = 1;
+        applySearchAndPagination();
+      });
+    }
+    
+    // Initialize pagination on load
+    initializePaginationData();
+    
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.forEach(function (tooltipTriggerEl) {
       try { new bootstrap.Tooltip(tooltipTriggerEl); } catch (e) {}
@@ -863,19 +1079,6 @@
         monthPicker.value = ym;
         applyMonthValue(ym);
         if (monthPicker.form) { monthPicker.form.submit(); }
-      });
-    }
-
-    // Client-side search
-    var searchBox = document.getElementById('searchBox');
-    if (searchBox) {
-      searchBox.addEventListener('input', function(){
-        var q = this.value.toLowerCase();
-        document.querySelectorAll('#monthlyTable tbody tr').forEach(function(tr){
-          if (tr.classList.contains('collapse')) return; // skip details rows
-          var text = tr.innerText.toLowerCase();
-          tr.style.display = text.indexOf(q) >= 0 ? '' : 'none';
-        });
       });
     }
 

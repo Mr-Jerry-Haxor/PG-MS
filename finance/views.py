@@ -1448,12 +1448,24 @@ def monthly_dashboard(request):
         'pending': round(sum((r.get('pending') or 0.0) for r in rows), 2),
     }
 
+    # Calculate today's collection (all payments made today - both fee and advance)
+    today_payments = Payment.objects.filter(
+        pg=pg,
+        status='success',
+        date=today
+    )
+    today_collection_total = today_payments.aggregate(total=Sum('amount')).get('total') or 0
+    today_collection_count = today_payments.count()
+
     summary = {
         'year': year, 'month': month,
-        'total_expected': round(total_expected, 2),
-        'total_collected': round(total_collected, 2),
-        'total_pending': round(max(0.0, total_expected - total_collected), 2),
-        'total_advance': total_advance_all,
+        # Use footer_totals (post-filter) so summary numbers match the table
+        'total_expected': footer_totals.get('expected', 0.0),
+        'total_collected': footer_totals.get('collected', 0.0),
+        'total_pending': footer_totals.get('pending', 0.0),
+        'total_advance': footer_totals.get('advance', total_advance_all),
+        'today_collection': round(float(today_collection_total), 2),
+        'today_collection_count': today_collection_count,
         'counts': {
             'paid': sum(1 for r in rows if r['status'] == 'paid'),
             'partial': sum(1 for r in rows if r['status'] == 'partial'),
@@ -1471,6 +1483,7 @@ def monthly_dashboard(request):
         'rows': rows,
         'footer_totals': footer_totals,
         'summary': summary,
+        'today': today,
         'pgs': list(_admin_pgs(request.user)),
         'm_first': m_first,
         'current_sort': sort_key,
