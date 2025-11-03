@@ -215,6 +215,7 @@
       <thead>
         <tr>
           <th class="sortable" data-sort="user">User</th>
+          <th class="sortable" data-sort="room">Room</th>
           <th class="sortable" data-sort="amount">Amount</th>
           <th class="sortable col-upi" data-sort="upi">UPI Amt</th>
           <th class="sortable col-cash" data-sort="cash">Cash Amt</th>
@@ -227,20 +228,22 @@
       </thead>
       <tbody id="paymentsTableBody">
       {% for i in items %}
-        <tr data-payment-id="{{ i.id }}" 
-            data-user="{{ i.user.get_full_name|default:i.user.username }}" 
-            data-email="{{ i.user.email }}"
-            data-amount="{{ i.amount }}"
-            data-upi="{{ i.upi_amount|default:'0' }}"
-            data-cash="{{ i.cash_amount|default:'0' }}"
-            data-date="{{ i.date|date:'Y-m-d' }}"
-            data-mode="{{ i.mode }}"
-            data-type="{{ i.type }}"
-            data-notes="{{ i.notes|default:'' }}">
+    <tr data-payment-id="{{ i.id }}" 
+      data-user="{{ i.user.get_full_name|default:i.user.username }}" 
+      data-email="{{ i.user.email }}"
+      data-room="{% if i.booking and i.booking.room %}{{ i.booking.room.room_no }}{% elif i.room_no %}{{ i.room_no }}{% endif %}"
+      data-amount="{{ i.amount }}"
+      data-upi="{{ i.upi_amount|default:'0' }}"
+      data-cash="{{ i.cash_amount|default:'0' }}"
+      data-date="{{ i.date|date:'Y-m-d' }}"
+      data-mode="{{ i.mode }}"
+      data-type="{{ i.type }}"
+      data-notes="{{ i.notes|default:'' }}">
           <td>
             <div class="fw-semibold">{{ i.user.get_full_name|default:i.user.username }}</div>
             <div class="small text-muted">{{ i.user.email }}</div>
           </td>
+          <td class="col-room">{% if i.booking and i.booking.room %}{{ i.booking.room.room_no }}{% elif i.room_no %}{{ i.room_no }}{% else %}—{% endif %}</td>
           <td class="nowrap">₹ {{ i.amount }}</td>
           <td class="nowrap col-upi">{% if i.upi_amount %}₹ {{ i.upi_amount }}{% else %}—{% endif %}</td>
           <td class="nowrap col-cash">{% if i.cash_amount %}₹ {{ i.cash_amount }}{% else %}—{% endif %}</td>
@@ -291,7 +294,7 @@
           </td>
         </tr>
       {% empty %}
-        <tr><td colspan="9" class="text-secondary text-center">No payments.</td></tr>
+        <tr><td colspan="10" class="text-secondary text-center">No payments.</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -336,6 +339,7 @@ document.addEventListener('DOMContentLoaded', function() {
       allPayments.push({
         id: row.dataset.paymentId,
         user: row.dataset.user,
+        room: row.dataset.room || '',
         email: row.dataset.email,
         amount: parseFloat(row.dataset.amount || 0),
         upi: parseFloat(row.dataset.upi || 0),
@@ -386,6 +390,7 @@ document.addEventListener('DOMContentLoaded', function() {
       let aVal, bVal;
       switch(sortColumn) {
         case 'user': aVal = a.user; bVal = b.user; break;
+        case 'room': aVal = a.room; bVal = b.room; break;
         case 'amount': aVal = a.amount; bVal = b.amount; break;
         case 'upi': aVal = a.upi; bVal = b.upi; break;
         case 'cash': aVal = a.cash; bVal = b.cash; break;

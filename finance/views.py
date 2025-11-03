@@ -188,6 +188,64 @@ def payments_list(request):
         # Default ordering: latest first
         items = items.order_by('-date', '-id')
 
+        # Attach room_no to each payment by finding the user's booking in this PG.
+        # Prefer a booking whose effective period includes the payment.date. Fall back to latest booking.
+        try:
+            user_ids = list(items.values_list('user_id', flat=True).distinct())
+            if user_ids:
+                from bookings.models import Booking
+                from django.core.cache import cache
+                import hashlib
+                # Build a cache key based on pg id and user ids (stable ordering)
+                user_ids_sorted = sorted(set(user_ids))
+                ids_key = ','.join(map(str, user_ids_sorted))
+                cache_key = f"payments_bookings_pg{pg.id}_users_{hashlib.md5(ids_key.encode()).hexdigest()}"
+
+                bookings_by_user = cache.get(cache_key)
+                if bookings_by_user is None:
+                    # Retrieve bookings for these users in one query, most recent first per user
+                    bookings_qs = Booking.objects.filter(
+                        pg=pg, user_id__in=user_ids_sorted, status__in=[Booking.APPROVED, Booking.COMPLETED]
+                    ).select_related('room').order_by('user_id', '-id')
+                    from collections import defaultdict
+                    bookings_by_user = defaultdict(list)
+                    for b in bookings_qs:
+                        bookings_by_user[b.user_id].append(b)
+                    # Cache the mapping for a short period to reduce DB hits on large result sets
+                    cache.set(cache_key, bookings_by_user, 60)  # 60 seconds
+
+                # Convert payments to list to allow attribute attachment
+                items = list(items)
+                from datetime import date as _date
+                for p in items:
+                    assigned = None
+                    candidates = bookings_by_user.get(getattr(p, 'user_id', None), [])
+                    payment_date = getattr(p, 'date', None)
+                    # Try to find a booking whose range covers payment_date
+                    if payment_date and candidates:
+                        for b in candidates:
+                            # determine effective start and end for booking
+                            start = getattr(b, 'joining_date', None) or getattr(b, 'start_date', None) or getattr(b, 'payment_date', None)
+                            end = getattr(b, 'leaving_date', None)
+                            if start and (end is None or payment_date <= end) and payment_date >= start:
+                                if getattr(b, 'room', None):
+                                    assigned = getattr(b.room, 'room_no', None)
+                                    break
+                    # Fallback: use the most recent booking (first in candidates due to ordering)
+                    if not assigned and candidates:
+                        b = candidates[0]
+                        if getattr(b, 'room', None):
+                            assigned = getattr(b.room, 'room_no', None)
+
+                    if assigned:
+                        setattr(p, 'room_no', assigned)
+                    else:
+                        if not hasattr(p, 'room_no'):
+                            setattr(p, 'room_no', None)
+        except Exception:
+            # Non-fatal: if anything goes wrong, continue without room enrichment
+            pass
+
     # Prepare filters context
     filters = {
         'q': q,
