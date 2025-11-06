@@ -29,6 +29,7 @@ urlpatterns = [
     path('b/', include('bookings.urls')),
     path('f/', include('finance.urls')),
     path('sa/', include('siteadmin.urls')),
+    path('employees/', include('employee.urls')),
     path('', home, name='home'),
     path('dashboard/', dashboard, name='dashboard'),
     path('notifications/', notifications, name='notifications'),

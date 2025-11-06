@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'bookings',
     'finance',
     'siteadmin',
+    'employee',
 ]
 
 MIDDLEWARE = [
@@ -72,6 +73,10 @@ MIDDLEWARE = [
     'accounts.middleware.HideAllauthMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Database optimization middleware (must be near the end)
+    'core.middleware.SQLiteOptimizationMiddleware',
+    'core.middleware.DatabaseConnectionMiddleware',
+    'core.middleware.DatabaseRetryMiddleware',
 ]
 
 ROOT_URLCONF = 'pgms.urls'
@@ -150,6 +155,17 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 30,  # Increase timeout from default 5 to 30 seconds
+            'init_command': (
+                "PRAGMA journal_mode=WAL;"  # Write-Ahead Logging for better concurrency
+                "PRAGMA synchronous=NORMAL;"  # Faster writes while maintaining safety
+                "PRAGMA cache_size=-64000;"  # 64MB cache (negative = KB)
+                "PRAGMA temp_store=MEMORY;"  # Store temp tables in memory
+                "PRAGMA busy_timeout=30000;"  # 30 second busy timeout
+            ),
+        },
+        'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
     }
 }
 
@@ -186,6 +202,9 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'
     }
@@ -212,6 +231,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE', '')
 GOOGLE_DRIVE_FOLDER_SELFIES = os.getenv('GOOGLE_DRIVE_FOLDER_SELFIES', '')
 GOOGLE_DRIVE_FOLDER_AADHAAR = os.getenv('GOOGLE_DRIVE_FOLDER_AADHAAR', '')
+GOOGLE_DRIVE_FOLDER_EMPLOYEE = os.getenv('GOOGLE_DRIVE_FOLDER_EMPLOYEE', '')
 GOOGLE_DRIVE_MAKE_PUBLIC = os.getenv('GOOGLE_DRIVE_MAKE_PUBLIC', 'False') == 'True'
 # Optional: user OAuth token file for personal Google accounts (no Workspace)
 GOOGLE_OAUTH_TOKEN_FILE = os.getenv('GOOGLE_OAUTH_TOKEN_FILE', str(BASE_DIR / 'token.json'))

@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+{% block title %}{{ action }} Employee • PG-MS{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-person-plus me-2"></i>{{ action }} Employee
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data" novalidate>
+                        {% csrf_token %}
+                        
+                        {% if form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {{ form.non_field_errors }}
+                            </div>
+                        {% endif %}
+                        
+                        <h5 class="border-bottom pb-2 mb-3">Personal Information</h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="{{ form.name.id_for_label }}" class="form-label">
+                                    Name <span class="text-danger">*</span>
+                                </label>
+                                {{ form.name }}
+                                {% if form.name.errors %}
+                                    <div class="text-danger small">{{ form.name.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.phone.id_for_label }}" class="form-label">
+                                    Phone <span class="text-danger">*</span>
+                                </label>
+                                {{ form.phone }}
+                                {% if form.phone.errors %}
+                                    <div class="text-danger small">{{ form.phone.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.emergency_contact.id_for_label }}" class="form-label">
+                                Emergency Contact
+                            </label>
+                            {{ form.emergency_contact }}
+                            {% if form.emergency_contact.errors %}
+                                <div class="text-danger small">{{ form.emergency_contact.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="{{ form.selfie.id_for_label }}" class="form-label">
+                                    Selfie/Photo
+                                </label>
+                                {{ form.selfie }}
+                                
+                                <!-- Preview Container -->
+                                <div id="selfiePreviewContainer" class="mt-2" style="display: none;">
+                                    <img id="selfiePreview" src="" alt="Preview" class="img-thumbnail" style="max-width: 200px; max-height: 200px;">
+                                    <div class="mt-1">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearSelfiePreview()">
+                                            <i class="bi bi-x-circle"></i> Remove
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {% if employee and employee.selfie %}
+                                    <div class="mt-2" id="existingSelfie">
+                                        <img src="{{ employee.selfie.url }}" alt="Current" class="img-thumbnail" style="max-width: 150px;">
+                                        <small class="d-block text-muted">Current photo</small>
+                                    </div>
+                                {% endif %}
+                                {% if form.selfie.errors %}
+                                    <div class="text-danger small">{{ form.selfie.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.aadhaar.id_for_label }}" class="form-label">
+                                    Aadhaar Document
+                                </label>
+                                {{ form.aadhaar }}
+                                
+                                <!-- Preview Container for Aadhaar -->
+                                <div id="aadhaarPreviewContainer" class="mt-2" style="display: none;">
+                                    <div id="aadhaarImagePreview" style="display: none;">
+                                        <img id="aadhaarPreview" src="" alt="Preview" class="img-thumbnail" style="max-width: 200px; max-height: 200px;">
+                                    </div>
+                                    <div id="aadhaarFileInfo" class="alert alert-info py-2 px-3">
+                                        <i class="bi bi-file-earmark-text me-2"></i>
+                                        <span id="aadhaarFileName"></span>
+                                        <small class="d-block text-muted" id="aadhaarFileSize"></small>
+                                    </div>
+                                    <div class="mt-1">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearAadhaarPreview()">
+                                            <i class="bi bi-x-circle"></i> Remove
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {% if employee and employee.aadhaar %}
+                                    <div class="mt-2" id="existingAadhaar">
+                                        <a href="{{ employee.aadhaar.url }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                            <i class="bi bi-file-earmark-text me-1"></i>View Current
+                                        </a>
+                                    </div>
+                                {% endif %}
+                                {% if form.aadhaar.errors %}
+                                    <div class="text-danger small">{{ form.aadhaar.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <h5 class="border-bottom pb-2 mb-3 mt-4">Employment Details</h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="{{ form.pg.id_for_label }}" class="form-label">
+                                    PG <span class="text-danger">*</span>
+                                </label>
+                                {{ form.pg }}
+                                {% if form.pg.errors %}
+                                    <div class="text-danger small">{{ form.pg.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.salary.id_for_label }}" class="form-label">
+                                    Monthly Salary (₹) <span class="text-danger">*</span>
+                                </label>
+                                {{ form.salary }}
+                                {% if form.salary.errors %}
+                                    <div class="text-danger small">{{ form.salary.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="{{ form.joining_date.id_for_label }}" class="form-label">
+                                    Joining Date <span class="text-danger">*</span>
+                                </label>
+                                {{ form.joining_date }}
+                                {% if form.joining_date.errors %}
+                                    <div class="text-danger small">{{ form.joining_date.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.salary_date.id_for_label }}" class="form-label">
+                                    Salary Payment Date <span class="text-danger">*</span>
+                                </label>
+                                {{ form.salary_date }}
+                                <small class="form-text text-muted">Monthly salary payment date</small>
+                                {% if form.salary_date.errors %}
+                                    <div class="text-danger small">{{ form.salary_date.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.work_notes.id_for_label }}" class="form-label">
+                                Work Notes
+                            </label>
+                            {{ form.work_notes }}
+                            <small class="form-text text-muted">Job responsibilities, special notes, etc.</small>
+                            {% if form.work_notes.errors %}
+                                <div class="text-danger small">{{ form.work_notes.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3 form-check">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                                Currently Active
+                            </label>
+                            {% if form.is_active.errors %}
+                                <div class="text-danger small">{{ form.is_active.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save me-1"></i>Save Employee
+                            </button>
+                            <a href="{% if employee %}{% url 'employee_detail' employee.pk %}{% else %}{% url 'employee_list' %}{% endif %}" 
+                               class="btn btn-secondary">
+                                <i class="bi bi-x-circle me-1"></i>Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Selfie Preview
+document.getElementById('{{ form.selfie.id_for_label }}')?.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    const previewContainer = document.getElementById('selfiePreviewContainer');
+    const preview = document.getElementById('selfiePreview');
+    const existingSelfie = document.getElementById('existingSelfie');
+    
+    if (file) {
+        // Check if it's an image
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                preview.src = event.target.result;
+                previewContainer.style.display = 'block';
+                if (existingSelfie) existingSelfie.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        } else {
+            alert('Please select an image file for selfie.');
+            e.target.value = '';
+        }
+    } else {
+        previewContainer.style.display = 'none';
+        if (existingSelfie) existingSelfie.style.display = 'block';
+    }
+});
+
+function clearSelfiePreview() {
+    const input = document.getElementById('{{ form.selfie.id_for_label }}');
+    const previewContainer = document.getElementById('selfiePreviewContainer');
+    const existingSelfie = document.getElementById('existingSelfie');
+    
+    input.value = '';
+    previewContainer.style.display = 'none';
+    if (existingSelfie) existingSelfie.style.display = 'block';
+}
+
+// Aadhaar Preview
+document.getElementById('{{ form.aadhaar.id_for_label }}')?.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    const previewContainer = document.getElementById('aadhaarPreviewContainer');
+    const imagePreview = document.getElementById('aadhaarImagePreview');
+    const preview = document.getElementById('aadhaarPreview');
+    const fileInfo = document.getElementById('aadhaarFileInfo');
+    const fileName = document.getElementById('aadhaarFileName');
+    const fileSize = document.getElementById('aadhaarFileSize');
+    const existingAadhaar = document.getElementById('existingAadhaar');
+    
+    if (file) {
+        // Show file name and size
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        
+        // If it's an image, show preview
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                preview.src = event.target.result;
+                imagePreview.style.display = 'block';
+                fileInfo.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        } else {
+            // Show file info for non-images (PDF, etc.)
+            imagePreview.style.display = 'none';
+            fileInfo.style.display = 'block';
+        }
+        
+        previewContainer.style.display = 'block';
+        if (existingAadhaar) existingAadhaar.style.display = 'none';
+    } else {
+        previewContainer.style.display = 'none';
+        if (existingAadhaar) existingAadhaar.style.display = 'block';
+    }
+});
+
+function clearAadhaarPreview() {
+    const input = document.getElementById('{{ form.aadhaar.id_for_label }}');
+    const previewContainer = document.getElementById('aadhaarPreviewContainer');
+    const existingAadhaar = document.getElementById('existingAadhaar');
+    
+    input.value = '';
+    previewContainer.style.display = 'none';
+    if (existingAadhaar) existingAadhaar.style.display = 'block';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+</script>
+{% endblock %}
+
