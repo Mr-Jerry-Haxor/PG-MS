@@ -4,6 +4,8 @@
 {% block title %}Leave Requests • {{ pg.name }}{% endblock %}
 
 {% block head_extra %}
+<!-- SweetAlert2 CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 <style>
   /* Fix z-index issues for modals on iPhone/iOS devices */
   .modal-backdrop {
@@ -38,20 +40,11 @@
     }
   }
   
-  /* Delete modal higher z-index */
-  .modal.delete-modal {
-    z-index: 1500 !important;
-  }
-  
-  .modal.delete-modal + .modal-backdrop {
-    z-index: 1490 !important;
-  }
-  
   /* Search box styling */
   .search-container {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 0.5rem;
-    padding: 0.3rem;
+    padding: 0.3                                                                                                                          rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   }
   
@@ -414,7 +407,13 @@
                         <i class="bi bi-arrow-counterclockwise me-1"></i>Re-Continue
                       </button>
                     {% endif %}
-                    <button class="btn btn-sm btn-outline-danger delete-booking-btn" data-bs-toggle="modal" data-bs-target="#deleteModal{{ booking.id }}">
+                    <button class="btn btn-sm btn-outline-danger delete-booking-btn" 
+                            data-booking-id="{{ booking.id }}"
+                            data-full-name="{{ booking.user.get_full_name }}"
+                            data-email="{{ booking.user.email }}"
+                            data-room-no="{{ booking.room.room_no }}"
+                            data-share-no="{{ booking.share_no }}"
+                            data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}">
                       <i class="bi bi-trash me-1"></i>Delete Data
                     </button>
                   {% endif %}
@@ -442,56 +441,6 @@
             </div>
             {% endif %}
 
-            {% if booking.leaving_confirmed_date %}
-            <div class="modal fade delete-modal" id="deleteModal{{ booking.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ booking.id }}" aria-hidden="true" data-bs-backdrop="true" data-bs-keyboard="true">
-              <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                  <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title" id="deleteModalLabel{{ booking.id }}">
-                      <i class="bi bi-exclamation-triangle-fill me-2"></i>Delete Resident Data
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                  </div>
-                  <div class="modal-body">
-                    <div class="alert alert-warning d-flex align-items-start">
-                      <i class="bi bi-exclamation-triangle-fill me-2 fs-4"></i>
-                      <div>
-                        <strong>This action cannot be undone!</strong>
-                        <p class="mb-0 mt-2">Deleting this resident will permanently remove their booking, application, and stored documents.</p>
-                      </div>
-                    </div>
-                    <div class="card bg-light mb-3">
-                      <div class="card-body">
-                        <h6 class="card-title">Resident Details:</h6>
-                        <ul class="mb-0">
-                          <li><strong>Name:</strong> {{ booking.user.get_full_name }}</li>
-                          <li><strong>Email:</strong> {{ booking.user.email }}</li>
-                          <li><strong>Room:</strong> {{ booking.room.room_no }}, Bed {{ booking.share_no }}</li>
-                          <li><strong>Leave Date:</strong> {{ booking.leaving_date|date:"M d, Y" }}</li>
-                        </ul>
-                      </div>
-                    </div>
-                    <ul class="small text-muted mb-0 ps-3">
-                      <li>Booking and application records are permanently deleted.</li>
-                      <li>Linked identity files are removed where possible.</li>
-                      <li>Payment history may be retained for accounting purposes.</li>
-                    </ul>
-                  </div>
-                  <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                      <i class="bi bi-x-circle me-1"></i>Keep Data
-                    </button>
-                    <form method="post" action="{% url 'pg_leaving_delete' booking.id %}" class="m-0" style="display: inline;">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-danger">
-                        <i class="bi bi-trash-fill me-1"></i>Delete Permanently
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              </div>
-            </div>
-            {% endif %}
             {% endfor %}
           </tbody>
         </table>
@@ -1062,6 +1011,20 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
   
+  // Delete booking buttons
+  document.querySelectorAll('.delete-booking-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      confirmDeleteBooking(
+        this.dataset.bookingId,
+        this.dataset.fullName,
+        this.dataset.email,
+        this.dataset.roomNo,
+        this.dataset.shareNo,
+        this.dataset.leaveDate
+      );
+    });
+  });
+  
   // Client-side filtering with pagination
   const filterState = {
     status: 'all',
@@ -1375,7 +1338,80 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
+// SweetAlert2 Delete Confirmation Function
+function confirmDeleteBooking(bookingId, fullName, email, roomNo, shareNo, leaveDate) {
+  Swal.fire({
+    title: '<i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Delete Resident Data',
+    html: `
+      <div class="text-start">
+        <div class="alert alert-warning d-flex align-items-start mb-3">
+          <i class="bi bi-exclamation-triangle-fill me-2 fs-4"></i>
+          <div>
+            <strong>This action cannot be undone!</strong>
+            <p class="mb-0 mt-2">Deleting this resident will permanently remove their booking, application, and stored documents.</p>
+          </div>
+        </div>
+        <div class="card bg-light mb-3">
+          <div class="card-body">
+            <h6 class="card-title">Resident Details:</h6>
+            <ul class="mb-0">
+              <li><strong>Name:</strong> ${fullName}</li>
+              <li><strong>Email:</strong> ${email}</li>
+              <li><strong>Room:</strong> ${roomNo}, Bed ${shareNo}</li>
+              <li><strong>Leave Date:</strong> ${leaveDate}</li>
+            </ul>
+          </div>
+        </div>
+        <ul class="small text-muted mb-0 ps-3">
+          <li>Booking and application records are permanently deleted.</li>
+          <li>Linked identity files are removed where possible.</li>
+          <li>Payment history may be retained for accounting purposes.</li>
+        </ul>
+      </div>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#dc3545',
+    cancelButtonColor: '#6c757d',
+    confirmButtonText: '<i class="bi bi-trash-fill me-1"></i>Delete Permanently',
+    cancelButtonText: '<i class="bi bi-x-circle me-1"></i>Keep Data',
+    customClass: {
+      popup: 'swal2-overflow-visible',
+      confirmButton: 'btn btn-danger',
+      cancelButton: 'btn btn-outline-secondary'
+    },
+    buttonsStyling: false,
+    width: '600px',
+    showClass: {
+      popup: 'animate__animated animate__fadeInDown'
+    },
+    hideClass: {
+      popup: 'animate__animated animate__fadeOutUp'
+    }
+  }).then((result) => {
+    if (result.isConfirmed) {
+      // Create and submit a form to delete the booking
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = `/pg/leaving/${bookingId}/delete/`;
+      
+      // Add CSRF token
+      const csrfInput = document.createElement('input');
+      csrfInput.type = 'hidden';
+      csrfInput.name = 'csrfmiddlewaretoken';
+      csrfInput.value = getCsrfToken();
+      form.appendChild(csrfInput);
+      
+      document.body.appendChild(form);
+      form.submit();
+    }
+  });
+}
 </script>
+
+<!-- SweetAlert2 JavaScript -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 {% endblock %}
 
