@@ -143,23 +143,70 @@
   </div>
   <div class="app-section">
     <h2>Documents</h2>
+    
+    <!-- Document Upload Instructions -->
+    <div class="alert alert-info alert-dismissible fade show small mb-3" role="alert">
+      <strong><i class="bi bi-info-circle me-1"></i>Document Upload Guidelines:</strong>
+      <ul class="mb-1 mt-1 ps-3">
+        <li><strong>Accepted formats:</strong> PDF (recommended) or Images (JPG, PNG)</li>
+        <li><strong>File size limit:</strong> Maximum 2 MB per file</li>
+        <li><strong>Quality:</strong> Clear, readable text - not blurry or too dark</li>
+        <li><strong>PDF option:</strong> Upload both sides in one PDF (Doc 2 disabled) OR upload front as image (Doc 2 for back side)</li>
+        <li><strong>Security:</strong> Password-protected PDFs are not allowed</li>
+      </ul>
+      <small class="text-muted"><strong>Tip:</strong> If you get "cannot access file" error, try copying the file to your Desktop first, or use a different browser (Chrome/Edge recommended).</small>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    
     <div class="row g-3">
       <div class="col-12 col-lg-6 order-1 order-lg-1">
         <div class="mb-3">
           <label class="form-label">Aadhaar Document 1 <span class="required-asterisk">*</span></label>
-          <input type="file" name="aadhaar_pdf" id="aadhaarDoc1" class="form-control" accept="application/pdf,image/*" />
-          <div class="form-text">Upload front side image or complete PDF. If you don't select a new document, the existing one will be kept.</div>
+          <input type="file" name="aadhaar_pdf" id="aadhaarDoc1" class="form-control" accept="application/pdf,image/*,.heic,.heif" />
+          <div class="form-text">Upload front side image (JPG, PNG, HEIC, etc.) or complete PDF. If you don't select a new document, the existing one will be kept.</div>
           <div id="aadhaarPreview1" class="mt-2"></div>
         </div>
         <div>
           <label class="form-label">Aadhaar Document 2 (Optional)</label>
-          <input type="file" name="aadhaar_pdf_2" id="aadhaarDoc2" class="form-control" accept="image/*" disabled />
-          <div class="form-text">Upload back side image (if not using PDF above).</div>
+          <input type="file" name="aadhaar_pdf_2" id="aadhaarDoc2" class="form-control" accept="image/*,.heic,.heif" disabled />
+          <div class="form-text">Upload back side image (all formats supported including HEIC).</div>
           <div id="aadhaarPreview2" class="mt-2"></div>
         </div>
       </div>
   <div class="col-12 col-lg-6 order-2 order-lg-2">
         <label class="form-label mb-1">Profile Photo (Live Capture){% if not app or not app.selfie_url %} <span class="required-asterisk">*</span>{% endif %}</label>
+        
+        <!-- Selfie Instructions -->
+        <div class="alert alert-info alert-dismissible fade show small mb-2" role="alert">
+          <strong><i class="bi bi-info-circle me-1"></i>How to capture:</strong>
+          <ol class="mb-1 mt-1 ps-3">
+            <li>Upload your ID document first (required)</li>
+            <li>Click "Start camera" and allow camera access</li>
+            <li>Position your face in the center circle</li>
+            <li>Click "Capture" when ready</li>
+            <li>Click "Retake" if you want to try again</li>
+          </ol>
+          <small class="text-muted"><strong>Tips:</strong> Use good lighting, remove mask/sunglasses, plain background preferred</small>
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        
+        <!-- Camera Access Warning (initially hidden) -->
+        <div id="cameraAccessWarning" class="alert alert-warning small d-none" role="alert">
+          <strong><i class="bi bi-exclamation-triangle me-1"></i>Camera Access Needed</strong>
+          <p class="mb-1 mt-1">If camera doesn't start:</p>
+          <ul class="mb-0 ps-3">
+            <li>Check if browser blocked camera permission</li>
+            <li>Click the camera icon in address bar to allow</li>
+            <li>Try refreshing the page if needed</li>
+            <li>Ensure no other app is using the camera</li>
+          </ul>
+        </div>
+        
+        <!-- Document Upload Required Warning -->
+        <div id="docUploadWarning" class="alert alert-secondary small mb-2" role="alert">
+          <i class="bi bi-shield-check me-1"></i><strong>Security Note:</strong> You must upload your ID document (Aadhaar) first before capturing your selfie. This ensures document verification.
+        </div>
+        
         <div class="vstack gap-2 align-items-center">
           <div class="selfie-wrapper" aria-label="Live selfie capture area">
             <video id="selfieVideo" autoplay playsinline class="d-none"></video>
@@ -168,7 +215,10 @@
             <div id="selfieOverlay" class="position-absolute top-0 start-0 w-100 h-100 d-none" style="pointer-events:none;">
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-100 h-100">
                 <rect x="0" y="0" width="100" height="100" fill="rgba(0,0,0,0.35)" />
-                <circle cx="50" cy="50" r="32" fill="transparent" stroke="#0d6efd" stroke-width="2" />
+                <circle cx="50" cy="50" r="32" fill="transparent" stroke="#0d6efd" stroke-width="2" stroke-dasharray="2,2">
+                  <animate attributeName="stroke-dashoffset" from="0" to="8" dur="0.5s" repeatCount="indefinite" />
+                </circle>
+                <text x="50" y="85" text-anchor="middle" fill="#fff" font-size="4" opacity="0.9">Align face here</text>
               </svg>
             </div>
             <div id="cameraLoading" class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column justify-content-center align-items-center bg-dark bg-opacity-75 text-white d-none">
@@ -177,7 +227,7 @@
             </div>
           </div>
           <div class="capture-buttons d-flex flex-wrap gap-1 w-100 justify-content-center">
-            <button class="btn btn-outline-primary d-flex align-items-center gap-1" type="button" id="btnStartSelfie" aria-label="Start camera"><i class="bi bi-camera-video"></i><span class="d-sm-inline">Start camera</span></button>
+            <button class="btn btn-outline-primary d-flex align-items-center gap-1" type="button" id="btnStartSelfie" aria-label="Start camera" disabled title="Upload ID document first"><i class="bi bi-camera-video"></i><span class="d-sm-inline">Start camera</span></button>
             <button class="btn btn-primary d-flex align-items-center gap-1" type="button" id="btnCaptureSelfie" disabled aria-label="Capture photo"><i class="bi bi-camera"></i><span class="d-sm-inline">Capture</span></button>
             <button class="btn btn-warning d-none d-flex align-items-center gap-1" type="button" id="btnRetakeSelfie" aria-label="Retake photo"><i class="bi bi-arrow-counterclockwise"></i><span class="d-sm-inline">Retake</span></button>
           </div>
@@ -266,6 +316,7 @@
 </form>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function(){
   console.log('[init] application_fill script loaded (DOMContentLoaded)');
@@ -354,18 +405,83 @@
   }
 
   startBtn?.addEventListener('click', async () => {
+    const loadingEl = document.getElementById('cameraLoading');
+    const warningEl = document.getElementById('cameraAccessWarning');
+    
     try {
-      selfieStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 720 } }, audio: false });
+      if (loadingEl) loadingEl.classList.remove('d-none');
+      if (warningEl) warningEl.classList.add('d-none');
+      
+      // Request camera access with specific constraints
+      selfieStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'user', 
+          width: { ideal: 720 } 
+        }, 
+        audio: false 
+      });
+      
       videoEl.srcObject = selfieStream;
       videoEl.classList.remove('d-none');
       overlayEl.classList.remove('d-none');
       captureBtn.disabled = false;
+      
+      // Show success message
+      showToast('Camera started successfully! Position your face in the circle.', 'success');
+      
     } catch (e) {
+      console.error('[Selfie] Camera error:', e);
+      
+      // Determine error type and show appropriate message
+      let errorMsg = 'Could not access camera. ';
+      let detailedMsg = '';
+      
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+        errorMsg = 'Camera permission denied.';
+        detailedMsg = 'Please click the camera icon in your browser\'s address bar and allow camera access, then try again.';
+      } else if (e.name === 'NotFoundError' || e.name === 'DevicesNotFoundError') {
+        errorMsg = 'No camera found.';
+        detailedMsg = 'Please ensure your device has a camera and it\'s properly connected.';
+      } else if (e.name === 'NotReadableError' || e.name === 'TrackStartError') {
+        errorMsg = 'Camera is already in use.';
+        detailedMsg = 'Please close other apps using the camera (like Zoom, Teams, Skype) and try again.';
+      } else if (e.name === 'OverconstrainedError') {
+        errorMsg = 'Camera settings not supported.';
+        detailedMsg = 'Your camera doesn\'t support the required settings. Trying with default settings...';
+        
+        // Retry with simpler constraints
+        try {
+          selfieStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          videoEl.srcObject = selfieStream;
+          videoEl.classList.remove('d-none');
+          overlayEl.classList.remove('d-none');
+          captureBtn.disabled = false;
+          showToast('Camera started with basic settings.', 'success');
+          if (loadingEl) loadingEl.classList.add('d-none');
+          return; // Success on retry
+        } catch (retryErr) {
+          detailedMsg = 'Camera not compatible. Please try using a different device or browser.';
+        }
+      } else if (e.name === 'SecurityError') {
+        errorMsg = 'Camera access blocked by security settings.';
+        detailedMsg = 'Please ensure you\'re using HTTPS or localhost. Camera requires a secure connection.';
+      } else {
+        detailedMsg = e.message || 'Unknown error occurred. Please try refreshing the page or using a different browser.';
+      }
+      
+      // Show detailed error
+      showToast(errorMsg + ' ' + detailedMsg, 'danger');
+      
+      // Show the warning panel
+      if (warningEl) warningEl.classList.remove('d-none');
+      
+      // Try to show camera permission modal if available
       if (typeof window.showCameraPermissionModal === 'function') {
         window.showCameraPermissionModal('Resident application selfie capture needs camera access.');
-      } else {
-        alert('Unable to access camera. Allow permission or use Upload Photo.');
       }
+      
+    } finally {
+      if (loadingEl) loadingEl.classList.add('d-none');
     }
   });
 
@@ -540,12 +656,64 @@
     if (!previewEl) return;
     revokeAll(previewEl);
     clearPreview(previewEl);
-    const url = urlFor(file);
-    const img = document.createElement('img');
-    img.src = url;
-    img.className = 'img-fluid border rounded doc-thumb-sm';
-    img.alt = 'Document preview';
-    previewEl.appendChild(img);
+    
+    async function displayImage(imageFile) {
+      const url = urlFor(imageFile);
+      const img = document.createElement('img');
+      img.src = url;
+      img.className = 'img-fluid border rounded doc-thumb-sm';
+      img.alt = 'Document preview';
+      
+      // Handle image load errors
+      img.onerror = function() {
+        clearPreview(previewEl);
+        previewEl.innerHTML = '<div class="alert alert-warning small">Cannot preview this file. It will still be uploaded.</div>';
+      };
+      
+      img.onload = function() {
+        console.log('[Image] Preview loaded successfully');
+      };
+      
+      previewEl.appendChild(img);
+    }
+    
+    try {
+      // Check if file is HEIC/HEIF format
+      const fileName = file.name.toLowerCase();
+      const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif') || 
+                     file.type === 'image/heic' || file.type === 'image/heif';
+      
+      if (isHeic && window.heic2any) {
+        // Convert HEIC to JPEG for preview
+        console.log('[Image] Converting HEIC/HEIF to JPEG for preview...');
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'text-muted small';
+        loadingDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Converting image format...';
+        previewEl.appendChild(loadingDiv);
+        
+        heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 })
+          .then(convertedBlob => {
+            clearPreview(previewEl);
+            const convertedFile = new File([convertedBlob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            displayImage(convertedFile);
+          })
+          .catch(err => {
+            console.error('[Image] HEIC conversion failed:', err);
+            clearPreview(previewEl);
+            previewEl.innerHTML = '<div class="alert alert-info small"><i class="bi bi-info-circle me-1"></i>HEIC/HEIF image selected. Preview unavailable but file will be uploaded.</div>';
+          });
+      } else {
+        // Standard image formats
+        displayImage(file);
+      }
+    } catch (err) {
+      console.error('[Image] Preview error:', err);
+      clearPreview(previewEl);
+      previewEl.innerHTML = '<div class="alert alert-warning small">Cannot preview file (client-side access error). File will still be uploaded.</div>';
+    }
   }
 
   async function renderPdf(file, previewEl){
@@ -554,24 +722,34 @@
     clearPreview(previewEl);
     
     if (!window.pdfjsLib) {
-      previewEl.innerHTML = '<div class="alert alert-warning small">PDF preview unavailable (library not loaded)</div>';
+      previewEl.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>PDF preview unavailable (library not loaded). Your file will still be uploaded.</div>';
       return;
     }
 
     const loadingDiv = document.createElement('div');
     loadingDiv.className = 'text-muted small';
-    loadingDiv.textContent = 'Loading PDF...';
+    loadingDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading PDF preview...';
     previewEl.appendChild(loadingDiv);
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      // Try to read the file
+      let arrayBuffer;
+      try {
+        arrayBuffer = await file.arrayBuffer();
+      } catch (readErr) {
+        console.error('[PDF] File read error:', readErr);
+        clearPreview(previewEl);
+        previewEl.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Cannot access file for preview (browser security restriction). Your file will still be uploaded when you submit the form.</div>';
+        return;
+      }
+      
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       
       // Check for password protection
       loadingTask.onPassword = (updateCallback, reason) => {
         clearPreview(previewEl);
-        previewEl.innerHTML = '<div class="alert alert-danger small">Password-protected PDFs are not allowed.</div>';
-        input1.value = '';
+        previewEl.innerHTML = '<div class="alert alert-danger small"><i class="bi bi-lock-fill me-1"></i>Password-protected PDFs are not allowed. Please upload an unlocked PDF.</div>';
+        if (input1) input1.value = '';
         throw new Error('Password protected PDF');
       };
 
@@ -593,20 +771,42 @@
       
       previewEl.appendChild(canvas);
 
+      // Add page count info
+      if (pdf.numPages > 1) {
+        const info = document.createElement('div');
+        info.className = 'small text-muted mt-1';
+        info.innerHTML = `<i class="bi bi-file-pdf me-1"></i>Page 1 of ${pdf.numPages}`;
+        previewEl.appendChild(info);
+      }
+
       // Add link to open full PDF
-      const url = urlFor(file);
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.className = 'btn btn-sm btn-outline-primary mt-2';
-      link.innerHTML = '<i class="bi bi-file-pdf"></i> View Full PDF';
-      previewEl.appendChild(link);
+      try {
+        const url = urlFor(file);
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.className = 'btn btn-sm btn-outline-primary mt-2';
+        link.innerHTML = '<i class="bi bi-file-pdf me-1"></i>View Full PDF';
+        previewEl.appendChild(link);
+      } catch (urlErr) {
+        console.warn('[PDF] Cannot create preview URL:', urlErr);
+      }
       
     } catch (err) {
       console.error('[PDF] Render error:', err);
       if (err.message !== 'Password protected PDF') {
         clearPreview(previewEl);
-        previewEl.innerHTML = '<div class="alert alert-danger small">Failed to load PDF preview.</div>';
+        const isAccessError = err.message && (
+          err.message.includes('access') || 
+          err.message.includes('permission') ||
+          err.message.includes('read')
+        );
+        
+        if (isAccessError) {
+          previewEl.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Cannot access file for preview (browser security restriction). Your file will still be uploaded when you submit the form.</div>';
+        } else {
+          previewEl.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Failed to load PDF preview. Your file will still be uploaded. If this persists, try converting to image format.</div>';
+        }
       }
     }
   }
@@ -627,7 +827,19 @@
 
   function checkAndEnableSelfie(){
     const doc1HasFile = input1 && input1.files && input1.files.length > 0;
-    if (selfieCameraBtn) selfieCameraBtn.disabled = !doc1HasFile;
+    const docWarning = document.getElementById('docUploadWarning');
+    
+    if (selfieCameraBtn) {
+      selfieCameraBtn.disabled = !doc1HasFile;
+      
+      if (doc1HasFile) {
+        selfieCameraBtn.title = 'Click to start camera';
+        if (docWarning) docWarning.classList.add('d-none');
+      } else {
+        selfieCameraBtn.title = 'Upload ID document first';
+        if (docWarning) docWarning.classList.remove('d-none');
+      }
+    }
   }
 
   // Handler for Document 1 (required - PDF or image)
@@ -644,11 +856,26 @@
       return;
     }
 
+    console.log('[Doc1] File selected:', file.name, file.type, bytesToMB(file.size) + 'MB');
+
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    const isImage = file.type.startsWith('image/');
+    const fileName = file.name.toLowerCase();
+    // Accept all image formats including HEIC, HEIF, WebP, AVIF, etc.
+    const isImage = file.type.startsWith('image/') || 
+                    fileName.endsWith('.heic') || 
+                    fileName.endsWith('.heif') ||
+                    fileName.endsWith('.jpg') || 
+                    fileName.endsWith('.jpeg') || 
+                    fileName.endsWith('.png') || 
+                    fileName.endsWith('.gif') || 
+                    fileName.endsWith('.webp') || 
+                    fileName.endsWith('.avif') ||
+                    fileName.endsWith('.bmp') ||
+                    fileName.endsWith('.tiff') ||
+                    fileName.endsWith('.tif');
 
     if (!isPdf && !isImage) {
-      showToast('Please upload a PDF or image file.', 'danger');
+      showToast('Please upload a PDF or image file (JPG, PNG, HEIC, WebP, etc.).', 'danger');
       this.value = '';
       if (input2) { input2.disabled = true; input2.value = ''; }
       revokeAll(preview2);
@@ -658,7 +885,7 @@
     }
 
     if (file.size > 2097152) {
-      showToast(`File too large (${bytesToMB(file.size)} MB). Maximum 2 MB allowed.`, 'danger');
+      showToast(`File too large (${bytesToMB(file.size)} MB). Maximum 2 MB allowed. Please compress or resize the file.`, 'danger');
       this.value = '';
       if (input2) { input2.disabled = true; input2.value = ''; }
       revokeAll(preview2);
@@ -667,10 +894,23 @@
       return;
     }
 
+    // Check file readability
+    try {
+      const testRead = await file.slice(0, 1024).arrayBuffer();
+      console.log('[Doc1] File is readable');
+    } catch (readErr) {
+      console.error('[Doc1] File read error:', readErr);
+      showToast('Cannot access this file. Please try: 1) Copy file to a different location, 2) Use a different file, or 3) Try a different browser.', 'warning');
+      // Don't clear the input - let them try to submit anyway
+      preview1.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Cannot preview file (access error). File is selected and will be uploaded when you submit.</div>';
+      checkAndEnableSelfie();
+      return;
+    }
+
     if (isPdf) {
       const encrypted = await pdfLooksEncrypted(file);
       if (encrypted) {
-        showToast('Password-protected PDFs are not allowed.', 'danger');
+        showToast('Password-protected PDFs are not allowed. Please remove the password or use an image instead.', 'danger');
         this.value = '';
         if (input2) { input2.disabled = true; input2.value = ''; }
         revokeAll(preview2);
@@ -678,7 +918,10 @@
         checkAndEnableSelfie();
         return;
       }
+      
+      showToast('PDF document uploaded successfully!', 'success');
       await renderPdf(file, preview1);
+      
       if (input2) {
         input2.disabled = true;
         input2.value = '';
@@ -686,6 +929,7 @@
         clearPreview(preview2);
       }
     } else {
+      showToast('Image document uploaded successfully!', 'success');
       renderImage(file, preview1);
       if (input2) input2.disabled = false;
     }
@@ -701,19 +945,48 @@
     
     if (!file) return;
 
-    const isImage = file.type.startsWith('image/');
+    console.log('[Doc2] File selected:', file.name, file.type, bytesToMB(file.size) + 'MB');
+
+    const fileName = file.name.toLowerCase();
+    // Accept all image formats including HEIC, HEIF, WebP, AVIF, etc.
+    const isImage = file.type.startsWith('image/') || 
+                    fileName.endsWith('.heic') || 
+                    fileName.endsWith('.heif') ||
+                    fileName.endsWith('.jpg') || 
+                    fileName.endsWith('.jpeg') || 
+                    fileName.endsWith('.png') || 
+                    fileName.endsWith('.gif') || 
+                    fileName.endsWith('.webp') || 
+                    fileName.endsWith('.avif') ||
+                    fileName.endsWith('.bmp') ||
+                    fileName.endsWith('.tiff') ||
+                    fileName.endsWith('.tif');
+    
     if (!isImage) {
-      showToast('Document 2 must be an image file.', 'danger');
+      showToast('Document 2 must be an image file (JPG, PNG, HEIC, WebP, etc.).', 'danger');
       this.value = '';
       return;
     }
 
     if (file.size > 2097152) {
-      showToast(`File too large (${bytesToMB(file.size)} MB). Maximum 2 MB allowed.`, 'danger');
+      showToast(`File too large (${bytesToMB(file.size)} MB). Maximum 2 MB allowed. Please compress or resize the image.`, 'danger');
       this.value = '';
       return;
     }
 
+    // Check file readability
+    try {
+      const testRead = await file.slice(0, 1024).arrayBuffer();
+      console.log('[Doc2] File is readable');
+    } catch (readErr) {
+      console.error('[Doc2] File read error:', readErr);
+      showToast('Cannot access this file. Please try: 1) Copy file to a different location, 2) Use a different file, or 3) Try a different browser.', 'warning');
+      // Don't clear the input - let them try to submit anyway
+      preview2.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Cannot preview file (access error). File is selected and will be uploaded when you submit.</div>';
+      return;
+    }
+
+    showToast('Back side image uploaded successfully!', 'success');
     renderImage(file, preview2);
   });
 

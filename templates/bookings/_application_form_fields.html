@@ -72,14 +72,14 @@
     <div class="row g-2">
       <div class="col-md-6">
         <label class="form-label">Aadhaar Document <span class="text-danger">*</span></label>
-        <input type="file" name="aadhaar_pdf" id="aadhaarDoc1" class="form-control" accept="application/pdf,image/*" required />
-        <div class="form-text">Upload front side image or complete PDF</div>
+        <input type="file" name="aadhaar_pdf" id="aadhaarDoc1" class="form-control" accept="application/pdf,image/*,.heic,.heif" required />
+        <div class="form-text">Upload front side image (all formats including HEIC) or complete PDF</div>
         <div id="aadhaarPreview1" class="mt-2"></div>
       </div>
       <div class="col-md-6">
         <label class="form-label">Aadhaar Document 2 <span class="text-muted">(Optional)</span></label>
-        <input type="file" name="aadhaar_pdf_2" id="aadhaarDoc2" class="form-control" accept="image/*" />
-        <div class="form-text">Upload back side image (if not using PDF above)</div>
+        <input type="file" name="aadhaar_pdf_2" id="aadhaarDoc2" class="form-control" accept="image/*,.heic,.heif" />
+        <div class="form-text">Upload back side image (all formats supported including HEIC)</div>
         <div id="aadhaarPreview2" class="mt-2"></div>
       </div>
       <div class="col-md-6">
@@ -333,51 +333,116 @@
 
     function renderImage(file, previewEl){
       clearPreview(previewEl);
-      const img = document.createElement('img');
-      img.src = urlFor(file);
-      img.alt = file.name;
-      img.style.width = '100%';
-      img.style.maxWidth = '200px';
-      img.style.height = 'auto';
-      img.className = 'border rounded';
-      previewEl.appendChild(img);
+      
+      async function displayImage(imageFile) {
+        const img = document.createElement('img');
+        img.src = urlFor(imageFile);
+        img.alt = file.name;
+        img.style.width = '100%';
+        img.style.maxWidth = '200px';
+        img.style.height = 'auto';
+        img.className = 'border rounded';
+        
+        // Handle image load errors
+        img.onerror = function() {
+          clearPreview(previewEl);
+          previewEl.innerHTML = '<div class="text-warning small">Cannot preview file. It will still be uploaded.</div>';
+        };
+        
+        previewEl.appendChild(img);
+      }
+      
+      try {
+        // Check if file is HEIC/HEIF format
+        const fileName = file.name.toLowerCase();
+        const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif') || 
+                       file.type === 'image/heic' || file.type === 'image/heif';
+        
+        if (isHeic && window.heic2any) {
+          // Convert HEIC to JPEG for preview
+          console.log('[Image] Converting HEIC/HEIF to JPEG for preview...');
+          const loadingDiv = document.createElement('div');
+          loadingDiv.className = 'text-muted small';
+          loadingDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Converting image...';
+          previewEl.appendChild(loadingDiv);
+          
+          heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 })
+            .then(convertedBlob => {
+              clearPreview(previewEl);
+              const convertedFile = new File([convertedBlob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), {
+                type: 'image/jpeg',
+                lastModified: Date.now()
+              });
+              displayImage(convertedFile);
+            })
+            .catch(err => {
+              console.error('[Image] HEIC conversion failed:', err);
+              clearPreview(previewEl);
+              previewEl.innerHTML = '<div class="text-info small">HEIC/HEIF image selected. Preview unavailable but file will be uploaded.</div>';
+            });
+        } else {
+          // Standard image formats
+          displayImage(file);
+        }
+      } catch (err) {
+        console.error('[Image] Preview error:', err);
+        clearPreview(previewEl);
+        previewEl.innerHTML = '<div class="text-warning small">Cannot preview file. File will still be uploaded.</div>';
+      }
     }
 
     async function renderPdf(file, previewEl){
       clearPreview(previewEl);
-      const blobUrl = urlFor(file);
-      const canvas = document.createElement('canvas');
-      canvas.style.width = '100%';
-      canvas.style.height = 'auto';
-      canvas.style.border = '1px solid #e2e8f0';
-      canvas.className = 'rounded w-100';
-      previewEl.appendChild(canvas);
-      const ctx = canvas.getContext('2d');
-
+      
       const pdfjsLib = window['pdfjs-dist/build/pdf'];
       if (!pdfjsLib || !pdfjsLib.getDocument){
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.target = '_blank';
-        a.textContent = 'Open PDF in new tab';
-        a.className = 'btn btn-outline-secondary btn-sm';
-        previewEl.appendChild(document.createElement('div')).appendChild(a);
+        previewEl.innerHTML = '<div class="text-warning small">PDF preview unavailable. File will be uploaded.</div>';
         return true;
       }
 
-      try {
-        if (!pdfjsLib.GlobalWorkerOptions.workerSrc){
-          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-        }
-      } catch(e){}
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = 'text-muted small';
+      loadingDiv.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading PDF...';
+      previewEl.appendChild(loadingDiv);
 
       try {
+        // Try to read the file first
+        let blobUrl;
+        try {
+          blobUrl = urlFor(file);
+        } catch (urlErr) {
+          console.error('[PDF] Cannot create URL:', urlErr);
+          clearPreview(previewEl);
+          previewEl.innerHTML = '<div class="text-warning small">Cannot access file for preview. File will still be uploaded when you submit.</div>';
+          return true;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
+        canvas.style.border = '1px solid #e2e8f0';
+        canvas.className = 'rounded w-100';
+        
+        const ctx = canvas.getContext('2d');
+
+        try {
+          if (!pdfjsLib.GlobalWorkerOptions.workerSrc){
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+          }
+        } catch(e){}
+
         const loadingTask = pdfjsLib.getDocument({ url: blobUrl });
+        
         loadingTask.onPassword = () => {
+          clearPreview(previewEl);
+          previewEl.innerHTML = '<div class="text-danger small"><i class="bi bi-lock-fill me-1"></i>Password-protected PDFs not allowed.</div>';
           showToast('Please select a PDF which is not password protected.', 'danger');
           return false;
         };
+        
         const pdf = await loadingTask.promise;
+        clearPreview(previewEl);
+        
         const page = await pdf.getPage(1);
         const containerWidth = previewEl.clientWidth || canvas.clientWidth || 300;
         const viewport = page.getViewport({ scale: 1.0 });
@@ -385,8 +450,19 @@
         const scaledViewport = page.getViewport({ scale });
         canvas.width = scaledViewport.width;
         canvas.height = scaledViewport.height;
+        
         await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
+        previewEl.appendChild(canvas);
 
+        // Add page info
+        if (pdf.numPages > 1) {
+          const info = document.createElement('div');
+          info.className = 'small text-muted mt-1';
+          info.innerHTML = `<i class="bi bi-file-pdf me-1"></i>Page 1 of ${pdf.numPages}`;
+          previewEl.appendChild(info);
+        }
+
+        // Add link to view full PDF
         const linkWrap = document.createElement('div');
         linkWrap.className = 'mt-2';
         const openLink = document.createElement('a');
@@ -397,11 +473,26 @@
         openLink.className = 'btn btn-outline-secondary btn-sm';
         linkWrap.appendChild(openLink);
         previewEl.appendChild(linkWrap);
+        
         return true;
       } catch (err){
-        console.error('PDF.js render error', err);
-        showToast('Unable to preview PDF. It may be encrypted or corrupted.', 'danger');
-        return false;
+        console.error('[PDF] Render error:', err);
+        clearPreview(previewEl);
+        
+        const isAccessError = err.message && (
+          err.message.includes('access') || 
+          err.message.includes('permission') ||
+          err.message.includes('read')
+        );
+        
+        if (isAccessError) {
+          previewEl.innerHTML = '<div class="text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Cannot access file for preview. File will still be uploaded when you submit.</div>';
+        } else {
+          previewEl.innerHTML = '<div class="text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Cannot preview PDF. File will still be uploaded. Try converting to image if this persists.</div>';
+        }
+        
+        showToast('Unable to preview PDF. File is selected and will be uploaded on submit.', 'warning');
+        return true; // Allow upload anyway
       }
     }
 
@@ -449,10 +540,23 @@
       }
 
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      const isImage = file.type.startsWith('image/');
+      const fileName = file.name.toLowerCase();
+      // Accept all image formats including HEIC, HEIF, WebP, AVIF, etc.
+      const isImage = file.type.startsWith('image/') || 
+                      fileName.endsWith('.heic') || 
+                      fileName.endsWith('.heif') ||
+                      fileName.endsWith('.jpg') || 
+                      fileName.endsWith('.jpeg') || 
+                      fileName.endsWith('.png') || 
+                      fileName.endsWith('.gif') || 
+                      fileName.endsWith('.webp') || 
+                      fileName.endsWith('.avif') ||
+                      fileName.endsWith('.bmp') ||
+                      fileName.endsWith('.tiff') ||
+                      fileName.endsWith('.tif');
 
       if (!isPdf && !isImage){
-        showToast('Please upload a PDF or image file.', 'danger');
+        showToast('Please upload a PDF or image file (JPG, PNG, HEIC, WebP, etc.).', 'danger');
         input1.value = '';
         checkAndEnableSelfie();
         return;
@@ -503,9 +607,23 @@
         return;
       }
 
-      const isImage = file.type.startsWith('image/');
+      const fileName = file.name.toLowerCase();
+      // Accept all image formats including HEIC, HEIF, WebP, AVIF, etc.
+      const isImage = file.type.startsWith('image/') || 
+                      fileName.endsWith('.heic') || 
+                      fileName.endsWith('.heif') ||
+                      fileName.endsWith('.jpg') || 
+                      fileName.endsWith('.jpeg') || 
+                      fileName.endsWith('.png') || 
+                      fileName.endsWith('.gif') || 
+                      fileName.endsWith('.webp') || 
+                      fileName.endsWith('.avif') ||
+                      fileName.endsWith('.bmp') ||
+                      fileName.endsWith('.tiff') ||
+                      fileName.endsWith('.tif');
+      
       if (!isImage){
-        showToast('Document 2 must be an image file.', 'danger');
+        showToast('Document 2 must be an image file (JPG, PNG, HEIC, WebP, etc.).', 'danger');
         input2.value = '';
         return;
       }
@@ -553,3 +671,5 @@
 </script>
 <!-- PDF.js for robust PDF preview -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<!-- HEIC to JPEG converter for image preview -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
