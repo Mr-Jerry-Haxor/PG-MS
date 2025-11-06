@@ -5,6 +5,22 @@ from pgadmin.models import PG
 from django.utils import timezone
 
 
+class ExpenditureCategory(TimeStampedModel):
+	"""Custom expenditure categories per PG."""
+	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='expenditure_categories')
+	name = models.CharField(max_length=100)
+	slug = models.SlugField(max_length=100)
+	is_default = models.BooleanField(default=False, help_text='Default categories cannot be deleted')
+	display_order = models.IntegerField(default=0)
+
+	class Meta:
+		unique_together = ('pg', 'slug')
+		ordering = ['display_order', 'name']
+
+	def __str__(self):
+		return f"{self.pg.name} - {self.name}"
+
+
 class Fees(TimeStampedModel):
 	SHARE_TYPES = [
 		('1', 'Single'),
@@ -64,15 +80,26 @@ class Expenditure(TimeStampedModel):
 		('other', 'Other'),
 	]
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='expenditures')
-	category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+	# Legacy category field (kept for backward compatibility)
+	category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, blank=True, null=True)
+	# New custom category reference
+	category_custom = models.ForeignKey(ExpenditureCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='expenditures')
 	amount = models.DecimalField(max_digits=10, decimal_places=2)
 	date = models.DateField()
 	notes = models.TextField(blank=True)
 	# Optional reference to booking for advance returns (nullable to keep expenditure even if booking deleted)
 	booking = models.ForeignKey('bookings.Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='expenditures')
 
+	def get_category_display(self):
+		"""Return the display name for the category (custom or legacy)."""
+		if self.category_custom:
+			return self.category_custom.name
+		elif self.category:
+			return dict(self.CATEGORY_CHOICES).get(self.category, self.category)
+		return 'Uncategorized'
+
 	def __str__(self):
-		return f"{self.pg} - {self.category} - {self.amount}"
+		return f"{self.pg} - {self.get_category_display()} - {self.amount}"
 
 # Create your models here.
 

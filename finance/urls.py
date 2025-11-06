@@ -32,7 +32,13 @@ urlpatterns = [
     path('ledger/<int:user_id>/export.pdf', views.ledger_export_pdf, name='finance_ledger_export_pdf'),
 
     path('expenditure/', views.expenditure_list, name='expenditure_list'),
+    path('expenditure/json/', views.expenditure_list_json, name='expenditure_list_json'),
     path('expenditure/new/', views.expenditure_edit, name='expenditure_new'),
     path('expenditure/<int:pk>/', views.expenditure_edit, name='expenditure_edit'),
     path('expenditure/export.pdf', views.expenditure_export_pdf, name='expenditure_export_pdf'),
+    
+    # Expenditure Categories
+    path('expenditure/categories/', views.expenditure_categories_list, name='expenditure_categories_list'),
+    path('expenditure/categories/create/', views.expenditure_category_create, name='expenditure_category_create'),
+    path('expenditure/categories/<int:pk>/delete/', views.expenditure_category_delete, name='expenditure_category_delete'),
 ]

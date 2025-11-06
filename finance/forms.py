@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from .models import Fees, Payment, Expenditure
+from .models import Fees, Payment, Expenditure, ExpenditureCategory
 
 
 class UserChoiceField(forms.ModelChoiceField):
@@ -92,11 +92,37 @@ class PaymentForm(forms.ModelForm):
 
 
 class ExpenditureForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        pg = kwargs.pop('pg', None)
+        super().__init__(*args, **kwargs)
+        
+        # Replace category field with category_custom if PG is provided
+        if pg:
+            # Get custom categories for this PG
+            categories = ExpenditureCategory.objects.filter(pg=pg).order_by('display_order', 'name')
+            self.fields['category_custom'] = forms.ModelChoiceField(
+                queryset=categories,
+                required=False,
+                label='Category',
+                widget=forms.Select(attrs={"class": "form-select"}),
+                empty_label="Select a category..."
+            )
+            # Show only the category name in options (do not include PG name)
+            # ExpenditureCategory.__str__ includes PG name, so override label rendering here.
+            self.fields['category_custom'].label_from_instance = lambda obj: obj.name
+            # Remove the old category field
+            if 'category' in self.fields:
+                del self.fields['category']
+            
+            # Reorder fields to put category_custom first
+            field_order = ['category_custom', 'amount', 'date', 'notes']
+            self.order_fields(field_order)
+    
     class Meta:
         model = Expenditure
-        fields = ["category", "amount", "date", "notes"]
+        fields = ["category_custom", "amount", "date", "notes"]
         widgets = {
-            "category": forms.Select(attrs={"class": "form-select"}),
+            "category_custom": forms.Select(attrs={"class": "form-select"}),
             "amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "notes": forms.Textarea(attrs={"class": "form-control", "rows": 2}),

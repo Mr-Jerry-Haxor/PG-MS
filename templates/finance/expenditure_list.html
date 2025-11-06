@@ -1,5 +1,42 @@
 {% extends 'base.html' %}
 {% block title %}Expenditure • PG-MS{% endblock %}
+{% block head_extra %}
+<style>
+  .category-item {
+    transition: all 0.2s ease;
+  }
+  .category-item:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+  }
+  #addCategoryForm {
+    animation: slideDown 0.3s ease;
+  }
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  #categoriesModal .modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .list-group-item {
+    border-left: none;
+    border-right: none;
+  }
+  .list-group-item:first-child {
+    border-top: none;
+  }
+  .list-group-item:last-child {
+    border-bottom: none;
+  }
+</style>
+{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div class="d-flex align-items-center gap-2">
@@ -18,56 +55,124 @@
   </div>
   <div class="d-flex gap-2">
     <a href="{% url 'expenditure_new' %}" class="btn btn-primary">New</a>
+    <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#categoriesModal">
+      <i class="bi bi-tags me-1"></i>Modify Categories
+    </button>
     <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#exportModal">Export</button>
   </div>
 </div>
 
-<form method="get" class="card border-0 shadow-sm mb-3">
-  <div class="card-body d-flex flex-wrap gap-2 align-items-end stack-sm">
-    <div>
-      <label class="form-label small d-flex align-items-center gap-2">
-        Month
-        <div class="btn-group">
-          <button class="btn btn-outline-secondary btn-sm" type="button" id="expPrevMonth">Prev</button>
-          <button class="btn btn-outline-secondary btn-sm" type="button" id="expThisMonth">This</button>
-          <button class="btn btn-outline-secondary btn-sm" type="button" id="expNextMonth">Next</button>
-        </div>
-      </label>
-      <input type="month" id="expMonthPicker" class="form-control form-control-sm" style="min-width: 160px;">
+<div class="mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <h6 class="mb-0">Filters</h6>
+      <div id="appliedFilters" class="d-flex gap-2 flex-wrap"></div>
     </div>
     <div>
-      <label class="form-label small">From</label>
-      <input type="date" class="form-control form-control-sm" name="date_from" value="{{ filters.date_from }}">
+      <button id="btnResetFilters" class="btn btn-sm btn-outline-secondary">Reset</button>
     </div>
-    <div>
-      <label class="form-label small">To</label>
-      <input type="date" class="form-control form-control-sm" name="date_to" value="{{ filters.date_to }}">
-    </div>
-    <div>
-      <label class="form-label small">Category</label>
-      <select name="category" class="form-select form-select-sm">
-        <option value="" {% if not filters.category %}selected{% endif %}>All</option>
-        {% for val,label in pg.expenditures.model.CATEGORY_CHOICES %}
-          <option value="{{ val }}" {% if filters.category == val %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="flex-grow-1">
-      <label class="form-label small">Search</label>
-      <input type="search" class="form-control form-control-sm" name="q" placeholder="Notes / Category / Amount" value="{{ filters.q }}">
-    </div>
-    {% if pg %}<input type="hidden" name="pg" value="{{ pg.id }}">{% endif %}
-    <button type="submit" class="btn btn-primary btn-sm">Apply</button>
   </div>
-</form>
+
+  <div class="accordion" id="filtersAccordion">
+    <div class="accordion-item">
+      <h2 class="accordion-header" id="headingOne">
+        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFilters" aria-expanded="false" aria-controls="collapseFilters">
+          Filter results
+        </button>
+      </h2>
+  <div id="collapseFilters" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#filtersAccordion">
+        <div class="accordion-body">
+          <form id="filtersForm" method="get" class="row g-2 align-items-end">
+            <div class="col-lg-3 col-md-4">
+              <label class="form-label small">Month</label>
+              <div class="d-flex gap-2">
+                <input type="month" id="expMonthPicker" class="form-control form-control-sm">
+                <div class="btn-group">
+                  <button class="btn btn-outline-secondary btn-sm" type="button" id="expPrevMonth">Prev</button>
+                  <button class="btn btn-outline-secondary btn-sm" type="button" id="expThisMonth">This</button>
+                  <button class="btn btn-outline-secondary btn-sm" type="button" id="expNextMonth">Next</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label small">From</label>
+              <input type="date" class="form-control form-control-sm" name="date_from" value="{{ filters.date_from }}">
+            </div>
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label small">To</label>
+              <input type="date" class="form-control form-control-sm" name="date_to" value="{{ filters.date_to }}">
+            </div>
+
+            <div class="col-lg-3 col-md-6">
+              <label class="form-label small">Category</label>
+              <div class="multi-select-dropdown">
+                <div class="position-relative">
+                  <button type="button" id="categoryDropdownToggle" class="form-control form-control-sm text-start d-flex justify-content-between align-items-center">
+                    <span id="categoryDropdownLabel">All</span>
+                    <i class="bi bi-chevron-down"></i>
+                  </button>
+                  <div id="categoryDropdownMenu" class="multi-select-menu position-absolute bg-white border rounded mt-1 p-2 d-none" style="z-index:2000; min-width:260px; max-height:220px; overflow:auto;">
+                    {% if pg %}
+                      {% for cat in pg.expenditure_categories.all %}
+                        <div class="form-check">
+                          <input class="form-check-input category-checkbox" type="checkbox" value="{{ cat.id }}" id="cat-{{ cat.id }}">
+                          <label class="form-check-label" for="cat-{{ cat.id }}">{{ cat.name }}</label>
+                        </div>
+                      {% endfor %}
+                    {% endif %}
+                  </div>
+                </div>
+                <div id="categorySelectedContainer" class="mt-1"></div>
+              </div>
+            </div>
+
+            <div class="col-lg-2 col-md-6">
+              <label class="form-label small">Search</label>
+              <input type="search" class="form-control form-control-sm" name="q" id="filterSearch" placeholder="Notes / Category / Amount" value="{{ filters.q }}">
+            </div>
+
+            {% if pg %}<input type="hidden" name="pg" value="{{ pg.id }}">{% endif %}
+            <input type="hidden" name="per_page" value="{{ filters.page_size }}">
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex gap-3 flex-wrap mb-3">
+  <div class="card border-0 shadow-sm flex-grow-1">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="text-muted small">Total Expenses</div>
+          <div class="h5 mb-0" id="totalExpenses">₹ {{ total|default:'0.00' }}</div>
+        </div>
+        <div class="text-end">
+          <div class="text-muted small">Showing</div>
+          <div class="h6 mb-0" id="showingCount">{% if page_obj %}{{ page_obj.paginator.count }} entries{% else %}{{ items|length }} entries{% endif %}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+</div>
 
 <div class="card border-0 shadow-sm">
   <div class="table-responsive">
     <table class="table align-middle mb-0 table-mobile-sm">
       <thead>
-        <tr><th>Date</th><th>Category</th><th>Amount</th><th>Notes</th><th></th></tr>
+        <tr>
+          <th class="sortable" data-key="date" style="cursor:pointer">Date <i class="bi bi-arrow-down-up small"></i></th>
+          <th>Category</th>
+          <th class="sortable text-end" data-key="amount" style="cursor:pointer">Amount <i class="bi bi-arrow-down-up small"></i></th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
       </thead>
-      <tbody>
+      <tbody id="expenditureTableBody">
       {% for i in items %}
         <tr>
           <td>{{ i.date|date:'Y-m-d' }}</td>
@@ -89,8 +194,101 @@
       </tfoot>
     </table>
   </div>
-  <div class="card-body small text-secondary">
-    Showing {{ items|length }} item(s).
+  <div class="card-body small text-secondary d-flex justify-content-between align-items-center">
+    <div>
+      Showing
+      {% if page_obj %}
+        {{ page_obj.start_index }} - {{ page_obj.end_index }} of {{ page_obj.paginator.count }} item(s).
+      {% else %}
+        {{ items|length }} item(s).
+      {% endif %}
+    </div>
+    <div id="clientPagination">
+      <!-- Pagination -->
+      {% if page_obj and page_obj.has_other_pages %}
+        <nav aria-label="Expenditure pages">
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}"><a class="page-link" href="?{% for k,v in request.GET.items %}{% if k != 'page' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">Prev</a></li>
+            {% for p in page_obj.paginator.page_range %}
+              <li class="page-item {% if p == page_obj.number %}active{% endif %}">
+                {% if p == page_obj.number %}
+                  <span class="page-link">{{ p }}</span>
+                {% else %}
+                  <a class="page-link" href="?{% for k,v in request.GET.items %}{% if k != 'page' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}page={{ p }}">{{ p }}</a>
+                {% endif %}
+              </li>
+            {% endfor %}
+            <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}"><a class="page-link" href="?{% for k,v in request.GET.items %}{% if k != 'page' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">Next</a></li>
+          </ul>
+        </nav>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Categories Management Modal -->
+<div class="modal fade" id="categoriesModal" tabindex="-1" aria-labelledby="categoriesLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-primary bg-gradient text-white">
+        <h5 class="modal-title d-flex align-items-center gap-2" id="categoriesLabel">
+          <i class="bi bi-tags"></i>
+          Manage Expenditure Categories
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <!-- Loading State -->
+        <div id="categoriesLoading" class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="text-muted mt-2 small">Loading categories...</p>
+        </div>
+        
+        <!-- Categories List -->
+        <div id="categoriesList" class="d-none">
+          <div class="list-group list-group-flush" id="categoriesContainer">
+            <!-- Categories will be dynamically loaded here -->
+          </div>
+          
+          <!-- Add New Category Form (initially hidden) -->
+          <div id="addCategoryForm" class="border-top p-3 bg-light d-none">
+            <div class="input-group">
+              <span class="input-group-text bg-white border-end-0">
+                <i class="bi bi-tag text-primary"></i>
+              </span>
+              <input type="text" id="newCategoryName" class="form-control border-start-0" placeholder="Enter category name..." maxlength="100" />
+              <button type="button" class="btn btn-success" id="btnSaveCategory" title="Save">
+                <i class="bi bi-check-lg"></i>
+              </button>
+              <button type="button" class="btn btn-outline-secondary" id="btnCancelCategory" title="Cancel">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div id="categoryError" class="text-danger small mt-2 d-none"></div>
+          </div>
+        </div>
+        
+        <!-- Empty State -->
+        <div id="categoriesEmpty" class="text-center py-5 d-none">
+          <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+          <p class="text-muted mt-3">No categories yet. Click the button below to add one.</p>
+        </div>
+        
+        <!-- Error State -->
+        <div id="categoriesError" class="alert alert-danger m-3 d-none" role="alert">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          <span id="categoriesErrorMessage">Failed to load categories.</span>
+        </div>
+      </div>
+      <div class="modal-footer bg-light">
+        <button type="button" class="btn btn-primary" id="btnAddCategory">
+          <i class="bi bi-plus-circle me-1"></i>Add Category
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+  </div>
   </div>
 </div>
 
@@ -107,20 +305,50 @@
           <div class="row g-2">
             <div class="col-6">
               <label class="form-label small">From</label>
-              <input type="date" class="form-control form-control-sm" name="date_from" value="{{ filters.date_from }}">
+              <input type="date" class="form-control form-control-sm" name="date_from">
             </div>
             <div class="col-6">
               <label class="form-label small">To</label>
-              <input type="date" class="form-control form-control-sm" name="date_to" value="{{ filters.date_to }}">
+              <input type="date" class="form-control form-control-sm" name="date_to">
             </div>
-            <div class="col-6">
-              <label class="form-label small">Category</label>
-              <select name="category" class="form-select form-select-sm">
-                <option value="" {% if not filters.category %}selected{% endif %}>All</option>
-                {% for val,label in pg.expenditures.model.CATEGORY_CHOICES %}
-                  <option value="{{ val }}" {% if filters.category == val %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
+            <div class="col-12">
+              <label class="form-label small">Categories</label>
+              <div class="dropdown w-100">
+                <button class="btn btn-sm btn-outline-secondary w-100 dropdown-toggle text-start" type="button" id="exportCategoryBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                  <span id="exportCategoryBtnText">All categories</span>
+                </button>
+                <div class="dropdown-menu w-100 p-2" style="max-height: 250px; overflow-y: auto;" aria-labelledby="exportCategoryBtn">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" id="exportSelectAll">Select All</button>
+                    <button type="button" class="btn btn-link btn-sm text-decoration-none p-0" id="exportDeselectAll">Deselect All</button>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input export-category-checkbox" type="checkbox" value="__uncat" id="exportCatUncat" data-label="Uncategorized">
+                    <label class="form-check-label small" for="exportCatUncat">Uncategorized</label>
+                  </div>
+                  {% if legacy_categories %}
+                  <div class="dropdown-divider"></div>
+                  <div class="small text-muted px-2 mb-1">Default Categories</div>
+                  {% for cat_value, cat_label in legacy_categories %}
+                  <div class="form-check">
+                    <input class="form-check-input export-category-checkbox" type="checkbox" value="{{ cat_value }}" id="exportCatLegacy{{ forloop.counter }}" data-label="{{ cat_label }}">
+                    <label class="form-check-label small" for="exportCatLegacy{{ forloop.counter }}">{{ cat_label }}</label>
+                  </div>
+                  {% endfor %}
+                  {% endif %}
+                  {% if categories %}
+                  <div class="dropdown-divider"></div>
+                  <div class="small text-muted px-2 mb-1">Custom Categories</div>
+                  {% for cat in categories %}
+                  <div class="form-check">
+                    <input class="form-check-input export-category-checkbox" type="checkbox" value="{{ cat.id }}" id="exportCat{{ cat.id }}" data-label="{{ cat.name }}">
+                    <label class="form-check-label small" for="exportCat{{ cat.id }}">{{ cat.name }}</label>
+                  </div>
+                  {% endfor %}
+                  {% endif %}
+                </div>
+              </div>
+              <div id="exportCategoryChipsContainer" class="mt-2"></div>
             </div>
             
           </div>
@@ -138,13 +366,22 @@
 {% block body_extra %}
 <script>
   document.addEventListener('DOMContentLoaded', function(){
-    const df = document.querySelector('input[name="date_from"]');
-    const dt = document.querySelector('input[name="date_to"]');
-    const form = df ? df.form : null;
+    const form = document.getElementById('filtersForm');
+    if (!form) return;
+    const df = form.querySelector('input[name="date_from"]');
+    const dt = form.querySelector('input[name="date_to"]');
     const mp = document.getElementById('expMonthPicker');
     const btnPrev = document.getElementById('expPrevMonth');
     const btnThis = document.getElementById('expThisMonth');
     const btnNext = document.getElementById('expNextMonth');
+  const categoryDropdownToggle = document.getElementById('categoryDropdownToggle');
+  const categoryDropdownMenu = document.getElementById('categoryDropdownMenu');
+  const categorySelectedContainer = document.getElementById('categorySelectedContainer');
+  // categoryCheckboxes will be populated dynamically once data is loaded
+  let categoryCheckboxes = categoryDropdownMenu ? Array.from(categoryDropdownMenu.querySelectorAll('.category-checkbox')) : [];
+    const searchInput = document.getElementById('filterSearch');
+    const appliedContainer = document.getElementById('appliedFilters');
+    const resetBtn = document.getElementById('btnResetFilters');
 
     function firstLastOfMonth(y, m){
       const first = new Date(y, m-1, 1);
@@ -157,6 +394,34 @@
       const day = String(d.getDate()).padStart(2,'0');
       return y + '-' + m + '-' + day;
     }
+    function pad2(n){ return String(n).padStart(2,'0'); }
+
+    function normalizeCategoryName(name){
+      return (name || '').trim().toLowerCase();
+    }
+
+    // client-side submitFilters (will attempt client rendering; falls back to server if JSON fetch fails)
+    let useClient = true;
+    let allItems = [];
+    let filteredItems = [];
+    let currentPage = 1;
+    let pageSize = parseInt((form.querySelector('input[name="per_page"]') || {value:25}).value, 10) || 25;
+    let sortKey = 'date';
+    let sortDir = 'desc'; // 'asc' or 'desc'
+
+    function submitFilters(){
+      // ensure page resets to 1 when changing filters
+      const pageInput = form.querySelector('input[name="page"]');
+      if (pageInput) pageInput.value = 1;
+      currentPage = 1;
+      if (useClient) {
+        applyFiltersAndRender();
+      } else {
+        // fallback to server-side submission
+        form.submit();
+      }
+    }
+
     function setRange(y, m){
       const r = firstLastOfMonth(y, m);
       const f = fmt(r.first);
@@ -164,8 +429,9 @@
       if (df) df.value = f;
       if (dt) dt.value = l;
       if (mp) mp.value = String(y) + '-' + pad2(m);
-      if (form) form.submit();
+      submitFilters();
     }
+
     function currentYM(){
       if (mp && mp.value){
         const parts = mp.value.split('-');
@@ -182,8 +448,8 @@
       const now = new Date();
       return {y: now.getFullYear(), m: now.getMonth()+1};
     }
-    function pad2(n){ return String(n).padStart(2,'0'); }
 
+    // Month picker
     if (mp){
       const cur = currentYM();
       mp.value = cur.y + '-' + pad2(cur.m);
@@ -197,25 +463,871 @@
         }
       });
     }
-    if (btnThis){
-      btnThis.addEventListener('click', function(){
-        const now = new Date();
-        setRange(now.getFullYear(), now.getMonth()+1);
+    if (btnThis){ btnThis.addEventListener('click', function(){ const now = new Date(); setRange(now.getFullYear(), now.getMonth()+1); }); }
+    if (btnPrev){ btnPrev.addEventListener('click', function(){ const cur = currentYM(); let y = cur.y, m = cur.m - 1; if (m <= 0){ m = 12; y--; } setRange(y, m); }); }
+    if (btnNext){ btnNext.addEventListener('click', function(){ const cur = currentYM(); let y = cur.y, m = cur.m + 1; if (m > 12){ m = 1; y++; } setRange(y, m); }); }
+
+    // Auto-submit when dates or categories change
+    if (df) df.addEventListener('change', submitFilters);
+    if (dt) dt.addEventListener('change', submitFilters);
+    // Initialize dropdown checkboxes based on filters.category (comma-separated ids)
+    const rawCats = '{{ filters.category|escapejs }}';
+    const initialCats = rawCats ? rawCats.split(',').map(s => s.trim()).filter(Boolean) : [];
+    // mark checkboxes checked if in initialCats
+    categoryCheckboxes.forEach(ch => {
+      if (initialCats.includes(String(ch.value))) ch.checked = true;
+    });
+
+    function updateCategorySelection(){
+      // remove any existing hidden inputs
+      form.querySelectorAll('input[name="category"]').forEach(e => e.remove());
+      const selected = categoryCheckboxes.filter(c => c.checked).map(c => c.value);
+      selected.forEach(v => { const inp = document.createElement('input'); inp.type='hidden'; inp.name='category'; inp.value = v; form.appendChild(inp); });
+      renderCategoryChips(selected);
+      renderApplied();
+    }
+
+    function renderCategoryChips(selected){
+      if (!categorySelectedContainer) return;
+      categorySelectedContainer.innerHTML = '';
+      const labelSpan = document.getElementById('categoryDropdownLabel');
+      if (!selected.length){ if (labelSpan) labelSpan.textContent = 'All'; return; }
+      if (labelSpan) labelSpan.textContent = selected.length + ' selected';
+      selected.forEach(v => {
+        const checkbox = categoryCheckboxes.find(cb => cb.value === v);
+        const labelText = checkbox ? (checkbox.dataset.label || checkbox.value) : v;
+        const chip = document.createElement('span');
+        chip.className = 'badge bg-light border text-dark me-1 d-inline-flex align-items-center';
+        chip.textContent = labelText;
+        const rem = document.createElement('button');
+        rem.type = 'button';
+        rem.className = 'btn-close btn-close-sm ms-2';
+        rem.style.marginLeft = '6px';
+        const cbRef = checkbox;
+        rem.addEventListener('click', function(){
+          const targetCb = cbRef || categoryCheckboxes.find(c => c.value === v);
+          if (targetCb) {
+            targetCb.checked = false;
+            updateCategorySelection();
+            submitFilters();
+          }
+        });
+        const wrap = document.createElement('span');
+        wrap.className = 'd-inline-flex align-items-center me-1';
+        wrap.appendChild(chip);
+        wrap.appendChild(rem);
+        categorySelectedContainer.appendChild(wrap);
       });
     }
-    if (btnPrev){
-      btnPrev.addEventListener('click', function(){
-        const cur = currentYM();
-        let y = cur.y, m = cur.m - 1; if (m <= 0){ m = 12; y--; }
-        setRange(y, m);
+
+    // Toggle dropdown
+    if (categoryDropdownToggle){
+      categoryDropdownToggle.addEventListener('click', function(e){
+        e.stopPropagation();
+        categoryDropdownMenu.classList.toggle('d-none');
+      });
+      // close when clicking outside
+      document.addEventListener('click', function(e){ if (!categoryDropdownToggle.contains(e.target) && !categoryDropdownMenu.contains(e.target)) categoryDropdownMenu.classList.add('d-none'); });
+    }
+
+    // Export modal - standalone functionality
+    const exportModal = document.getElementById('exportModal');
+    let exportForm = null;
+    let exportCategoryCheckboxes = [];
+    const exportCategoryChipsContainer = document.getElementById('exportCategoryChipsContainer');
+    const exportCategoryBtnText = document.getElementById('exportCategoryBtnText');
+    
+    if (exportModal){
+      exportForm = exportModal.querySelector('form');
+      exportCategoryCheckboxes = Array.from(exportModal.querySelectorAll('.export-category-checkbox'));
+      
+      const exportSelectAll = document.getElementById('exportSelectAll');
+      const exportDeselectAll = document.getElementById('exportDeselectAll');
+      
+      if (exportSelectAll){
+        exportSelectAll.addEventListener('click', function(e){
+          e.preventDefault();
+          exportCategoryCheckboxes.forEach(cb => cb.checked = true);
+          updateExportCategorySelection();
+        });
+      }
+      
+      if (exportDeselectAll){
+        exportDeselectAll.addEventListener('click', function(e){
+          e.preventDefault();
+          exportCategoryCheckboxes.forEach(cb => cb.checked = false);
+          updateExportCategorySelection();
+        });
+      }
+      
+      function updateExportCategorySelection(){
+        if (!exportForm) return;
+        // remove existing hidden inputs
+        exportForm.querySelectorAll('input[name="category"]').forEach(el => el.remove());
+        
+        const selected = exportCategoryCheckboxes.filter(c => c.checked).map(c => c.value);
+        
+        // add hidden inputs for selected categories
+        selected.forEach(v => {
+          const hidden = document.createElement('input');
+          hidden.type = 'hidden';
+          hidden.name = 'category';
+          hidden.value = v;
+          exportForm.appendChild(hidden);
+        });
+        
+        // update button text
+        if (exportCategoryBtnText){
+          if (!selected.length){
+            exportCategoryBtnText.textContent = 'All categories';
+          } else {
+            const labels = selected.map(v => {
+              const cb = exportCategoryCheckboxes.find(c => c.value === v);
+              return cb ? (cb.dataset.label || cb.value) : v;
+            });
+            exportCategoryBtnText.textContent = labels.join(', ');
+          }
+        }
+        
+        // render chips
+        if (exportCategoryChipsContainer){
+          exportCategoryChipsContainer.innerHTML = '';
+          if (selected.length){
+            selected.forEach(v => {
+              const cb = exportCategoryCheckboxes.find(c => c.value === v);
+              const label = cb ? (cb.dataset.label || cb.value) : v;
+              const chip = document.createElement('span');
+              chip.className = 'badge bg-primary me-1 mb-1';
+              chip.textContent = label;
+              exportCategoryChipsContainer.appendChild(chip);
+            });
+          }
+        }
+      }
+      
+      exportCategoryCheckboxes.forEach(cb => cb.addEventListener('change', updateExportCategorySelection));
+      
+      // initial update when modal opens
+      exportModal.addEventListener('show.bs.modal', updateExportCategorySelection);
+    }
+
+    categoryCheckboxes.forEach(cb => cb.addEventListener('change', function(){ updateCategorySelection(); submitFilters(); }));
+    // initial update
+    updateCategorySelection();
+
+    // Debounced search
+    if (searchInput){
+      let t = null;
+      searchInput.addEventListener('input', function(){
+        clearTimeout(t);
+        t = setTimeout(submitFilters, 500);
       });
     }
-    if (btnNext){
-      btnNext.addEventListener('click', function(){
-        const cur = currentYM();
-        let y = cur.y, m = cur.m + 1; if (m > 12){ m = 1; y++; }
-        setRange(y, m);
+
+    // Render applied filters as capsules (read-only, no remove buttons)
+    function renderApplied(){
+      appliedContainer.innerHTML = '';
+      const params = new URLSearchParams(new FormData(form));
+      // q
+      if (params.get('q')){
+        const el = makeCapsule('Search', params.get('q'));
+        appliedContainer.appendChild(el);
+      }
+      // date range
+      if (params.get('date_from') || params.get('date_to')){
+        const label = (params.get('date_from')||'') + (params.get('date_to')?(' → ' + params.get('date_to')):'');
+        const el = makeCapsule('Date', label);
+        appliedContainer.appendChild(el);
+      }
+      // categories (multiple)
+      const selectedCategoryCheckboxes = categoryCheckboxes.filter(cb => cb.checked);
+      selectedCategoryCheckboxes.forEach(cb => {
+        const label = cb.dataset.label || cb.value || 'Uncategorized';
+        const el = makeCapsule('Category', label);
+        appliedContainer.appendChild(el);
       });
+    }
+
+    function makeCapsule(type, text){
+      const wrapper = document.createElement('div'); wrapper.className='badge bg-light border text-dark d-flex align-items-center gap-2 py-2 px-2';
+      const span = document.createElement('span'); span.className='small'; span.textContent = text; wrapper.appendChild(span);
+      return wrapper;
+    }
+
+    // initial render
+    renderApplied();
+
+    // --- Client-side data loading, filtering, sorting, pagination ---
+    const dataUrl = '{% url "expenditure_list_json" %}';
+    const jsonPgId = '{{ pg.id|default:"" }}';
+
+    function loadData(){
+      let url = dataUrl;
+      if (jsonPgId) url += '?pg=' + encodeURIComponent(jsonPgId);
+      // fetch items JSON (server returns up to MAX_ITEMS)
+      fetch(url, {cache: 'no-store'})
+        .then(r => {
+          if (!r.ok) throw new Error('Failed to fetch');
+          return r.json();
+        })
+        .then(data => {
+          if (!data || !Array.isArray(data.items)) throw new Error('Invalid data');
+          allItems = data.items.map(it => ({
+            id: it.id,
+            date: it.date, // ISO
+            category: it.category || '',
+            category_id: it.category_id || null,
+            amount: parseFloat(it.amount) || 0,
+            notes: it.notes || ''
+          }));
+          // populate category dropdown from items
+          populateCategoryDropdownFromItems();
+          // render first time
+          applyFiltersAndRender();
+        })
+        .catch(err => {
+          console.error('Client-side data load failed, falling back to server:', err);
+          useClient = false;
+          // leave server-rendered content in place
+        });
+    }
+
+    // Build unique categories from allItems and populate the dropdown menu dynamically
+    function populateCategoryDropdownFromItems(){
+      if (!categoryDropdownMenu) return;
+
+  const byId = new Map();
+  const byName = new Map();
+  const namesWithIds = new Set();
+      let hasUncategorized = false;
+      const initialIncludesUncat = initialCats.includes('__uncat');
+
+      allItems.forEach(it => {
+        const label = (it.category || '').trim() || 'Uncategorized';
+        const normalized = normalizeCategoryName(label);
+        if (it.category_id){
+          const idKey = String(it.category_id);
+          if (!byId.has(idKey)){
+            byId.set(idKey, {
+              value: idKey,
+              label,
+              type: 'id',
+              matchId: idKey,
+              matchName: normalized,
+            });
+          }
+          if (normalized) namesWithIds.add(normalized);
+        } else {
+          if (!normalized || normalized === 'uncategorized'){
+            hasUncategorized = true;
+          } else if (!namesWithIds.has(normalized) && !byName.has(normalized)){
+            byName.set(normalized, {
+              value: label,
+              label,
+              type: 'name',
+              matchName: normalized,
+            });
+          }
+        }
+      });
+
+      const tbody = document.getElementById('expenditureTableBody');
+      if (tbody){
+        Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
+          const cells = tr.querySelectorAll('td');
+          if (cells.length < 2) return;
+          const label = (cells[1].textContent || '').trim();
+          if (!label) return;
+          const normalized = normalizeCategoryName(label);
+          if (!normalized || normalized === 'uncategorized'){
+            hasUncategorized = true;
+            return;
+          }
+          if (namesWithIds.has(normalized)) return;
+          if (!byName.has(normalized)){
+            byName.set(normalized, {
+              value: label,
+              label,
+              type: 'name',
+              matchName: normalized,
+            });
+          }
+        });
+      }
+
+      // Ensure initial selections are represented even if not present in data
+      initialCats.forEach(val => {
+        if (!val) return;
+        if (val === '__uncat'){
+          hasUncategorized = true;
+          return;
+        }
+        const numeric = /^\d+$/.test(val);
+        if (numeric){
+          if (!byId.has(val)){
+            byId.set(val, {
+              value: val,
+              label: `Category #${val}`,
+              type: 'id',
+              matchId: val,
+              matchName: '',
+            });
+          }
+          // cannot record name here because we do not know it
+        } else {
+          const normalized = normalizeCategoryName(val);
+          if (!normalized) return;
+          if (namesWithIds.has(normalized)) return;
+          if (!byName.has(normalized)){
+            byName.set(normalized, {
+              value: val,
+              label: val,
+              type: 'name',
+              matchName: normalized,
+            });
+          }
+        }
+      });
+
+      const entries = [
+        ...Array.from(byId.values()),
+        ...Array.from(byName.values()),
+      ].sort((a, b) => a.label.localeCompare(b.label));
+
+      if (hasUncategorized || initialIncludesUncat){
+        const alreadyExists = entries.some(entry => entry.value === '__uncat');
+        if (!alreadyExists){
+          entries.unshift({
+            value: '__uncat',
+            label: 'Uncategorized',
+            type: 'uncat',
+            matchName: 'uncategorized',
+          });
+        }
+      }
+
+      categoryDropdownMenu.innerHTML = '';
+
+      if (!entries.length){
+        const p = document.createElement('div');
+        p.className = 'text-muted small';
+        p.textContent = 'No categories in current rows';
+        categoryDropdownMenu.appendChild(p);
+        categoryCheckboxes = [];
+        updateCategorySelection();
+        return;
+      }
+
+      entries.forEach((entry, idx) => {
+        const div = document.createElement('div');
+        div.className = 'form-check';
+
+        const input = document.createElement('input');
+        input.className = 'form-check-input category-checkbox';
+        input.type = 'checkbox';
+        input.value = entry.value;
+        input.id = 'cat-opt-' + idx;
+        input.dataset.catType = entry.type;
+        input.dataset.label = entry.label;
+        if (entry.type === 'id'){
+          input.dataset.matchId = entry.matchId;
+          if (entry.matchName) input.dataset.matchName = entry.matchName;
+        } else if (entry.type === 'name'){
+          input.dataset.matchName = entry.matchName;
+        } else if (entry.type === 'uncat'){
+          input.dataset.matchName = 'uncategorized';
+        }
+
+        const label = document.createElement('label');
+        label.className = 'form-check-label';
+        label.setAttribute('for', input.id);
+        label.textContent = entry.label;
+
+        div.appendChild(input);
+        div.appendChild(label);
+        categoryDropdownMenu.appendChild(div);
+      });
+
+      categoryCheckboxes = Array.from(categoryDropdownMenu.querySelectorAll('.category-checkbox'));
+      categoryCheckboxes.forEach(cb => cb.addEventListener('change', function(){ updateCategorySelection(); submitFilters(); }));
+
+      try {
+        initialCats.forEach(v => {
+          const cb = categoryCheckboxes.find(checkbox => checkbox.value === v);
+          if (cb) cb.checked = true;
+        });
+      } catch (err) {
+        /* ignore */
+      }
+
+      updateCategorySelection();
+    }
+
+    function getSelectedCategoryMeta(){
+      const selectedIds = new Set();
+      const selectedNames = new Set();
+      let wantsUncat = false;
+      categoryCheckboxes.forEach(cb => {
+        if (!cb.checked) return;
+        const type = cb.dataset.catType || '';
+        if (type === 'id'){
+          const idVal = cb.dataset.matchId || cb.value;
+          if (idVal !== undefined && idVal !== null && idVal !== ''){
+            selectedIds.add(String(idVal));
+          }
+          const nameVal = cb.dataset.matchName;
+          if (nameVal) selectedNames.add(nameVal);
+        } else if (type === 'name'){
+          const nameVal = cb.dataset.matchName || normalizeCategoryName(cb.value);
+          if (nameVal) selectedNames.add(nameVal);
+        } else if (type === 'uncat'){
+          wantsUncat = true;
+        }
+      });
+      return {selectedIds, selectedNames, wantsUncat};
+    }
+
+    function applyFiltersAndRender(){
+      filteredItems = applyFilters(allItems);
+      // apply sorting
+      filteredItems.sort((a,b) => {
+        if (sortKey === 'date'){
+          const da = new Date(a.date), db = new Date(b.date);
+          return sortDir === 'asc' ? da - db : db - da;
+        }
+        if (sortKey === 'amount'){
+          return sortDir === 'asc' ? a.amount - b.amount : b.amount - a.amount;
+        }
+        return 0;
+      });
+      renderTable();
+      renderPagination();
+      renderTotals();
+    }
+
+    function applyFilters(src){
+      const params = new FormData(form);
+      const q = (params.get('q') || '').trim().toLowerCase();
+      const df = params.get('date_from');
+      const dt = params.get('date_to');
+      const categoryMeta = getSelectedCategoryMeta();
+      const hasCategoryFilters = categoryMeta.selectedIds.size || categoryMeta.selectedNames.size || categoryMeta.wantsUncat;
+
+      return src.filter(it => {
+        // date filter
+        if (df){
+          const d = it.date.substr(0,10);
+          if (d < df) return false;
+        }
+        if (dt){
+          const d = it.date.substr(0,10);
+          if (d > dt) return false;
+        }
+        // category filter
+        if (hasCategoryFilters){
+          const hasId = it.category_id !== null && it.category_id !== undefined && it.category_id !== '';
+          const idStr = hasId ? String(it.category_id) : null;
+          const normalizedName = normalizeCategoryName(it.category);
+          const treatAsUncategorized = (!hasId && !normalizedName) || normalizedName === 'uncategorized';
+          let matched = false;
+          if (idStr && categoryMeta.selectedIds.has(idStr)) matched = true;
+          if (!matched && normalizedName && categoryMeta.selectedNames.has(normalizedName)) matched = true;
+          if (!matched && treatAsUncategorized && categoryMeta.wantsUncat) matched = true;
+          if (!matched) return false;
+        }
+        // text/amount filter
+        if (q){
+          const hay = (it.notes + ' ' + it.category + ' ' + (it.amount||'')).toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderTable(){
+      const tbody = document.getElementById('expenditureTableBody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      const start = (currentPage-1)*pageSize;
+      const pageItems = filteredItems.slice(start, start + pageSize);
+      if (pageItems.length === 0){
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="5" class="text-secondary">No expenditure entries.</td>';
+        tbody.appendChild(tr);
+        document.getElementById('showingCount').textContent = '0 items.';
+        return;
+      }
+      pageItems.forEach(i => {
+        const tr = document.createElement('tr');
+        const dateTd = document.createElement('td'); dateTd.textContent = i.date.substr(0,10);
+        const catTd = document.createElement('td'); catTd.textContent = i.category || '';
+        const amtTd = document.createElement('td'); amtTd.className = 'nowrap text-end'; amtTd.textContent = '₹ ' + formatAmount(i.amount);
+        const notesTd = document.createElement('td'); notesTd.className = 'text-truncate'; notesTd.style.maxWidth = '300px'; notesTd.textContent = i.notes || '';
+        const actionsTd = document.createElement('td'); actionsTd.className = 'text-end';
+        const a = document.createElement('a'); a.className = 'btn btn-sm btn-outline-secondary'; a.href = '{% url "expenditure_edit" 0 %}'.replace('/0/', '/' + i.id + '/'); a.textContent = 'Edit';
+        actionsTd.appendChild(a);
+        tr.appendChild(dateTd); tr.appendChild(catTd); tr.appendChild(amtTd); tr.appendChild(notesTd); tr.appendChild(actionsTd);
+        tbody.appendChild(tr);
+      });
+      const totalText = `${Math.min(filteredItems.length, start+1)} - ${Math.min(filteredItems.length, start+pageItems.length)} of ${filteredItems.length} item(s).`;
+      document.getElementById('showingCount').textContent = totalText;
+    }
+
+    function renderPagination(){
+      const container = document.getElementById('clientPagination');
+      if (!container) return;
+      const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+      // build minimal pagination
+      let html = '';
+      html += '<nav aria-label="Expenditure pages"><ul class="pagination pagination-sm mb-0">';
+      const prevDisabled = currentPage <= 1 ? ' disabled' : '';
+      html += `<li class="page-item${prevDisabled}"><a class="page-link" href="#" data-page="${currentPage-1}">Prev</a></li>`;
+      const windowSize = 5;
+      let start = Math.max(1, currentPage - Math.floor(windowSize/2));
+      let end = Math.min(totalPages, start + windowSize - 1);
+      if (end - start < windowSize - 1) start = Math.max(1, end - windowSize + 1);
+      for (let p = start; p <= end; p++){
+        const active = p === currentPage ? ' active' : '';
+        if (p === currentPage) html += `<li class="page-item${active}"><span class="page-link">${p}</span></li>`;
+        else html += `<li class="page-item"><a class="page-link" href="#" data-page="${p}">${p}</a></li>`;
+      }
+      const nextDisabled = currentPage >= totalPages ? ' disabled' : '';
+      html += `<li class="page-item${nextDisabled}"><a class="page-link" href="#" data-page="${currentPage+1}">Next</a></li>`;
+      html += '</ul></nav>';
+      // preserve the left-hand showing text
+      const leftHtml = container.querySelector(':scope > div:first-child');
+      container.innerHTML = html;
+      // attach handlers
+      container.querySelectorAll('a.page-link[data-page]').forEach(a => {
+        a.addEventListener('click', function(e){
+          e.preventDefault();
+          const p = parseInt(this.getAttribute('data-page'), 10) || 1;
+          if (p < 1) return;
+          currentPage = Math.min(Math.max(1, p), Math.ceil(filteredItems.length / pageSize) || 1);
+          renderTable(); renderPagination();
+        });
+      });
+    }
+
+    function renderTotals(){
+      const total = filteredItems.reduce((s,i)=>s + (i.amount||0), 0);
+      const el = document.getElementById('totalExpenses');
+      if (el) el.textContent = '₹ ' + formatAmount(total);
+    }
+
+    function formatAmount(n){ return (Math.round((n||0) * 100) / 100).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+    // header sort handlers
+    document.querySelectorAll('th.sortable[data-key]').forEach(th => {
+      th.addEventListener('click', function(){
+        const key = this.getAttribute('data-key');
+        if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        else { sortKey = key; sortDir = 'desc'; }
+        if (useClient) applyFiltersAndRender();
+      });
+    });
+
+    // initial load of JSON data
+    loadData();
+
+    // Re-render applied filters when form changes (listen to inputs)
+    form.addEventListener('change', function(){ renderApplied(); });
+    form.addEventListener('input', function(){ renderApplied(); });
+
+    // Reset button behaviour
+    if (resetBtn){
+      resetBtn.addEventListener('click', function(){
+        const params = new URLSearchParams(window.location.search);
+        const keep = {};
+        // keep pg if present
+        if (params.get('pg')) keep.pg = params.get('pg');
+        const url = new URL(window.location.href);
+        url.search = '';
+        if (keep.pg) url.searchParams.set('pg', keep.pg);
+        window.location.href = url.toString();
+      });
+    }
+  });
+</script>
+
+<!-- Categories Management Script -->
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    const categoriesModal = document.getElementById('categoriesModal');
+    const categoriesLoading = document.getElementById('categoriesLoading');
+    const categoriesList = document.getElementById('categoriesList');
+    const categoriesEmpty = document.getElementById('categoriesEmpty');
+    const categoriesError = document.getElementById('categoriesError');
+    const categoriesErrorMessage = document.getElementById('categoriesErrorMessage');
+    const categoriesContainer = document.getElementById('categoriesContainer');
+    const addCategoryForm = document.getElementById('addCategoryForm');
+    const btnAddCategory = document.getElementById('btnAddCategory');
+    const btnSaveCategory = document.getElementById('btnSaveCategory');
+    const btnCancelCategory = document.getElementById('btnCancelCategory');
+    const newCategoryName = document.getElementById('newCategoryName');
+    const categoryError = document.getElementById('categoryError');
+    
+    let categories = [];
+    const pgId = '{{ pg.id|default:"" }}';
+    
+    // Load categories when modal is shown
+    if (categoriesModal) {
+      categoriesModal.addEventListener('show.bs.modal', function() {
+        loadCategories();
+      });
+    }
+    
+    function loadCategories() {
+      showLoading();
+      const url = new URL('{% url "expenditure_categories_list" %}', window.location.origin);
+      if (pgId) url.searchParams.set('pg', pgId);
+      
+      fetch(url)
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            showError(data.error);
+          } else {
+            categories = data.categories || [];
+            renderCategories();
+          }
+        })
+        .catch(err => {
+          console.error('Failed to load categories:', err);
+          showError('Failed to load categories. Please try again.');
+        });
+    }
+    
+    function showLoading() {
+      categoriesLoading.classList.remove('d-none');
+      categoriesList.classList.add('d-none');
+      categoriesEmpty.classList.add('d-none');
+      categoriesError.classList.add('d-none');
+    }
+    
+    function showError(message) {
+      categoriesLoading.classList.add('d-none');
+      categoriesList.classList.add('d-none');
+      categoriesEmpty.classList.add('d-none');
+      categoriesError.classList.remove('d-none');
+      categoriesErrorMessage.textContent = message;
+    }
+    
+    function renderCategories() {
+      categoriesLoading.classList.add('d-none');
+      categoriesError.classList.add('d-none');
+      
+      if (categories.length === 0) {
+        categoriesList.classList.add('d-none');
+        categoriesEmpty.classList.remove('d-none');
+        return;
+      }
+      
+      categoriesEmpty.classList.add('d-none');
+      categoriesList.classList.remove('d-none');
+      
+      categoriesContainer.innerHTML = '';
+      
+      categories.forEach(cat => {
+        const item = document.createElement('div');
+        item.className = 'list-group-item d-flex align-items-center justify-content-between py-3 category-item';
+        item.dataset.categoryId = cat.id;
+        
+        const nameSection = document.createElement('div');
+        nameSection.className = 'd-flex align-items-center gap-2 flex-grow-1';
+        
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-tag-fill text-primary';
+        nameSection.appendChild(icon);
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'fw-medium';
+        nameSpan.textContent = cat.name;
+        nameSection.appendChild(nameSpan);
+        
+        if (cat.is_default) {
+          const badge = document.createElement('span');
+          badge.className = 'badge bg-secondary ms-2';
+          badge.textContent = 'Default';
+          nameSection.appendChild(badge);
+        }
+        
+        item.appendChild(nameSection);
+        
+        if (!cat.is_default) {
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'btn btn-sm btn-outline-danger';
+          deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+          deleteBtn.title = 'Delete category';
+          deleteBtn.onclick = () => deleteCategory(cat.id, cat.name);
+          item.appendChild(deleteBtn);
+        }
+        
+        categoriesContainer.appendChild(item);
+      });
+    }
+    
+    function deleteCategory(categoryId, categoryName) {
+      if (!confirm(`Are you sure you want to delete the category "${categoryName}"?\n\nNote: Expenditures using this category will have their category set to "Uncategorized".\n\nThis action cannot be undone.`)) {
+        return;
+      }
+      
+      const item = document.querySelector(`[data-category-id="${categoryId}"]`);
+      if (item) {
+        item.style.opacity = '0.5';
+        item.style.pointerEvents = 'none';
+      }
+      
+      const url = '{% url "expenditure_category_delete" 0 %}'.replace('/0/', `/${categoryId}/`);
+      const formData = new FormData();
+      formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+      
+      fetch(url, {
+        method: 'POST',
+        body: formData,
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            // Success toast
+            showToast('Category deleted successfully!', 'success');
+            loadCategories();
+          } else {
+            if (item) {
+              item.style.opacity = '1';
+              item.style.pointerEvents = 'auto';
+            }
+            showToast(data.error || 'Failed to delete category.', 'danger');
+          }
+        })
+        .catch(err => {
+          console.error('Delete failed:', err);
+          if (item) {
+            item.style.opacity = '1';
+            item.style.pointerEvents = 'auto';
+          }
+          showToast('Failed to delete category. Please try again.', 'danger');
+        });
+    }
+    
+    // Show add category form
+    btnAddCategory.addEventListener('click', function() {
+      addCategoryForm.classList.remove('d-none');
+      newCategoryName.value = '';
+      categoryError.classList.add('d-none');
+      newCategoryName.focus();
+      btnAddCategory.disabled = true;
+    });
+    
+    // Cancel add category
+    btnCancelCategory.addEventListener('click', function() {
+      addCategoryForm.classList.add('d-none');
+      newCategoryName.value = '';
+      categoryError.classList.add('d-none');
+      btnAddCategory.disabled = false;
+    });
+    
+    // Save new category
+    btnSaveCategory.addEventListener('click', function() {
+      const name = newCategoryName.value.trim();
+      
+      if (!name) {
+        categoryError.textContent = 'Please enter a category name.';
+        categoryError.classList.remove('d-none');
+        return;
+      }
+      
+      if (name.length > 100) {
+        categoryError.textContent = 'Category name must be 100 characters or less.';
+        categoryError.classList.remove('d-none');
+        return;
+      }
+      
+      categoryError.classList.add('d-none');
+      btnSaveCategory.disabled = true;
+      btnCancelCategory.disabled = true;
+      
+      const formData = new FormData();
+      formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+      formData.append('name', name);
+      if (pgId) formData.append('pg', pgId);
+      
+      fetch('{% url "expenditure_category_create" %}', {
+        method: 'POST',
+        body: formData,
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showToast('Category added successfully!', 'success');
+            addCategoryForm.classList.add('d-none');
+            newCategoryName.value = '';
+            btnAddCategory.disabled = false;
+            loadCategories();
+          } else {
+            categoryError.textContent = data.error || 'Failed to add category.';
+            categoryError.classList.remove('d-none');
+          }
+        })
+        .catch(err => {
+          console.error('Save failed:', err);
+          categoryError.textContent = 'Failed to add category. Please try again.';
+          categoryError.classList.remove('d-none');
+        })
+        .finally(() => {
+          btnSaveCategory.disabled = false;
+          btnCancelCategory.disabled = false;
+        });
+    });
+    
+    // Enter key to save
+    newCategoryName.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnSaveCategory.click();
+      }
+    });
+    
+    // Escape key to cancel
+    newCategoryName.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        btnCancelCategory.click();
+      }
+    });
+    
+    // Toast notification helper
+    function showToast(message, type = 'info') {
+      const toastContainer = document.querySelector('.toast-container') || createToastContainer();
+      const toast = document.createElement('div');
+      toast.className = `toast align-items-center text-bg-${type} border-0`;
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('aria-live', 'assertive');
+      toast.setAttribute('aria-atomic', 'true');
+      
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">
+            ${message}
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      `;
+      
+      toastContainer.appendChild(toast);
+      const bsToast = new bootstrap.Toast(toast);
+      bsToast.show();
+      
+      toast.addEventListener('hidden.bs.toast', () => {
+        toast.remove();
+      });
+    }
+    
+    function createToastContainer() {
+      const container = document.createElement('div');
+      container.className = 'toast-container position-fixed top-0 end-0 p-3';
+      container.style.zIndex = '9999';
+      document.body.appendChild(container);
+      return container;
     }
   });
 </script>

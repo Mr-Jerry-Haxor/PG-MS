@@ -3,7 +3,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 
 from pgadmin.models import PG
-from .models import Fees, Payment, Expenditure
+from .models import Fees, Payment, Expenditure, ExpenditureCategory
 from core.audit import log
 from .forms import FeesForm, PaymentForm, ExpenditureForm
 from bookings.models import Booking, ReferralCredit
@@ -23,6 +23,7 @@ from .models import ResidentRate, ReminderLog, Adjustment
 import importlib
 from django.urls import reverse
 from urllib.parse import urlencode
+from django.utils.text import slugify
 
 
 def _require_pg_admin(user):
@@ -432,28 +433,119 @@ def expenditure_list(request):
     total = 0
     # Filters
     q = (request.GET.get('q') or '').strip()
-    category = (request.GET.get('category') or '').strip()
+    # support multi-select categories (category may appear multiple times)
+    category_list = request.GET.getlist('category')
+    # For backward compatibility, accept single comma-separated value
+    if not category_list and request.GET.get('category'):
+        raw_cat = (request.GET.get('category') or '').strip()
+        if raw_cat:
+            category_list = [s.strip() for s in raw_cat.split(',') if s.strip()]
     date_from = parse_date((request.GET.get('date_from') or '').strip())
     date_to = parse_date((request.GET.get('date_to') or '').strip())
     if pg:
         items = Expenditure.objects.filter(pg=pg)
-        if category:
-            items = items.filter(category=category)
+        if category_list:
+            # Convert to integers when possible and filter by custom category ids
+            cat_ids = []
+            legacy_vals = []
+            for c in category_list:
+                try:
+                    cat_ids.append(int(c))
+                except (ValueError, TypeError):
+                    legacy_vals.append(c)
+            if cat_ids:
+                items = items.filter(category_custom_id__in=cat_ids)
+            if legacy_vals:
+                items = items.filter(category__in=legacy_vals)
         if date_from:
             items = items.filter(date__gte=date_from)
         if date_to:
             items = items.filter(date__lte=date_to)
         if q:
-            items = items.filter(Q(notes__icontains=q) | Q(category__icontains=q))
-        items = items.order_by('-date', '-id')
+            # Search in notes, legacy category, and custom category name
+            items = items.filter(
+                Q(notes__icontains=q) | 
+                Q(category__icontains=q) |
+                Q(category_custom__name__icontains=q)
+            )
+        items = items.select_related('category_custom').order_by('-date', '-id')
         total = items.aggregate(total=Sum('amount')).get('total') or 0
+        # Pagination
+        from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+        page_size = 10
+        try:
+            page_size = int(request.GET.get('per_page') or 10)
+        except (ValueError, TypeError):
+            page_size = 10
+        paginator = Paginator(items, page_size)
+        page_number = request.GET.get('page')
+        try:
+            page_obj = paginator.get_page(page_number)
+        except Exception:
+            page_obj = paginator.get_page(1)
+        items = page_obj
     filters = {
         'q': q,
-        'category': category,
+        'category': ','.join(category_list) if category_list else '',
         'date_from': request.GET.get('date_from') or '',
         'date_to': request.GET.get('date_to') or '',
+        'page_size': page_size,
     }
-    return render(request, 'finance/expenditure_list.html', {"pg": pg, "items": items, "pgs": list(_admin_pgs(request.user)), "filters": filters, "total": total})
+    # Get categories for the export modal dropdown
+    # Also pass legacy/default category choices
+    legacy_categories = Expenditure.CATEGORY_CHOICES
+    # Get legacy category names to exclude from custom categories
+    legacy_category_names = [label for value, label in legacy_categories]
+    # Filter out custom categories that have the same name as legacy categories
+    categories = ExpenditureCategory.objects.filter(pg=pg).exclude(
+        name__in=legacy_category_names
+    ).order_by('name') if pg else []
+    
+    return render(request, 'finance/expenditure_list.html', {
+        "pg": pg, 
+        "items": items, 
+        "pgs": list(_admin_pgs(request.user)), 
+        "filters": filters, 
+        "total": total, 
+        "paginator": getattr(items, 'paginator', None), 
+        "page_obj": getattr(items, 'page_obj', None),
+        "categories": categories,
+        "legacy_categories": legacy_categories
+    })
+
+
+@login_required
+def expenditure_list_json(request):
+    """Return expenditures for the active PG as JSON for client-side filtering/sorting.
+    This endpoint returns a list of items with the minimal fields required by the UI.
+    """
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+    req_pg = request.GET.get('pg')
+    if req_pg and not _is_authorized_pg(request.user, req_pg):
+        return JsonResponse({'error': 'Unauthorized PG.'}, status=403)
+    pg = _active_pg(request)
+    if not pg:
+        return JsonResponse({'items': [], 'total': 0})
+
+    qs = Expenditure.objects.filter(pg=pg).select_related('category_custom').order_by('-date', '-id')
+    # Limit to a reasonable count to avoid huge payloads; increase if needed.
+    MAX_ITEMS = 5000
+    qs = qs[:MAX_ITEMS]
+
+    items = []
+    for e in qs:
+        items.append({
+            'id': e.id,
+            'date': e.date.isoformat(),
+            'category': e.get_category_display(),
+            'category_id': e.category_custom_id,
+            'amount': float(e.amount),
+            'notes': e.notes or '',
+        })
+
+    total = qs.aggregate(total=Sum('amount')).get('total') or 0
+    return JsonResponse({'items': items, 'total': float(total)})
 
 
 @login_required
@@ -468,7 +560,7 @@ def expenditure_edit(request, pk=None):
     pg = _active_pg(request)
     instance = get_object_or_404(Expenditure, pk=pk, pg=pg) if pk else None
     if request.method == 'POST':
-        form = ExpenditureForm(request.POST, instance=instance)
+        form = ExpenditureForm(request.POST, instance=instance, pg=pg)
         if form.is_valid():
             obj = form.save(commit=False)
             obj.pg = pg
@@ -477,7 +569,7 @@ def expenditure_edit(request, pk=None):
             messages.success(request, "Expenditure saved.")
             return redirect('expenditure_list')
     else:
-        form = ExpenditureForm(instance=instance)
+        form = ExpenditureForm(instance=instance, pg=pg)
     return render(request, 'finance/expenditure_form.html', {"form": form, "pg": pg, "pgs": list(_admin_pgs(request.user))})
 from django.shortcuts import render
 
@@ -892,19 +984,84 @@ def expenditure_export_pdf(request):
     pg = _active_pg(request)
     # Apply same filters as list view
     q = (request.GET.get('q') or '').strip()
-    category = (request.GET.get('category') or '').strip()
+    category_values = request.GET.getlist('category')
+    if not category_values and request.GET.get('category'):
+        raw_cat = (request.GET.get('category') or '').strip()
+        if raw_cat:
+            category_values = [s.strip() for s in raw_cat.split(',') if s.strip()]
+    cat_ids = []
+    cat_id_seen = set()
+    legacy_vals = []
+    legacy_seen = set()
+    include_uncat = False
+    for val in category_values:
+        if val is None:
+            continue
+        sval = str(val).strip()
+        if not sval:
+            continue
+        if sval == '__uncat':
+            include_uncat = True
+            continue
+        try:
+            cid = int(sval)
+        except (ValueError, TypeError):
+            if sval not in legacy_seen:
+                legacy_vals.append(sval)
+                legacy_seen.add(sval)
+        else:
+            if cid not in cat_id_seen:
+                cat_ids.append(cid)
+                cat_id_seen.add(cid)
     date_from = parse_date((request.GET.get('date_from') or '').strip())
     date_to = parse_date((request.GET.get('date_to') or '').strip())
     items = Expenditure.objects.none()
     if pg:
         items = Expenditure.objects.filter(pg=pg)
-        if category:
-            items = items.filter(category=category)
-        if date_from:
+        if cat_ids or legacy_vals or include_uncat:
+            cat_filter = Q()
+            if cat_ids:
+                cat_filter |= Q(category_custom_id__in=cat_ids)
+            if legacy_vals:
+                cat_filter |= Q(category__in=legacy_vals)
+            if include_uncat:
+                cat_filter |= (
+                    Q(category_custom__isnull=True)
+                    & (
+                        Q(category__isnull=True)
+                        | Q(category__exact='')
+                        | Q(category__iexact='uncategorized')
+                    )
+                )
+            if cat_filter:
+                items = items.filter(cat_filter)
+        # Handle date range: if only date_from is provided, export all from that date onwards
+        if date_from and date_to:
+            items = items.filter(date__gte=date_from, date__lte=date_to)
+        elif date_from:
+            # Only from_date provided: export all expenses from that date onwards
             items = items.filter(date__gte=date_from)
-        if date_to:
+        elif date_to:
+            # Only to_date provided: export all expenses up to that date
             items = items.filter(date__lte=date_to)
         items = items.order_by('date', 'id')  # chronological for export
+
+    id_name_map = {}
+    if pg and cat_ids:
+        id_name_map = dict(ExpenditureCategory.objects.filter(pg=pg, id__in=cat_ids).values_list('id', 'name'))
+    
+    # Build a map of legacy category values to display names
+    legacy_name_map = dict(Expenditure.CATEGORY_CHOICES)
+    
+    selected_category_labels = []
+    for cid in cat_ids:
+        selected_category_labels.append(id_name_map.get(cid, f"Category #{cid}"))
+    # Convert legacy values to their display names
+    for legacy_val in legacy_vals:
+        display_name = legacy_name_map.get(legacy_val, legacy_val)
+        selected_category_labels.append(display_name)
+    if include_uncat:
+        selected_category_labels.append('Uncategorized')
 
     # Lazy import ReportLab
     rl_pagesizes = importlib.util.find_spec('reportlab.lib.pagesizes')
@@ -941,9 +1098,14 @@ def expenditure_export_pdf(request):
         y -= 5 * mm
     # Filters summary line
     fil_parts = []
-    if category: fil_parts.append(f"Category: {category}")
-    if date_from: fil_parts.append(f"From: {date_from:%Y-%m-%d}")
-    if date_to: fil_parts.append(f"To: {date_to:%Y-%m-%d}")
+    if selected_category_labels:
+        fil_parts.append(f"Categories: {', '.join(selected_category_labels)}")
+    if date_from and date_to:
+        fil_parts.append(f"Date Range: {date_from:%Y-%m-%d} to {date_to:%Y-%m-%d}")
+    elif date_from:
+        fil_parts.append(f"From: {date_from:%Y-%m-%d} onwards")
+    elif date_to:
+        fil_parts.append(f"Up to: {date_to:%Y-%m-%d}")
     # search is intentionally ignored for export per requirements
     p.drawString(x_margin, y, f"Filters: {'; '.join(fil_parts) if fil_parts else 'None'}")
     y -= 6 * mm
@@ -1001,6 +1163,122 @@ def expenditure_export_pdf(request):
     p.showPage()
     p.save()
     return resp
+
+
+# =============== Expenditure Category Management ===============
+@login_required
+def expenditure_categories_list(request):
+	"""API endpoint to list all categories for a PG (returns JSON)."""
+	if not _require_pg_admin(request.user):
+		return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+	
+	req_pg = request.GET.get('pg')
+	if req_pg and not _is_authorized_pg(request.user, req_pg):
+		return JsonResponse({'error': 'Unauthorized PG.'}, status=403)
+	
+	pg = _active_pg(request)
+	if not pg:
+		return JsonResponse({'error': 'No PG selected.'}, status=400)
+	
+	categories = ExpenditureCategory.objects.filter(pg=pg).order_by('display_order', 'name')
+	data = [{
+		'id': cat.id,
+		'name': cat.name,
+		'slug': cat.slug,
+		'is_default': cat.is_default,
+		'display_order': cat.display_order,
+	} for cat in categories]
+	
+	return JsonResponse({'categories': data})
+
+
+@login_required
+@transaction.atomic
+def expenditure_category_create(request):
+	"""API endpoint to create a new category (POST JSON)."""
+	if not _require_pg_admin(request.user):
+		return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+	
+	if request.method != 'POST':
+		return JsonResponse({'error': 'POST required.'}, status=405)
+	
+	req_pg = request.POST.get('pg')
+	if req_pg and not _is_authorized_pg(request.user, req_pg):
+		return JsonResponse({'error': 'Unauthorized PG.'}, status=403)
+	
+	pg = _active_pg(request)
+	if not pg:
+		return JsonResponse({'error': 'No PG selected.'}, status=400)
+	
+	name = (request.POST.get('name') or '').strip()
+	if not name:
+		return JsonResponse({'error': 'Category name is required.'}, status=400)
+	
+	# Generate slug from name
+	base_slug = slugify(name)
+	slug = base_slug
+	counter = 1
+	while ExpenditureCategory.objects.filter(pg=pg, slug=slug).exists():
+		slug = f"{base_slug}-{counter}"
+		counter += 1
+	
+	# Get max display_order
+	max_order = ExpenditureCategory.objects.filter(pg=pg).aggregate(
+		max_order=Count('id')
+	).get('max_order') or 0
+	
+	category = ExpenditureCategory.objects.create(
+		pg=pg,
+		name=name,
+		slug=slug,
+		is_default=False,
+		display_order=max_order + 1
+	)
+	
+	log(request.user, 'create', 'ExpenditureCategory', category.id, f'Created expenditure category: {name}')
+	
+	return JsonResponse({
+		'success': True,
+		'category': {
+			'id': category.id,
+			'name': category.name,
+			'slug': category.slug,
+			'is_default': category.is_default,
+			'display_order': category.display_order,
+		}
+	})
+
+
+@login_required
+@transaction.atomic
+def expenditure_category_delete(request, pk):
+	"""API endpoint to delete a category (POST)."""
+	if not _require_pg_admin(request.user):
+		return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+	
+	if request.method != 'POST':
+		return JsonResponse({'error': 'POST required.'}, status=405)
+	
+	category = get_object_or_404(ExpenditureCategory, pk=pk)
+	
+	# Check authorization
+	if not _is_authorized_pg(request.user, category.pg.id):
+		return JsonResponse({'error': 'Unauthorized PG.'}, status=403)
+	
+	# Prevent deletion of default categories
+	if category.is_default:
+		return JsonResponse({'error': 'Cannot delete default categories.'}, status=400)
+	
+	# Note: We use SET_NULL on the foreign key, so deleting a category
+	# will set category_custom to NULL on related expenditures (they won't be deleted)
+	
+	name = category.name
+	category_id = category.id
+	category.delete()
+	
+	log(request.user, 'delete', 'ExpenditureCategory', category_id, f'Deleted expenditure category: {name}')
+	
+	return JsonResponse({'success': True})
 
 
 def _collected_for_user_pg_month(u, pg, m_first, m_last) -> float:

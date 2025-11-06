@@ -21,9 +21,12 @@
 <form method="post" class="card border-0 shadow-sm">
   {% csrf_token %}
   <div class="card-body p-4">
-    <div class="mb-3">
-      <label class="form-label">Category</label>
-      {{ form.category }}
+    <div class="row g-3 mb-3 align-items-center">
+      <div class="col-md-8">
+        <label class="form-label">Category</label>
+        {{ form.category_custom }}
+        <div class="form-text">Choose a custom category or leave empty for Uncategorized.</div>
+      </div>
     </div>
     <div class="mb-3">
       <label class="form-label">Amount</label>
@@ -37,7 +40,10 @@
       <label class="form-label">Notes</label>
       {{ form.notes }}
     </div>
-    <button class="btn btn-primary" type="submit">Save</button>
+    <div class="d-flex justify-content-end">
+      <button class="btn btn-secondary me-2" type="reset">Reset</button>
+      <button class="btn btn-primary" type="submit">Save</button>
+    </div>
   </div>
 </form>
 {% endblock %}
