@@ -1762,6 +1762,8 @@ def monthly_dashboard(request):
             return float(row.get('collected') or 0.0)
         if sort_key == 'pending':
             return float(row.get('pending') or 0.0)
+        if sort_key == 'advance':
+            return float(row.get('advance') or 0.0)
         if sort_key == 'status':
             return status_order.get(row.get('status'), 99)
         if sort_key == 'joining':
@@ -1771,6 +1773,10 @@ def monthly_dashboard(request):
         if sort_key == 'leaving':
             l = row.get('leaving')
             return (l is None, l or m_first)
+        if sort_key == 'payment_date':
+            # Payment date sorting: None should sort last in asc, first in desc
+            pd = row.get('payment_due_date')
+            return (pd is None, pd or m_first)
         # Default fallback
         return _room_sort_val(row.get('room_no'))
 

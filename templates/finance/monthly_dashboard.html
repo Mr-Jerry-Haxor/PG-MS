@@ -164,6 +164,8 @@
         {% for r in rows %}
           <tr data-status="{{ r.status }}" data-user-id="{{ r.user.id }}"
               data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
+              data-user-email="{{ r.user.email }}"
+              data-room-no="{{ r.room_no }}"
               data-expected="{{ r.expected }}" data-collected="{{ r.collected }}"
               data-pending="{{ r.pending }}" data-advance="{{ r.advance|default:'0' }}">
             <td><input type="checkbox" class="rowchk" name="user_ids" value="{{ r.user.id }}" {% if r.status == 'paid' %}disabled{% endif %}></td>
@@ -592,10 +594,12 @@
       var searchBox = document.getElementById('searchBox');
       var query = (searchBox ? searchBox.value : '').toLowerCase();
       
-      // Filter rows based on search
+      // Filter rows based on search - include name, email, and room number
       filteredRows = allRows.filter(function(tr) {
         var name = (tr.dataset.userName || '').toLowerCase();
-        return name.includes(query);
+        var email = (tr.dataset.userEmail || '').toLowerCase();
+        var roomNo = (tr.dataset.roomNo || '').toLowerCase();
+        return name.includes(query) || email.includes(query) || roomNo.includes(query);
       });
       
       // Update display
