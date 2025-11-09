@@ -1678,6 +1678,10 @@ def monthly_dashboard(request):
         payment_anchor = primary_seg.get('payment_anchor') if primary_seg else None
         payment_due_day = payment_anchor.day if payment_anchor else None
         primary_booking_id = primary_seg.get('booking_id') if primary_seg else None
+        # Exclude tenants who left on or before the payment due date for this month.
+        # Example: payment due 10th, leaving on 9th or 10th => do not show in overview/export for this month.
+        if latest_end and payment_due and payment_due >= latest_end:
+            continue
         rows.append({
             'user': u,
             'room_no': getattr(last_seg['b'].room, 'room_no', '—'),
@@ -2042,6 +2046,10 @@ def monthly_export_csv(request):
         advance = _advance_paid_for_user_pg(u, pg)
         if only_filter in ('paid', 'partial', 'unpaid', 'upcoming') and status != only_filter:
             continue
+        # Exclude users who have left on or before their payment due date for this month.
+        # If due_date is on/after latest_end, skip exporting their data for this month.
+        if latest_end and due_date and due_date >= latest_end:
+            continue
         phone_raw = getattr(getattr(u, 'profile', None), 'phone', '') or ''
         data_rows.append({
             'user': u,
@@ -2145,6 +2153,10 @@ def monthly_export_segments_csv(request):
             source = f"{share_type}-Sharing fee" if share_type else 'Default fee'
         expected = _expected_rent_for_user_pg_month(b.user, pg, b, m_first, m_last)
         phone_raw = getattr(getattr(b.user, 'profile', None), 'phone', '') or ''
+        # Exclude segment rows where the booking's payment due date is on/after the leaving date
+        due_date = _payment_due_for_month(b, m_first, m_days)
+        if b.leaving_date and due_date and due_date >= b.leaving_date:
+            continue
         rows.append([
             b.user.id,
             f"{b.user.first_name} {b.user.last_name}".strip() or b.user.email,
