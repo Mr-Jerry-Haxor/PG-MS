@@ -171,6 +171,9 @@
             <td><input type="checkbox" class="rowchk" name="user_ids" value="{{ r.user.id }}" {% if r.status == 'paid' %}disabled{% endif %}></td>
             <td>
               <a href="{% url 'finance_ledger' r.user.id %}">{{ r.user.first_name }} {{ r.user.last_name }}</a>
+              {% if r.is_daywise %}
+                <span class="badge bg-info-subtle text-info ms-1 small" title="Day-wise booking">Day-wise</span>
+              {% endif %}
               <div class="small text-secondary">{{ r.user.email }}</div>
               {% if r.room_no %}
                 <div class="small text-secondary">Room {{ r.room_no }}</div>

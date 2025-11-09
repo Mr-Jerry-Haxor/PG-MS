@@ -1287,7 +1287,10 @@ def _collected_for_user_pg_month(u, pg, m_first, m_last) -> float:
     # payments made earlier but intended for the next billing month are
     # attributed to that month. Fall back to payment.date only when
     # from_date is null to avoid double-counting the same payment.
-    p_qs = Payment.objects.filter(user=u, pg=pg, status='success', type='fee').filter(
+    # Include both monthly 'fee' payments and 'daywise' payments when
+    # computing collected amounts for a billing month so day-wise
+    # bookings are attributed correctly.
+    p_qs = Payment.objects.filter(user=u, pg=pg, status='success', type__in=['fee', 'daywise']).filter(
         Q(from_date__gte=m_first, from_date__lte=m_last) | Q(from_date__isnull=True, date__gte=m_first, date__lte=m_last)
     )
     p_sum = p_qs.aggregate(total=Sum('amount')).get('total') or 0
@@ -1721,6 +1724,9 @@ def monthly_dashboard(request):
             'month_days': m_days,
             'expected_breakdown_html': expected_breakdown_html,
             'expected_breakdown_id': expected_breakdown_id,
+            # Flag if any of the stay segments are day-wise bookings. Templates
+            # can use this to show a 'Day-wise' indicator beside the resident name.
+            'is_daywise': any(getattr(seg.get('b'), 'booking_type', None) == 'daywise' for seg in segs),
         })
         total_expected += expected_after_credit
         total_collected += float(collected)
