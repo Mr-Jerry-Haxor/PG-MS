@@ -1311,12 +1311,20 @@ def my_pg(request):
 def tenants(request):
     """My PG Tenants view: shows rooms in ascending order and per-bed occupancy details.
     If admin has multiple PGs, shows a PG selector; otherwise directly shows the active PG.
+    Supports server-side filtering by bed status.
     """
     if not _require_pg_admin(request.user):
         messages.error(request, "PG Admin access required.")
         return redirect('dashboard')
     # Allow switching PG via ?pg= param (already handled by _active_pg)
     pg = _active_pg(request)
+    
+    # Get filter parameter
+    status_filter = request.GET.get('status', 'all').lower()
+    valid_filters = ['all', 'vacant', 'occupied', 'reserved', 'leaving']
+    if status_filter not in valid_filters:
+        status_filter = 'all'
+    
     rooms = []
     if pg:
         rooms = (
@@ -1328,11 +1336,29 @@ def tenants(request):
     data = []
     for room in rooms:
         shares = list(room.shares.all())
-        # Counts
-        vac = sum(1 for s in shares if s.status == RoomShareStatus.VACANT)
-        occ = sum(1 for s in shares if s.status in [RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM])
-        res = sum(1 for s in shares if s.status == RoomShareStatus.RESERVED)
-        leaving = sum(1 for s in shares if s.status == RoomShareStatus.VACANT_FROM)
+        
+        # Apply server-side filtering
+        if status_filter != 'all':
+            if status_filter == 'vacant':
+                shares = [s for s in shares if s.status == RoomShareStatus.VACANT]
+            elif status_filter == 'occupied':
+                shares = [s for s in shares if s.status == RoomShareStatus.OCCUPIED]
+            elif status_filter == 'reserved':
+                shares = [s for s in shares if s.status == RoomShareStatus.RESERVED]
+            elif status_filter == 'leaving':
+                shares = [s for s in shares if s.status == RoomShareStatus.VACANT_FROM]
+        
+        # Skip room if no shares match the filter
+        if not shares:
+            continue
+            
+        # Counts (for all shares in room, not just filtered)
+        all_shares = list(room.shares.all())
+        vac = sum(1 for s in all_shares if s.status == RoomShareStatus.VACANT)
+        occ = sum(1 for s in all_shares if s.status in [RoomShareStatus.OCCUPIED, RoomShareStatus.VACANT_FROM])
+        res = sum(1 for s in all_shares if s.status == RoomShareStatus.RESERVED)
+        leaving = sum(1 for s in all_shares if s.status == RoomShareStatus.VACANT_FROM)
+        
         # For each share, find latest approved booking for occupant details
         share_details = [_build_share_detail(room, s) for s in sorted(shares, key=lambda x: x.share_no)]
         data.append({
@@ -1351,6 +1377,7 @@ def tenants(request):
         'pgs': list(_admin_pgs(request.user)),
         'rooms': data,
         'today': timezone.now().date(),
+        'status_filter': status_filter,
     }
     return render(request, 'pgadmin/tenants.html', ctx)
 

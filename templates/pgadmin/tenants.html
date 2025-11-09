@@ -12,6 +12,35 @@
     .swap-modal .modal-body {
       max-height: 60vh;
     }
+    
+    /* Stack filter buttons vertically on mobile */
+    .btn-group {
+      flex-direction: column;
+    }
+    
+    .btn-group .btn {
+      border-radius: 0 !important;
+    }
+    
+    .btn-group .btn:first-child {
+      border-top-left-radius: 0.25rem !important;
+      border-top-right-radius: 0.25rem !important;
+    }
+    
+    .btn-group .btn:last-child {
+      border-bottom-left-radius: 0.25rem !important;
+      border-bottom-right-radius: 0.25rem !important;
+    }
+  }
+  
+  /* Smooth transitions for search filtering */
+  .room-item, .tenant-share-col {
+    transition: opacity 0.2s ease-in-out;
+  }
+  
+  .room-item[style*="display: none"], 
+  .tenant-share-col[style*="display: none"] {
+    opacity: 0;
   }
 </style>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -99,12 +128,70 @@
 {% if not pg %}
   <div class="alert alert-info">No PG selected. Please create a PG or request access.</div>
 {% else %}
+  <!-- Filter and Search (accordion for cleaner UI) -->
+  <!-- Reset button: shown only when a server-side status filter or client-side search is active -->
+  <div class="d-flex justify-content-end mb-2">
+    <button id="resetFiltersBtn" type="button" class="btn btn-sm btn-outline-secondary {% if status_filter == 'all' %}d-none{% endif %}" data-server-filter="{% if status_filter != 'all' %}1{% else %}0{% endif %}" title="Reset filters and search">
+      <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
+    </button>
+  </div>
+
+  <div class="accordion mb-3" id="filtersAccordion">
+    <div class="accordion-item shadow-sm border-0">
+      <h2 class="accordion-header" id="filtersHeading">
+        <button class="accordion-button collapsed p-3" type="button" data-bs-toggle="collapse" data-bs-target="#filtersCollapse" aria-expanded="false" aria-controls="filtersCollapse">
+          <div class="d-flex align-items-center w-100 justify-content-between">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-filter-circle-fill fs-5 text-primary"></i>
+              <div>
+                <div class="fw-semibold">Filters & Search</div>
+                <div class="text-muted small">Filter by Bed status or search by name, email, or room</div>
+              </div>
+            </div>
+            <div class="text-muted small"></div>
+          </div>
+        </button>
+      </h2>
+      <div id="filtersCollapse" class="accordion-collapse collapse" aria-labelledby="filtersHeading" data-bs-parent="#filtersAccordion">
+        <div class="accordion-body">
+          <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-6 col-lg-5">
+              <label class="form-label fw-semibold small mb-2">Status</label>
+              <div class="d-flex flex-wrap gap-2">
+                <a href="?{% if pg %}pg={{ pg.id }}&{% endif %}status=all" class="btn btn-sm w-auto {% if status_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}"><i class="bi bi-list"></i> All</a>
+                <a href="?{% if pg %}pg={{ pg.id }}&{% endif %}status=vacant" class="btn btn-sm w-auto {% if status_filter == 'vacant' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"><i class="bi bi-door-open"></i> Vacant</a>
+                <a href="?{% if pg %}pg={{ pg.id }}&{% endif %}status=occupied" class="btn btn-sm w-auto {% if status_filter == 'occupied' %}btn-success{% else %}btn-outline-success{% endif %}"><i class="bi bi-people-fill"></i> Occupied</a>
+                <a href="?{% if pg %}pg={{ pg.id }}&{% endif %}status=reserved" class="btn btn-sm w-auto {% if status_filter == 'reserved' %}btn-warning{% else %}btn-outline-warning{% endif %}"><i class="bi bi-bookmark-fill"></i> Reserved</a>
+                <a href="?{% if pg %}pg={{ pg.id }}&{% endif %}status=leaving" class="btn btn-sm w-auto {% if status_filter == 'leaving' %}btn-info{% else %}btn-outline-info{% endif %}"><i class="bi bi-clock-history"></i> Leaving</a>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-lg-4">
+              <label for="tenantSearch" class="form-label fw-semibold small mb-2">Search</label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="tenantSearch" class="form-control" placeholder="Name, email, or room number...">
+                <button id="clearSearch" class="btn btn-outline-secondary d-none" type="button" title="Clear search"><i class="bi bi-x-lg"></i></button>
+              </div>
+              <div class="text-muted small mt-1"><span id="searchResultCount" style="display:none;"></span></div>
+            </div>
+
+            <div class="col-12 col-lg-3 d-flex align-items-center justify-content-end">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {% if not rooms %}
-    <div class="alert alert-secondary">No rooms found for this PG.</div>
+    <div class="alert alert-secondary">No rooms found {% if status_filter != 'all' %}with {{ status_filter }} beds{% endif %} for this PG.</div>
   {% else %}
     <div class="accordion" id="roomsAccordion">
       {% for r in rooms %}
-        <div class="accordion-item mb-2 shadow-sm border-0">
+        <div class="accordion-item mb-2 shadow-sm border-0 room-item" 
+             data-room-no="{{ r.room.room_no }}"
+             data-search-content="">
           <h2 class="accordion-header" id="heading{{ r.room.id }}">
             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ r.room.id }}" aria-expanded="false" aria-controls="collapse{{ r.room.id }}">
               <div class="d-flex flex-column w-100">
@@ -1122,6 +1209,227 @@
     }
     setTimeout(resetPdfExportUI, 300);
   });
+
+  // ============================================================================
+  // CLIENT-SIDE SEARCH FUNCTIONALITY
+  // ============================================================================
+  (function() {
+    const searchInput = document.getElementById('tenantSearch');
+    const clearSearchBtn = document.getElementById('clearSearch');
+    const roomItems = document.querySelectorAll('.room-item');
+    const resetBtn = document.getElementById('resetFiltersBtn');
+
+    // Server-side filter flag is rendered into the button's data attribute.
+    const serverFilterApplied = Boolean(resetBtn && resetBtn.dataset && resetBtn.dataset.serverFilter === '1');
+
+    function updateResetBtnVisibility() {
+      if (!resetBtn) return;
+      const hasSearch = searchInput && (searchInput.value || '').toString().trim().length > 0;
+      if (serverFilterApplied || hasSearch) resetBtn.classList.remove('d-none');
+      else resetBtn.classList.add('d-none');
+    }
+
+    // Click handler: if a server-side status filter is active, remove the `status` param and reload (preserving other params like `pg`).
+    // Otherwise just clear the client-side search.
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function() {
+        const serverApplied = this.dataset && this.dataset.serverFilter === '1';
+        if (serverApplied) {
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('status');
+            // Also remove empty search param if present
+            url.searchParams.delete('tenantSearch');
+            window.location.href = url.toString();
+            return;
+          } catch (e) {
+            // fallback: reload current path (will clear server-side state if server relies on query param)
+            window.location.href = window.location.pathname;
+            return;
+          }
+        }
+
+        // No server filter — clear client-side search only
+        if (searchInput) searchInput.value = '';
+        if (clearSearchBtn) clearSearchBtn.classList.add('d-none');
+        updateResetBtnVisibility();
+        performSearch();
+      });
+    }
+    
+    if (!searchInput) return;
+    
+    // Build search index for each card
+    roomItems.forEach(roomItem => {
+      const roomNo = roomItem.dataset.roomNo || '';
+      const cards = roomItem.querySelectorAll('.tenant-share-col');
+      
+      cards.forEach(card => {
+        // Prefer finding the occupant name (not the 'Bed X' label).
+        // The template places name in a .fw-semibold immediately above the email (.text-secondary.small).
+        let name = '';
+
+        const emailEls = Array.from(card.querySelectorAll('.text-secondary.small'));
+        let email = '';
+        const emailEl = emailEls.find(el => (el.textContent || '').trim().includes('@'));
+        if (emailEl) {
+          email = (emailEl.textContent || '').trim();
+          // Try to pick the name element immediately above the email
+          const possibleName = emailEl.previousElementSibling;
+          if (possibleName && possibleName.classList && possibleName.classList.contains('fw-semibold')) {
+            const cloned = possibleName.cloneNode(true);
+            cloned.querySelectorAll('.badge').forEach(b => b.remove());
+            name = (cloned.textContent || '').trim();
+          }
+        }
+
+        // Fallback: pick a .fw-semibold that doesn't look like the 'Bed X' label
+        if (!name) {
+          const fwAll = Array.from(card.querySelectorAll('.fw-semibold'));
+          for (let i = fwAll.length - 1; i >= 0; i--) {
+            const txt = (fwAll[i].textContent || '').trim();
+            if (!/^Bed\s+\d+/i.test(txt) && !/room\s*\d+/i.test(txt)) {
+              const cloned = fwAll[i].cloneNode(true);
+              cloned.querySelectorAll('.badge').forEach(b => b.remove());
+              name = (cloned.textContent || '').trim();
+              break;
+            }
+          }
+          if (!name && fwAll.length) {
+            name = (fwAll[fwAll.length - 1].textContent || '').trim();
+          }
+        }
+
+        // Build search content: room number, name, email
+        const searchContent = (`room ${roomNo} ${name || ''} ${email || ''}`).toLowerCase();
+        card.dataset.searchContent = searchContent;
+      });
+    });
+    
+    // Helper: check if `needle` is a subsequence of `haystack` (characters in order, not necessarily contiguous)
+    function isSubsequence(needle, haystack) {
+      let i = 0, j = 0;
+      while (i < needle.length && j < haystack.length) {
+        if (needle[i] === haystack[j]) i++;
+        j++;
+      }
+      return i === needle.length;
+    }
+
+    function performSearch() {
+      const raw = searchInput.value || '';
+      const query = raw.toLowerCase().trim();
+      const resultCountEl = document.getElementById('searchResultCount');
+
+      if (!query) {
+        // Show all rooms and cards
+        roomItems.forEach(room => {
+          room.style.display = '';
+          const cards = room.querySelectorAll('.tenant-share-col');
+          cards.forEach(card => card.style.display = '');
+        });
+        clearSearchBtn.classList.add('d-none');
+        // Hide result count
+        if (resultCountEl) resultCountEl.style.display = 'none';
+        // Remove no results message
+        const noResultsMsg = document.getElementById('noSearchResults');
+        if (noResultsMsg) noResultsMsg.remove();
+        return;
+      }
+
+      // Show clear button
+      clearSearchBtn.classList.remove('d-none');
+
+      // Split query into tokens (AND semantics)
+      const tokens = query.split(/\s+/).filter(Boolean);
+
+      let totalVisibleCards = 0;
+
+      roomItems.forEach(room => {
+        const cards = room.querySelectorAll('.tenant-share-col');
+        let visibleCardsInRoom = 0;
+
+        cards.forEach(card => {
+          const content = (card.dataset.searchContent || '').toLowerCase();
+          let matchedAll = true;
+          for (let t of tokens) {
+            if (!t) continue;
+            // direct substring match
+            if (content.includes(t)) continue;
+            // allow subsequence match for short partial inputs
+            if (t.length >= 2 && isSubsequence(t, content)) continue;
+            // fail this token
+            matchedAll = false;
+            break;
+          }
+
+          if (matchedAll) {
+            card.style.display = '';
+            visibleCardsInRoom++;
+            totalVisibleCards++;
+          } else {
+            card.style.display = 'none';
+          }
+        });
+
+        // Show room if it has any visible cards
+        if (visibleCardsInRoom > 0) {
+          room.style.display = '';
+          // Auto-expand the accordion if room has matches
+          const collapseEl = room.querySelector('.accordion-collapse');
+          if (collapseEl && !collapseEl.classList.contains('show')) {
+            const bsCollapse = new bootstrap.Collapse(collapseEl, {toggle: false});
+            bsCollapse.show();
+          }
+        } else {
+          room.style.display = 'none';
+        }
+      });
+
+      // Update result count
+      if (resultCountEl) {
+        if (totalVisibleCards > 0) {
+          resultCountEl.textContent = `(${totalVisibleCards} result${totalVisibleCards !== 1 ? 's' : ''})`;
+          resultCountEl.style.display = 'inline';
+        } else {
+          resultCountEl.style.display = 'none';
+        }
+      }
+
+      // Show/hide no results message
+      const accordion = document.getElementById('roomsAccordion');
+      let noResultsMsg = document.getElementById('noSearchResults');
+      if (totalVisibleCards === 0) {
+        if (!noResultsMsg) {
+          noResultsMsg = document.createElement('div');
+          noResultsMsg.id = 'noSearchResults';
+          noResultsMsg.className = 'alert alert-info mb-3';
+          noResultsMsg.innerHTML = '<i class="bi bi-info-circle me-2"></i>No tenants found matching your search query.';
+          accordion.parentNode.insertBefore(noResultsMsg, accordion);
+        }
+        noResultsMsg.style.display = 'block';
+      } else {
+        if (noResultsMsg) noResultsMsg.style.display = 'none';
+      }
+    }
+    
+    // Search as user types (debounced)
+    let searchTimeout;
+    searchInput.addEventListener('input', function() {
+      // update reset button visibility immediately
+      try { updateResetBtnVisibility(); } catch (e) {}
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(performSearch, 300);
+    });
+    
+    // Clear search
+    clearSearchBtn.addEventListener('click', function() {
+      if (searchInput) searchInput.value = '';
+      this.classList.add('d-none');
+      try { updateResetBtnVisibility(); } catch (e) {}
+      performSearch();
+    });
+  })();
 
 </script>
 {% endblock %}
