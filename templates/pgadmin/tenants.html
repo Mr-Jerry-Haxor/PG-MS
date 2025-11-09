@@ -130,10 +130,17 @@
 {% else %}
   <!-- Filter and Search (accordion for cleaner UI) -->
   <!-- Reset button: shown only when a server-side status filter or client-side search is active -->
-  <div class="d-flex justify-content-end mb-2">
-    <button id="resetFiltersBtn" type="button" class="btn btn-sm btn-outline-secondary {% if status_filter == 'all' %}d-none{% endif %}" data-server-filter="{% if status_filter != 'all' %}1{% else %}0{% endif %}" title="Reset filters and search">
+  <div class="d-flex justify-content-end mb-2 align-items-center">
+    <button id="resetFiltersBtn" type="button" class="btn btn-sm btn-outline-secondary {% if status_filter == 'all' %}d-none{% endif %}" data-server-filter="{% if status_filter != 'all' %}1{% else %}0{% endif %}" data-server-status="{{ status_filter|default:'all' }}" title="Reset filters and search">
       <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
     </button>
+
+    {# Capsule showing active filter/search. Render server-side if status filter applied, otherwise hidden and updated by JS #}
+    {% if status_filter != 'all' %}
+      <span id="activeFilterCapsule" class="badge bg-info text-dark ms-2">Filter: {{ status_filter|capfirst }}</span>
+    {% else %}
+      <span id="activeFilterCapsule" class="badge bg-info text-dark ms-2 d-none"></span>
+    {% endif %}
   </div>
 
   <div class="accordion mb-3" id="filtersAccordion">
@@ -1229,6 +1236,36 @@
       else resetBtn.classList.add('d-none');
     }
 
+    // Update the active filter/search capsule text and visibility
+    function updateActiveFilterCapsule() {
+      const cap = document.getElementById('activeFilterCapsule');
+      if (!cap) return;
+
+      const serverStatus = resetBtn && resetBtn.dataset ? (resetBtn.dataset.serverStatus || 'all') : 'all';
+      const hasServer = serverStatus && serverStatus !== 'all';
+      const searchVal = searchInput ? (searchInput.value || '').toString().trim() : '';
+      const hasSearch = !!searchVal;
+
+      if (!hasServer && !hasSearch) {
+        cap.classList.add('d-none');
+        cap.textContent = '';
+        return;
+      }
+
+      const parts = [];
+      if (hasServer) {
+        // humanize server status (capitalize first letter)
+        const label = serverStatus.charAt(0).toUpperCase() + serverStatus.slice(1);
+        parts.push(`Filter: ${label}`);
+      }
+      if (hasSearch) {
+        parts.push(`Search: "${searchVal}"`);
+      }
+
+      cap.textContent = parts.join(' • ');
+      cap.classList.remove('d-none');
+    }
+
     // Click handler: if a server-side status filter is active, remove the `status` param and reload (preserving other params like `pg`).
     // Otherwise just clear the client-side search.
     if (resetBtn) {
@@ -1416,8 +1453,8 @@
     // Search as user types (debounced)
     let searchTimeout;
     searchInput.addEventListener('input', function() {
-      // update reset button visibility immediately
-      try { updateResetBtnVisibility(); } catch (e) {}
+      // update reset button and capsule visibility immediately
+      try { updateResetBtnVisibility(); updateActiveFilterCapsule(); } catch (e) {}
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(performSearch, 300);
     });
@@ -1426,9 +1463,12 @@
     clearSearchBtn.addEventListener('click', function() {
       if (searchInput) searchInput.value = '';
       this.classList.add('d-none');
-      try { updateResetBtnVisibility(); } catch (e) {}
+      try { updateResetBtnVisibility(); updateActiveFilterCapsule(); } catch (e) {}
       performSearch();
     });
+
+    // Initialize capsule visibility on load (in case server filter is present)
+    try { updateActiveFilterCapsule(); } catch (e) {}
   })();
 
 </script>

@@ -124,20 +124,44 @@
         <table class="beds-table">
           <tbody>
             <tr>
-              <td class="label"><i class="bi bi-check-circle-fill text-success me-1"></i>Vacant</td>
-              <td class="value vacant">{{ vacant_shares|default:0 }}</td>
+              <td class="label">
+                <a href="{% url 'pg_tenants' %}?{% if pg %}pg={{ pg.id }}&{% endif %}status=vacant" class="text-decoration-none text-reset d-flex align-items-center">
+                  <i class="bi bi-check-circle-fill text-success me-1"></i>Vacant
+                </a>
+              </td>
+              <td class="value vacant">
+                <a href="{% url 'pg_tenants' %}?{% if pg %}pg={{ pg.id }}&{% endif %}status=vacant" class="text-decoration-none">{{ vacant_shares|default:0 }}</a>
+              </td>
             </tr>
             <tr>
-              <td class="label"><i class="bi bi-calendar-check text-info me-1"></i>Reserved</td>
-              <td class="value reserved">{{ reserved_shares|default:0 }}</td>
+              <td class="label">
+                <a href="{% url 'pg_tenants' %}?{% if pg %}pg={{ pg.id }}&{% endif %}status=reserved" class="text-decoration-none text-reset d-flex align-items-center">
+                  <i class="bi bi-calendar-check text-info me-1"></i>Reserved
+                </a>
+              </td>
+              <td class="value reserved">
+                <a href="{% url 'pg_tenants' %}?{% if pg %}pg={{ pg.id }}&{% endif %}status=reserved" class="text-decoration-none">{{ reserved_shares|default:0 }}</a>
+              </td>
             </tr>
             <tr>
-              <td class="label"><i class="bi bi-person-fill text-primary me-1"></i>Occupied</td>
-              <td class="value occupied">{{ occupied_shares|default:0 }}</td>
+              <td class="label">
+                <a href="{% url 'pg_tenants' %}?{% if pg %}pg={{ pg.id }}&{% endif %}status=occupied" class="text-decoration-none text-reset d-flex align-items-center">
+                  <i class="bi bi-person-fill text-primary me-1"></i>Occupied
+                </a>
+              </td>
+              <td class="value occupied">
+                <a href="{% url 'pg_tenants' %}?{% if pg %}pg={{ pg.id }}&{% endif %}status=occupied" class="text-decoration-none">{{ occupied_shares|default:0 }}</a>
+              </td>
             </tr>
             <tr>
-              <td class="label"><i class="bi bi-calendar-x text-warning me-1"></i>Leaving</td>
-              <td class="value leaving">{{ leaving_shares|default:0 }}</td>
+              <td class="label">
+                <a href="{% url 'pg_tenants' %}?{% if pg %}pg={{ pg.id }}&{% endif %}status=leaving" class="text-decoration-none text-reset d-flex align-items-center">
+                  <i class="bi bi-calendar-x text-warning me-1"></i>Leaving
+                </a>
+              </td>
+              <td class="value leaving">
+                <a href="{% url 'pg_tenants' %}?{% if pg %}pg={{ pg.id }}&{% endif %}status=leaving" class="text-decoration-none">{{ leaving_shares|default:0 }}</a>
+              </td>
             </tr>
             <tr>
               <td class="label">Total Beds</td>
