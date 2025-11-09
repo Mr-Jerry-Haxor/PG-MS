@@ -256,8 +256,9 @@
       <i class="bi bi-info-circle me-1"></i>
       Found <span id="searchCount">0</span> matching result(s)
     </div>
+   
   </div>
-
+  
   <!-- Pagination Controls (Top) -->
   <div class="d-flex justify-content-between align-items-center mb-3" id="paginationTop" style="display: none !important;">
     <div class="text-muted small">
@@ -268,6 +269,16 @@
       </ul>
     </nav>
   </div>
+   <div class="mt-2 d-flex justify-content-end">
+      <label class="small text-white me-2 align-self-center" style="color: #2d3748 !important;">Per page:</label>
+      <select id="itemsPerPageSelect" class="form-select form-select-sm" style="width: auto;">
+        <option value="10">10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+        <option value="all">All</option>
+      </select>
+    </div>
 
   <!-- Leave Requests Table -->
   {% if leave_requests %}
@@ -1064,7 +1075,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     const totalMatched = matchedRows.length;
-    const totalPages = Math.ceil(totalMatched / filterState.itemsPerPage);
+    // Determine numeric itemsPerPage; support 'all' which shows all matched rows
+    let itemsPerPageNumeric;
+    if (filterState.itemsPerPage === 'all') {
+      itemsPerPageNumeric = totalMatched > 0 ? totalMatched : 1;
+    } else {
+      itemsPerPageNumeric = parseInt(filterState.itemsPerPage, 10) || 10;
+    }
+    const totalPages = totalMatched > 0 ? Math.ceil(totalMatched / itemsPerPageNumeric) : 0;
     
     // Ensure current page is valid
     if (filterState.currentPage > totalPages && totalPages > 0) {
@@ -1075,8 +1093,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Calculate pagination range
-    const startIndex = (filterState.currentPage - 1) * filterState.itemsPerPage;
-    const endIndex = startIndex + filterState.itemsPerPage;
+  const startIndex = (filterState.currentPage - 1) * itemsPerPageNumeric;
+  const endIndex = startIndex + itemsPerPageNumeric;
     
     // Hide all rows first
     rows.forEach(row => row.style.display = 'none');
@@ -1262,7 +1280,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
   
-  // Reset filters button
+    // Reset filters button
   document.getElementById('resetFilters').addEventListener('click', function() {
     // Reset filter state
     filterState.status = 'all';
@@ -1271,6 +1289,10 @@ document.addEventListener('DOMContentLoaded', function() {
     filterState['booking-type'] = 'all';
     filterState.search = '';
     filterState.currentPage = 1;
+    // Reset per-page to default
+    filterState.itemsPerPage = 10;
+    const itemsSelectReset = document.getElementById('itemsPerPageSelect');
+    if (itemsSelectReset) itemsSelectReset.value = String(filterState.itemsPerPage);
     
     // Reset search input
     searchInput.value = '';
@@ -1287,6 +1309,23 @@ document.addEventListener('DOMContentLoaded', function() {
     // Apply filters
     applyFilters();
   });
+  
+  // Per-page select change handler
+  const itemsPerPageSelect = document.getElementById('itemsPerPageSelect');
+  if (itemsPerPageSelect) {
+    // Initialize select with current value
+    try { itemsPerPageSelect.value = String(filterState.itemsPerPage); } catch (e) {}
+    itemsPerPageSelect.addEventListener('change', function(){
+      const v = this.value;
+      if (v === 'all') {
+        filterState.itemsPerPage = 'all';
+      } else {
+        filterState.itemsPerPage = parseInt(v, 10) || 10;
+      }
+      filterState.currentPage = 1;
+      applyFilters();
+    });
+  }
   
   // Initial count update
   applyFilters();
