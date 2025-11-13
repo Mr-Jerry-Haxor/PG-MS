@@ -2453,6 +2453,13 @@ def monthly_export_pdf(request):
             if due_candidate and ov > best_overlap:
                 due_date = due_candidate
                 best_overlap = ov
+        # Exclude tenants who left on or before the payment due date for this month.
+        # If the computed payment due date falls on/after the latest segment end, skip this user.
+        ends = [seg['end'] for seg in segs if seg.get('end')]
+        latest_end = max(ends) if ends else None
+        if latest_end and due_date and due_date >= latest_end:
+            continue
+
         collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
         status, status_label, status_css = _resolve_status(expected_total, float(collected), m_first, due_date, today)
         if only_filter in ('paid', 'partial', 'unpaid', 'upcoming') and status != only_filter:
@@ -2466,6 +2473,7 @@ def monthly_export_pdf(request):
             'pending': round(max(0.0, expected_total - collected), 2),
             'status': status,
             'status_label': status_label,
+            'payment_due': due_date,
             'phone': phone_raw,
         })
         total_expected += expected_total
@@ -2615,7 +2623,7 @@ def monthly_export_pdf(request):
         p.drawString(x_margin, y, "Tenant Name")
         p.drawString(phone_col_x, y, "Phone")
         p.drawString(room_col_x, y, "Room")
-        p.drawString(joining_col_x, y, "Joining Date")
+        p.drawString(joining_col_x, y, "Payment Date")
         p.drawString(leaving_col_x, y, "Leaving Date")
         p.drawString(days_col_x, y, "Days Stayed")
         p.drawString(expected_col_x, y, "Expected")
@@ -2655,7 +2663,12 @@ def monthly_export_pdf(request):
             p.setFont("Helvetica", base_row_font)
             p.drawString(phone_col_x, y, (row.get('phone') or ''))
             p.drawString(room_col_x, y, str(s['room']))
-            p.drawString(joining_col_x, y, (s['start'] or m_first).strftime('%Y-%m-%d'))
+            # Show payment date (computed per-user) if available, otherwise fall back to segment start
+            row_due = row.get('payment_due')
+            if row_due:
+                p.drawString(joining_col_x, y, row_due.strftime('%Y-%m-%d'))
+            else:
+                p.drawString(joining_col_x, y, (s['start'] or m_first).strftime('%Y-%m-%d'))
             p.drawString(leaving_col_x, y, (s['end'].strftime('%Y-%m-%d') if s['end'] else '—'))
             p.drawString(days_col_x, y, f"{int(s['days'])}/{m_days}")
             p.drawString(expected_col_x, y, f"Rs. {float(s['expected']):.2f}")
@@ -2762,6 +2775,11 @@ def monthly_export_excel(request):
                 best_overlap = ov
         if not segments:
             continue
+        # Exclude tenants who left on or before the payment due date for this month.
+        ends = [seg['end'] for seg in segments if seg.get('end')]
+        latest_end = max(ends) if ends else None
+        if latest_end and due_date and due_date >= latest_end:
+            continue
         collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
         status, status_label, status_css = _resolve_status(expected_total, float(collected), m_first, due_date, today)
         if only_filter in ('paid', 'partial', 'unpaid', 'upcoming') and status != only_filter:
@@ -2772,6 +2790,7 @@ def monthly_export_excel(request):
             'user': u,
             'bookings': bookings_sorted,
             'segments': segments,
+            'payment_due': due_date,
             'expected': round(expected_total, 2),
             'collected': round(float(collected), 2),
             'pending': round(max(0.0, expected_total - collected), 2),
@@ -2833,14 +2852,14 @@ def monthly_export_excel(request):
     ws_overall.append(['Collected', round(total_collected, 2)])
     ws_overall.append(['Pending', round(max(0.0, total_expected - total_collected), 2)])
 
-    # Tenant-wise Details (Tenant Name, Room, Joining Date, Leaving Date, Base Rent, Days Stayed, Expected, Collected, Pending)
-    ws_tenants.append(['Tenant Name', 'Phone', 'Room', 'Joining Date', 'Leaving Date', 'Base Rent', 'Days Stayed', 'Expected', 'Collected', 'Pending'])
+    # Tenant-wise Details (Tenant Name, Room, Payment Date, Leaving Date, Base Rent, Days Stayed, Expected, Collected, Pending)
+    ws_tenants.append(['Tenant Name', 'Phone', 'Room', 'Payment Date', 'Leaving Date', 'Base Rent', 'Days Stayed', 'Expected', 'Collected', 'Pending'])
     for entry in entries:
         u = entry['user']
         tenant_name = (f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email)
         phone_val = entry.get('phone') or ''
         for seg in entry['segments']:
-            start = seg['start']
+            start = entry.get('payment_due') or seg['start']
             end = seg['end']
             ws_tenants.append([
                 tenant_name,

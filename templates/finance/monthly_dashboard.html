@@ -557,6 +557,41 @@
     let pageSize = 25;
     let allRows = [];
     let filteredRows = [];
+
+    // Normalize phone links on the page: remove leading country code 91 (or 0091)
+    // only when removing it yields a 10-digit number. This avoids chopping
+    // a local phone number accidentally. It updates tel: and wa.me links and
+    // obvious data-* attributes containing phone values.
+    function normalizePhoneNumberString(raw) {
+      if (!raw) return '';
+      // Strip non-digit characters
+      const digits = String(raw).replace(/\D/g, '');
+      if (digits.length === 10) return digits; // already local
+      // If there is a leading 0091 and removing it yields 10 digits
+      if (digits.startsWith('0091') && digits.length - 4 === 10) return digits.slice(4);
+      // If there is a leading 91 (from +91 or 91...) and removing it yields 10 digits
+      if (digits.startsWith('91') && digits.length - 2 === 10) return digits.slice(2);
+      // Otherwise return the digits unchanged (do not try to strip other prefixes)
+      return digits;
+    }
+
+    function normalizePhoneLinks() {
+      // Only normalize telephone (tel:) links. Do NOT touch WhatsApp links
+      // or data attributes because WhatsApp requires the country code.
+      document.querySelectorAll('a[href^="tel:"]').forEach(function(a){
+        try {
+          const raw = a.getAttribute('href').slice(4);
+          const norm = normalizePhoneNumberString(raw);
+          if (norm && norm.length === 10) {
+            a.setAttribute('href', 'tel:' + norm);
+            // If link text looks like a phone number, update it too
+            if ((a.textContent || '').replace(/\D/g, '').length >= 10) {
+              a.textContent = norm;
+            }
+          }
+        } catch (e) { /* ignore malformed hrefs */ }
+      });
+    }
     
     // Initialize pagination data
     function initializePaginationData() {
