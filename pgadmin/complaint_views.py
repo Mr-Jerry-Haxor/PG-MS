@@ -26,7 +26,7 @@ def _admin_pgs(user):
 def admin_complaints(request):
     """
     List all complaints for PGs managed by this admin
-    With filters and sorting
+    Load all complaints to frontend for client-side filtering
     """
     if not _require_pg_admin(request.user):
         messages.error(request, 'PG Admin access required.')
@@ -35,117 +35,26 @@ def admin_complaints(request):
     # Get admin's PGs
     admin_pgs = _admin_pgs(request.user)
     
-    # Get PG filter
-    pg_id = request.GET.get('pg', '')
-    if pg_id:
-        try:
-            pg = admin_pgs.get(id=pg_id)
-            complaints = Complaint.objects.filter(pg=pg)
-        except PG.DoesNotExist:
-            messages.error(request, 'Invalid PG selected.')
-            return redirect('admin_complaints')
-    else:
-        # All complaints from admin's PGs
-        complaints = Complaint.objects.filter(pg__in=admin_pgs)
+    # Load ALL complaints from admin's PGs (no server-side filtering)
+    complaints = Complaint.objects.filter(pg__in=admin_pgs).select_related(
+        'user', 'pg', 'booking', 'resolved_by'
+    ).prefetch_related('comments').order_by('-created_at')
     
-    # Status filter - default to 'open' and 'in_progress'
-    status_filter = request.GET.get('status', 'open,in_progress')
-    if status_filter and status_filter != 'all':
-        # Support multiple statuses separated by comma
-        if ',' in status_filter:
-            status_list = [s.strip() for s in status_filter.split(',')]
-            complaints = complaints.filter(status__in=status_list)
-        else:
-            complaints = complaints.filter(status=status_filter)
-    
-    # Priority filter
-    priority_filter = request.GET.get('priority', '')
-    if priority_filter:
-        complaints = complaints.filter(priority=priority_filter)
-    
-    # Category filter
-    category_filter = request.GET.get('category', '')
-    if category_filter:
-        complaints = complaints.filter(category=category_filter)
-    
-    # Date range filter
-    date_from = request.GET.get('date_from', '')
-    date_to = request.GET.get('date_to', '')
-    if date_from:
-        try:
-            date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
-            complaints = complaints.filter(created_at__date__gte=date_from_obj)
-        except ValueError:
-            pass
-    if date_to:
-        try:
-            date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
-            complaints = complaints.filter(created_at__date__lte=date_to_obj)
-        except ValueError:
-            pass
-    
-    # Search
-    search_query = request.GET.get('search', '').strip()
-    if search_query:
-        complaints = complaints.filter(
-            Q(title__icontains=search_query) |
-            Q(description__icontains=search_query) |
-            Q(user__first_name__icontains=search_query) |
-            Q(user__last_name__icontains=search_query) |
-            Q(user__email__icontains=search_query)
-        )
-    
-    # Sorting
-    sort_by = request.GET.get('sort', '-created_at')
-    allowed_sorts = [
-        'created_at', '-created_at',
-        'priority', '-priority',
-        'status', '-status',
-        'updated_at', '-updated_at'
-    ]
-    if sort_by in allowed_sorts:
-        # Custom priority ordering
-        if sort_by in ['priority', '-priority']:
-            priority_order = {
-                'urgent': 4,
-                'high': 3,
-                'medium': 2,
-                'low': 1
-            }
-            complaints = list(complaints.select_related('user', 'pg', 'booking', 'resolved_by').prefetch_related('comments'))
-            complaints.sort(
-                key=lambda x: priority_order.get(x.priority, 0),
-                reverse=(sort_by == '-priority')
-            )
-        else:
-            complaints = complaints.order_by(sort_by).select_related('user', 'pg', 'booking', 'resolved_by').prefetch_related('comments')
-    else:
-        complaints = complaints.select_related('user', 'pg', 'booking', 'resolved_by').prefetch_related('comments')
-    
-    # Get stats
-    all_complaints = Complaint.objects.filter(pg__in=admin_pgs)
+    # Calculate stats for all complaints
     stats = {
-        'total': all_complaints.count(),
-        'open': all_complaints.filter(status=Complaint.OPEN).count(),
-        'in_progress': all_complaints.filter(status=Complaint.IN_PROGRESS).count(),
-        'solved': all_complaints.filter(status=Complaint.SOLVED).count(),
-        'urgent': all_complaints.filter(priority=Complaint.URGENT, status__in=[Complaint.OPEN, Complaint.IN_PROGRESS]).count(),
+        'total': complaints.count(),
+        'open': complaints.filter(status=Complaint.OPEN).count(),
+        'in_progress': complaints.filter(status=Complaint.IN_PROGRESS).count(),
+        'solved': complaints.filter(status=Complaint.SOLVED).count(),
+        'urgent': complaints.filter(priority=Complaint.URGENT, status__in=[Complaint.OPEN, Complaint.IN_PROGRESS]).count(),
     }
     
     context = {
         'complaints': complaints,
         'admin_pgs': admin_pgs,
-        'current_pg': pg_id,
         'status_choices': Complaint.STATUS_CHOICES,
         'priority_choices': Complaint.PRIORITY_CHOICES,
         'category_choices': Complaint.CATEGORY_CHOICES,
-        'current_status': status_filter,
-        'current_priority': priority_filter,
-        'current_category': category_filter,
-        'current_sort': sort_by,
-        'date_from': date_from,
-        'date_to': date_to,
-        'search_query': search_query,
         'stats': stats,
     }
     

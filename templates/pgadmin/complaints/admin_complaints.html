@@ -63,7 +63,7 @@
                             </div>
                         </div>
                         <div class="ms-3">
-                            <h3 class="mb-0">{{ stats.total }}</h3>
+                            <h3 id="statTotal" class="mb-0">{{ stats.total }}</h3>
                             <p class="text-muted mb-0 small">Total</p>
                         </div>
                     </div>
@@ -80,7 +80,7 @@
                             </div>
                         </div>
                         <div class="ms-3">
-                            <h3 class="mb-0">{{ stats.open }}</h3>
+                            <h3 id="statOpen" class="mb-0">{{ stats.open }}</h3>
                             <p class="text-muted mb-0 small">Open</p>
                         </div>
                     </div>
@@ -97,7 +97,7 @@
                             </div>
                         </div>
                         <div class="ms-3">
-                            <h3 class="mb-0">{{ stats.in_progress }}</h3>
+                            <h3 id="statInProgress" class="mb-0">{{ stats.in_progress }}</h3>
                             <p class="text-muted mb-0 small">In Progress</p>
                         </div>
                     </div>
@@ -114,7 +114,7 @@
                             </div>
                         </div>
                         <div class="ms-3">
-                            <h3 class="mb-0">{{ stats.solved }}</h3>
+                            <h3 id="statSolved" class="mb-0">{{ stats.solved }}</h3>
                             <p class="text-muted mb-0 small">Solved</p>
                         </div>
                     </div>
@@ -135,88 +135,82 @@
                 </button>
             </div>
         </div>
-        <div class="collapse" id="filterCollapse">
+        <div class="collapse show" id="filterCollapse">
             <div class="card-body">
-                <form method="get" class="row g-3">
+                <div class="row g-3" id="filterForm">
                     <div class="col-12 col-md-6 col-lg-3">
                         <label class="form-label small">PG</label>
-                        <select name="pg" class="form-select form-select-sm">
+                        <select id="filterPg" class="form-select form-select-sm filter-control">
                             <option value="">All PGs</option>
                             {% for pg in admin_pgs %}
-                                <option value="{{ pg.id }}" {% if current_pg == pg.id|stringformat:"s" %}selected{% endif %}>
-                                    {{ pg.name }}
-                                </option>
+                                <option value="{{ pg.id }}">{{ pg.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-12 col-md-6 col-lg-2">
                         <label class="form-label small">Status</label>
-                        <select name="status" class="form-select form-select-sm">
-                            <option value="all" {% if current_status == 'all' %}selected{% endif %}>All</option>
-                            <option value="open,in_progress" {% if current_status == 'open,in_progress' %}selected{% endif %}>Active (Open & In Progress)</option>
+                        <select id="filterStatus" class="form-select form-select-sm filter-control">
+                            <option value="all">All</option>
+                            <option value="open,in_progress" selected>Active (Open & In Progress)</option>
                             {% for value, label in status_choices %}
-                                <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+                                <option value="{{ value }}">{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-12 col-md-6 col-lg-2">
                         <label class="form-label small">Priority</label>
-                        <select name="priority" class="form-select form-select-sm">
+                        <select id="filterPriority" class="form-select form-select-sm filter-control">
                             <option value="">All</option>
                             {% for value, label in priority_choices %}
-                                <option value="{{ value }}" {% if current_priority == value %}selected{% endif %}>{{ label }}</option>
+                                <option value="{{ value }}">{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-12 col-md-6 col-lg-2">
                         <label class="form-label small">Category</label>
-                        <select name="category" class="form-select form-select-sm">
+                        <select id="filterCategory" class="form-select form-select-sm filter-control">
                             <option value="">All</option>
                             {% for value, label in category_choices %}
-                                <option value="{{ value }}" {% if current_category == value %}selected{% endif %}>{{ label }}</option>
+                                <option value="{{ value }}">{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-12 col-md-6 col-lg-3">
                         <label class="form-label small">Search</label>
-                        <input type="text" name="search" class="form-control form-control-sm" 
-                               placeholder="Title, user, description..." 
-                               value="{{ search_query }}">
+                        <input type="text" id="filterSearch" class="form-control form-control-sm filter-control" 
+                               placeholder="Title, user, description...">
                     </div>
                     <div class="col-12 col-md-6 col-lg-4">
                         <label class="form-label small">Date From</label>
-                        <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
+                        <input type="date" id="filterDateFrom" class="form-control form-control-sm filter-control">
                     </div>
                     <div class="col-12 col-md-6 col-lg-4">
                         <label class="form-label small">Date To</label>
-                        <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
+                        <input type="date" id="filterDateTo" class="form-control form-control-sm filter-control">
                     </div>
                     <div class="col-12 col-md-6 col-lg-2">
                         <label class="form-label small">Sort By</label>
-                        <select name="sort" class="form-select form-select-sm">
-                            <option value="-created_at" {% if current_sort == '-created_at' %}selected{% endif %}>Newest First</option>
-                            <option value="created_at" {% if current_sort == 'created_at' %}selected{% endif %}>Oldest First</option>
-                            <option value="-priority" {% if current_sort == '-priority' %}selected{% endif %}>Priority (High to Low)</option>
-                            <option value="priority" {% if current_sort == 'priority' %}selected{% endif %}>Priority (Low to High)</option>
-                            <option value="status" {% if current_sort == 'status' %}selected{% endif %}>Status</option>
+                        <select id="filterSort" class="form-select form-select-sm filter-control">
+                            <option value="-created_at">Newest First</option>
+                            <option value="created_at">Oldest First</option>
+                            <option value="-priority">Priority (High to Low)</option>
+                            <option value="priority">Priority (Low to High)</option>
+                            <option value="status">Status</option>
                         </select>
                     </div>
-                    <div class="col-12 col-md-6 col-lg-2 d-flex align-items-end gap-2">
-                        <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
-                            <i class="bi bi-search"></i> Apply
+                    <div class="col-12 col-md-6 col-lg-2 d-flex align-items-end">
+                        <button type="button" id="resetFilters" class="btn btn-outline-secondary btn-sm w-100" title="Clear all filters">
+                            <i class="bi bi-arrow-clockwise"></i> Reset
                         </button>
-                        <a href="{% url 'admin_complaints' %}" class="btn btn-outline-secondary btn-sm">
-                            <i class="bi bi-arrow-clockwise"></i>
-                        </a>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>
     
     <!-- Complaints Table -->
     <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
+        <div id="complaintsCardBody" class="card-body p-0">
             {% if complaints %}
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
@@ -236,6 +230,14 @@
                             <tr class="complaint-row priority-{{ complaint.priority }}" 
                                 style="cursor: pointer;"
                                 data-complaint-url="{% url 'admin_complaint_detail' complaint.id %}"
+                                data-complaint-id="{{ complaint.id }}"
+                                data-pg-id="{{ complaint.pg.id }}"
+                                data-pg-name="{{ complaint.pg.name }}"
+                                data-status="{{ complaint.status }}"
+                                data-priority="{{ complaint.priority }}"
+                                data-category="{{ complaint.category }}"
+                                data-created="{{ complaint.created_at|date:'Y-m-d' }}"
+                                data-search-text="{{ complaint.title|lower }} {{ complaint.user.get_full_name|default:complaint.user.email|lower }} {{ complaint.description|lower }}"
                                 onclick="window.location=this.dataset.complaintUrl">
                                 <td class="ps-4">
                                     <div>
@@ -298,4 +300,271 @@
         </div>
     </div>
 </div>
+
+<script>
+// Client-side filtering without page reload
+document.addEventListener('DOMContentLoaded', function() {
+    const filterPg = document.getElementById('filterPg');
+    const filterStatus = document.getElementById('filterStatus');
+    const filterPriority = document.getElementById('filterPriority');
+    const filterCategory = document.getElementById('filterCategory');
+    const filterSearch = document.getElementById('filterSearch');
+    const filterDateFrom = document.getElementById('filterDateFrom');
+    const filterDateTo = document.getElementById('filterDateTo');
+    const filterSort = document.getElementById('filterSort');
+    const resetFilters = document.getElementById('resetFilters');
+    
+    const complaintRows = Array.from(document.querySelectorAll('.complaint-row'));
+    const tbody = document.querySelector('table.table tbody');
+    const statsCards = {
+        total: document.getElementById('statTotal'),
+        open: document.getElementById('statOpen'),
+        in_progress: document.getElementById('statInProgress'),
+        solved: document.getElementById('statSolved')
+    };
+    
+    let searchTimeout;
+    
+    // Read URL parameters and set initial filter values
+    function initializeFiltersFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        if (urlParams.has('pg')) {
+            filterPg.value = urlParams.get('pg');
+        }
+        if (urlParams.has('status')) {
+            filterStatus.value = urlParams.get('status');
+        }
+        if (urlParams.has('priority')) {
+            filterPriority.value = urlParams.get('priority');
+        }
+        if (urlParams.has('category')) {
+            filterCategory.value = urlParams.get('category');
+        }
+        if (urlParams.has('search')) {
+            filterSearch.value = urlParams.get('search');
+        }
+        if (urlParams.has('date_from')) {
+            filterDateFrom.value = urlParams.get('date_from');
+        }
+        if (urlParams.has('date_to')) {
+            filterDateTo.value = urlParams.get('date_to');
+        }
+        if (urlParams.has('sort')) {
+            filterSort.value = urlParams.get('sort');
+        }
+    }
+    
+    // Apply filters
+    function applyFilters() {
+        const filters = {
+            pg: filterPg.value,
+            status: filterStatus.value,
+            priority: filterPriority.value,
+            category: filterCategory.value,
+            search: filterSearch.value.toLowerCase().trim(),
+            dateFrom: filterDateFrom.value,
+            dateTo: filterDateTo.value,
+            sort: filterSort.value
+        };
+        
+        let stats = { total: 0, open: 0, in_progress: 0, solved: 0 };
+        let visibleRows = [];
+        
+        // Filter rows
+        complaintRows.forEach(row => {
+            let visible = true;
+            
+            // PG filter
+            if (filters.pg && row.dataset.pgId !== filters.pg) {
+                visible = false;
+            }
+            
+            // Status filter
+            if (filters.status && filters.status !== 'all') {
+                const statuses = filters.status.split(',');
+                if (!statuses.includes(row.dataset.status)) {
+                    visible = false;
+                }
+            }
+            
+            // Priority filter
+            if (filters.priority && row.dataset.priority !== filters.priority) {
+                visible = false;
+            }
+            
+            // Category filter
+            if (filters.category && row.dataset.category !== filters.category) {
+                visible = false;
+            }
+            
+            // Search filter
+            if (filters.search && !row.dataset.searchText.includes(filters.search)) {
+                visible = false;
+            }
+            
+            // Date from filter
+            if (filters.dateFrom && row.dataset.created < filters.dateFrom) {
+                visible = false;
+            }
+            
+            // Date to filter
+            if (filters.dateTo && row.dataset.created > filters.dateTo) {
+                visible = false;
+            }
+            
+            // Update visibility
+            if (visible) {
+                row.style.display = '';
+                visibleRows.push(row);
+                stats.total++;
+                if (row.dataset.status === 'open') stats.open++;
+                if (row.dataset.status === 'in_progress') stats.in_progress++;
+                if (row.dataset.status === 'solved') stats.solved++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        // Sort visible rows
+        sortRows(visibleRows, filters.sort);
+        
+        // Update stats
+        updateStats(stats);
+        
+        // Show/hide "no complaints" message
+        updateEmptyState(visibleRows.length === 0);
+    }
+    
+    // Sort rows
+    function sortRows(rows, sortBy) {
+        const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
+        const statusOrder = { open: 1, in_progress: 2, solved: 3 };
+        
+        rows.sort((a, b) => {
+            let comparison = 0;
+            
+            switch(sortBy) {
+                case 'created_at':
+                    comparison = a.dataset.created.localeCompare(b.dataset.created);
+                    break;
+                case '-created_at':
+                    comparison = b.dataset.created.localeCompare(a.dataset.created);
+                    break;
+                case 'priority':
+                    comparison = (priorityOrder[a.dataset.priority] || 0) - (priorityOrder[b.dataset.priority] || 0);
+                    break;
+                case '-priority':
+                    comparison = (priorityOrder[b.dataset.priority] || 0) - (priorityOrder[a.dataset.priority] || 0);
+                    break;
+                case 'status':
+                    comparison = (statusOrder[a.dataset.status] || 0) - (statusOrder[b.dataset.status] || 0);
+                    break;
+                case '-status':
+                    comparison = (statusOrder[b.dataset.status] || 0) - (statusOrder[a.dataset.status] || 0);
+                    break;
+            }
+            
+            return comparison;
+        });
+        
+        // Reorder DOM elements
+        if (!tbody) return;
+        rows.forEach(row => tbody.appendChild(row));
+    }
+    
+    // Update statistics
+    function updateStats(stats) {
+        if (statsCards.total) statsCards.total.textContent = stats.total;
+        if (statsCards.open) statsCards.open.textContent = stats.open;
+        if (statsCards.in_progress) statsCards.in_progress.textContent = stats.in_progress;
+        if (statsCards.solved) statsCards.solved.textContent = stats.solved;
+    }
+    
+    // Update empty state
+    function updateEmptyState(isEmpty) {
+        const complaintsBody = document.getElementById('complaintsCardBody');
+        if (!complaintsBody) return;
+
+        const tableResponsive = complaintsBody.querySelector('.table-responsive');
+        const existingEmpty = complaintsBody.querySelector('.no-complaints');
+
+        if (isEmpty) {
+            if (tableResponsive) tableResponsive.style.display = 'none';
+            if (!existingEmpty) {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'no-complaints text-center py-5';
+                emptyDiv.innerHTML = `
+                    <i class="bi bi-inbox display-1 text-muted mb-3"></i>
+                    <h5 class="text-muted">No Complaints Found</h5>
+                    <p class="text-muted">Try adjusting your filters or check back later.</p>
+                `;
+                complaintsBody.appendChild(emptyDiv);
+            }
+        } else {
+            if (tableResponsive) tableResponsive.style.display = '';
+            if (existingEmpty) existingEmpty.remove();
+        }
+    }
+    
+    // Update URL without reload
+    function updateURL() {
+        const params = new URLSearchParams();
+        
+        if (filterPg.value) params.set('pg', filterPg.value);
+        if (filterStatus.value && filterStatus.value !== 'open,in_progress') params.set('status', filterStatus.value);
+        if (filterPriority.value) params.set('priority', filterPriority.value);
+        if (filterCategory.value) params.set('category', filterCategory.value);
+        if (filterSearch.value) params.set('search', filterSearch.value);
+        if (filterDateFrom.value) params.set('date_from', filterDateFrom.value);
+        if (filterDateTo.value) params.set('date_to', filterDateTo.value);
+        if (filterSort.value && filterSort.value !== '-created_at') params.set('sort', filterSort.value);
+        
+        const newURL = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+        window.history.replaceState({}, '', newURL);
+    }
+    
+    // Apply filters and update URL
+    function applyFiltersAndUpdateURL() {
+        applyFilters();
+        updateURL();
+    }
+    
+    // Event listeners for immediate filtering
+    filterPg.addEventListener('change', applyFiltersAndUpdateURL);
+    filterStatus.addEventListener('change', applyFiltersAndUpdateURL);
+    filterPriority.addEventListener('change', applyFiltersAndUpdateURL);
+    filterCategory.addEventListener('change', applyFiltersAndUpdateURL);
+    filterDateFrom.addEventListener('change', applyFiltersAndUpdateURL);
+    filterDateTo.addEventListener('change', applyFiltersAndUpdateURL);
+    filterSort.addEventListener('change', applyFiltersAndUpdateURL);
+    
+    // Debounced search with URL update
+    filterSearch.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(function() {
+            applyFiltersAndUpdateURL();
+        }, 300);
+    });
+    
+    // Reset filters
+    resetFilters.addEventListener('click', function() {
+        filterPg.value = '';
+        filterStatus.value = 'open,in_progress';
+        filterPriority.value = '';
+        filterCategory.value = '';
+        filterSearch.value = '';
+        filterDateFrom.value = '';
+        filterDateTo.value = '';
+        filterSort.value = '-created_at';
+        applyFiltersAndUpdateURL();
+    });
+    
+    // Initialize filters from URL parameters
+    initializeFiltersFromURL();
+    
+    // Initial filter application
+    applyFilters();
+});
+</script>
 {% endblock %}
