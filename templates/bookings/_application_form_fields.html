@@ -43,9 +43,9 @@
       <div class="col-md-4">{{ form.marital_status.label_tag }} {{ form.marital_status }}{% if form.marital_status.errors %}<div class="text-danger small">{{ form.marital_status.errors|striptags }}</div>{% endif %}</div>
       <div class="col-md-4">{{ form.education.label_tag }} {{ form.education }}{% if form.education.errors %}<div class="text-danger small">{{ form.education.errors|striptags }}</div>{% endif %}</div>
       <div class="col-md-4">{{ form.occupation.label_tag }} {{ form.occupation }}{% if form.occupation.errors %}<div class="text-danger small">{{ form.occupation.errors|striptags }}</div>{% endif %}</div>
-      <div class="col-md-4">{{ form.org_name.label_tag }} {{ form.org_name }}{% if form.org_name.errors %}<div class="text-danger small">{{ form.org_name.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-md-4"><label class="form-label" for="id_org_name">Company/College Name</label> {{ form.org_name }}{% if form.org_name.errors %}<div class="text-danger small">{{ form.org_name.errors|striptags }}</div>{% endif %}</div>
       <div class="col-md-4">{{ form.aadhaar_number.label_tag }} {{ form.aadhaar_number }}{% if form.aadhaar_number.errors %}<div class="text-danger small">{{ form.aadhaar_number.errors|striptags }}</div>{% endif %}</div>
-      <div class="col-12">{{ form.org_address.label_tag }} {{ form.org_address }}{% if form.org_address.errors %}<div class="text-danger small">{{ form.org_address.errors|striptags }}</div>{% endif %}</div>
+      <div class="col-12"><label class="form-label" for="id_org_address">Company/College Address</label> {{ form.org_address }}{% if form.org_address.errors %}<div class="text-danger small">{{ form.org_address.errors|striptags }}</div>{% endif %}</div>
     </div>
   </div>
 
@@ -266,6 +266,12 @@
     const capBtn = document.getElementById('qbBtnCaptureSelfie');
     const retakeBtn = document.getElementById('qbBtnRetakeSelfie');
     const gateMsg = document.getElementById('qbSelfieGateMsg');
+
+    // Blob storage to prevent file access errors
+    let storedBlob1 = null;
+    let storedFileName1 = '';
+    let storedBlob2 = null;
+    let storedFileName2 = '';
 
     function forceStopSelfieCamera(){
       const video = document.getElementById('qbSelfieVideo');
@@ -521,28 +527,50 @@
       
       const file = input1.files && input1.files.length > 0 ? input1.files[0] : null;
       if (!file) {
+        storedBlob1 = null;
+        storedFileName1 = '';
         checkAndEnableSelfie();
         // Clear Document 2 if Document 1 is removed
         if (input2) {
           input2.value = '';
           input2.disabled = true;
         }
+        storedBlob2 = null;
+        storedFileName2 = '';
         clearPreview(preview2);
         return;
       }
 
-      // Check file size (2MB limit)
-      if (file.size > 2*1024*1024){
-        showToast(`File too large: ${file.name} (${bytesToMB(file.size)} MB). Max allowed is 2 MB.`, 'danger');
+      // IMMEDIATELY read file into Blob to prevent access issues
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        storedBlob1 = new Blob([arrayBuffer], { type: file.type });
+        storedFileName1 = file.name;
+        console.log('[Aadhaar] Document 1 captured to Blob:', storedFileName1, storedBlob1.size, 'bytes');
+      } catch (err) {
+        console.error('[Aadhaar] Failed to read Document 1 into Blob:', err);
+        showToast('Cannot access file. Please try selecting the file again.', 'danger');
         input1.value = '';
+        storedBlob1 = null;
+        storedFileName1 = '';
         checkAndEnableSelfie();
         return;
       }
 
-      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      const fileName = file.name.toLowerCase();
+      // Check file size (2MB limit)
+      if (storedBlob1.size > 2*1024*1024){
+        showToast(`File too large: ${storedFileName1} (${bytesToMB(storedBlob1.size)} MB). Max allowed is 2 MB.`, 'danger');
+        input1.value = '';
+        storedBlob1 = null;
+        storedFileName1 = '';
+        checkAndEnableSelfie();
+        return;
+      }
+
+      const isPdf = storedBlob1.type === 'application/pdf' || storedFileName1.toLowerCase().endsWith('.pdf');
+      const fileName = storedFileName1.toLowerCase();
       // Accept all image formats including HEIC, HEIF, WebP, AVIF, etc.
-      const isImage = file.type.startsWith('image/') || 
+      const isImage = storedBlob1.type.startsWith('image/') || 
                       fileName.endsWith('.heic') || 
                       fileName.endsWith('.heif') ||
                       fileName.endsWith('.jpg') || 
@@ -558,33 +586,41 @@
       if (!isPdf && !isImage){
         showToast('Please upload a PDF or image file (JPG, PNG, HEIC, WebP, etc.).', 'danger');
         input1.value = '';
+        storedBlob1 = null;
+        storedFileName1 = '';
         checkAndEnableSelfie();
         return;
       }
 
       if (isPdf){
         // If PDF, disable Document 2 and clear it
-        if (await pdfLooksEncrypted(file)){
+        if (await pdfLooksEncrypted(new File([storedBlob1], storedFileName1, { type: storedBlob1.type }))){
           showToast('Please select a PDF which is not password protected.', 'danger');
           input1.value = '';
+          storedBlob1 = null;
+          storedFileName1 = '';
           checkAndEnableSelfie();
           return;
         }
-        const success = await renderPdf(file, preview1);
+        const success = await renderPdf(new File([storedBlob1], storedFileName1, { type: storedBlob1.type }), preview1);
         if (success){
           if (input2) {
             input2.value = '';
             input2.disabled = true;
             clearPreview(preview2);
+            storedBlob2 = null;
+            storedFileName2 = '';
           }
           checkAndEnableSelfie();
         } else {
           input1.value = '';
+          storedBlob1 = null;
+          storedFileName1 = '';
           checkAndEnableSelfie();
         }
       } else {
         // Image - enable Document 2
-        renderImage(file, preview1);
+        renderImage(new File([storedBlob1], storedFileName1, { type: storedBlob1.type }), preview1);
         if (input2) {
           input2.disabled = false;
         }
@@ -598,18 +634,39 @@
       clearPreview(preview2);
       
       const file = input2.files && input2.files.length > 0 ? input2.files[0] : null;
-      if (!file) return;
-
-      // Check file size (2MB limit)
-      if (file.size > 2*1024*1024){
-        showToast(`File too large: ${file.name} (${bytesToMB(file.size)} MB). Max allowed is 2 MB.`, 'danger');
-        input2.value = '';
+      if (!file) {
+        storedBlob2 = null;
+        storedFileName2 = '';
         return;
       }
 
-      const fileName = file.name.toLowerCase();
+      // IMMEDIATELY read file into Blob to prevent access issues
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        storedBlob2 = new Blob([arrayBuffer], { type: file.type });
+        storedFileName2 = file.name;
+        console.log('[Aadhaar] Document 2 captured to Blob:', storedFileName2, storedBlob2.size, 'bytes');
+      } catch (err) {
+        console.error('[Aadhaar] Failed to read Document 2 into Blob:', err);
+        showToast('Cannot access file. Please try selecting the file again.', 'danger');
+        input2.value = '';
+        storedBlob2 = null;
+        storedFileName2 = '';
+        return;
+      }
+
+      // Check file size (2MB limit)
+      if (storedBlob2.size > 2*1024*1024){
+        showToast(`File too large: ${storedFileName2} (${bytesToMB(storedBlob2.size)} MB). Max allowed is 2 MB.`, 'danger');
+        input2.value = '';
+        storedBlob2 = null;
+        storedFileName2 = '';
+        return;
+      }
+
+      const fileName = storedFileName2.toLowerCase();
       // Accept all image formats including HEIC, HEIF, WebP, AVIF, etc.
-      const isImage = file.type.startsWith('image/') || 
+      const isImage = storedBlob2.type.startsWith('image/') || 
                       fileName.endsWith('.heic') || 
                       fileName.endsWith('.heif') ||
                       fileName.endsWith('.jpg') || 
@@ -625,16 +682,54 @@
       if (!isImage){
         showToast('Document 2 must be an image file (JPG, PNG, HEIC, WebP, etc.).', 'danger');
         input2.value = '';
+        storedBlob2 = null;
+        storedFileName2 = '';
         return;
       }
 
-      renderImage(file, preview2);
+      renderImage(new File([storedBlob2], storedFileName2, { type: storedBlob2.type }), preview2);
     });
 
     // Initialize
     checkAndEnableSelfie();
     if (input2) {
       input2.disabled = true; // Disabled until Document 1 is an image
+    }
+
+    // Intercept form submission to use stored Blobs instead of file inputs
+    const form = input1 ? input1.closest('form') : null;
+    if (form) {
+      form.addEventListener('submit', function(e) {
+        // Replace file inputs with stored Blobs
+        if (storedBlob1 && storedFileName1) {
+          console.log('[Aadhaar] Replacing Document 1 input with stored Blob on submit');
+          try {
+            // Create new File from Blob
+            const file = new File([storedBlob1], storedFileName1, { type: storedBlob1.type });
+            // Create new DataTransfer to set files
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input1.files = dt.files;
+            console.log('[Aadhaar] Document 1 replaced successfully:', input1.files[0].name, input1.files[0].size);
+          } catch (err) {
+            console.error('[Aadhaar] Failed to replace Document 1:', err);
+            // Don't prevent submission - the Blob should work even if file replacement fails
+          }
+        }
+
+        if (storedBlob2 && storedFileName2) {
+          console.log('[Aadhaar] Replacing Document 2 input with stored Blob on submit');
+          try {
+            const file = new File([storedBlob2], storedFileName2, { type: storedBlob2.type });
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input2.files = dt.files;
+            console.log('[Aadhaar] Document 2 replaced successfully:', input2.files[0].name, input2.files[0].size);
+          } catch (err) {
+            console.error('[Aadhaar] Failed to replace Document 2:', err);
+          }
+        }
+      }, true); // Use capture phase to run before other handlers
     }
   })();
 

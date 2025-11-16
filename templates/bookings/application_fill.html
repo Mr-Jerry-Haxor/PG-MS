@@ -611,6 +611,12 @@
   const preview2 = document.getElementById('aadhaarPreview2');
   const selfieCameraBtn = document.getElementById('btnStartSelfie');
 
+  // Blob storage to prevent file access errors
+  let storedBlob1 = null;
+  let storedFileName1 = '';
+  let storedBlob2 = null;
+  let storedFileName2 = '';
+
   function ensureToastContainer(){
     if (!document.getElementById('toastContainer')) {
       const container = document.createElement('div');
@@ -849,7 +855,11 @@
     clearPreview(preview1);
     
     if (!file) {
+      storedBlob1 = null;
+      storedFileName1 = '';
       if (input2) { input2.disabled = true; input2.value = ''; }
+      storedBlob2 = null;
+      storedFileName2 = '';
       revokeAll(preview2);
       clearPreview(preview2);
       checkAndEnableSelfie();
@@ -858,10 +868,31 @@
 
     console.log('[Doc1] File selected:', file.name, file.type, bytesToMB(file.size) + 'MB');
 
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    const fileName = file.name.toLowerCase();
+    // IMMEDIATELY read file into Blob to prevent access issues
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      storedBlob1 = new Blob([arrayBuffer], { type: file.type });
+      storedFileName1 = file.name;
+      console.log('[Doc1] File captured to Blob:', storedFileName1, storedBlob1.size, 'bytes');
+    } catch (err) {
+      console.error('[Doc1] Failed to read file into Blob:', err);
+      showToast('Cannot access file. Please try: 1) Copy file to Downloads folder, 2) Use a different file, or 3) Try another browser.', 'danger');
+      this.value = '';
+      storedBlob1 = null;
+      storedFileName1 = '';
+      if (input2) { input2.disabled = true; input2.value = ''; }
+      storedBlob2 = null;
+      storedFileName2 = '';
+      revokeAll(preview2);
+      clearPreview(preview2);
+      checkAndEnableSelfie();
+      return;
+    }
+
+    const isPdf = storedBlob1.type === 'application/pdf' || storedFileName1.toLowerCase().endsWith('.pdf');
+    const fileName = storedFileName1.toLowerCase();
     // Accept all image formats including HEIC, HEIF, WebP, AVIF, etc.
-    const isImage = file.type.startsWith('image/') || 
+    const isImage = storedBlob1.type.startsWith('image/') || 
                     fileName.endsWith('.heic') || 
                     fileName.endsWith('.heif') ||
                     fileName.endsWith('.jpg') || 
@@ -877,42 +908,41 @@
     if (!isPdf && !isImage) {
       showToast('Please upload a PDF or image file (JPG, PNG, HEIC, WebP, etc.).', 'danger');
       this.value = '';
+      storedBlob1 = null;
+      storedFileName1 = '';
       if (input2) { input2.disabled = true; input2.value = ''; }
+      storedBlob2 = null;
+      storedFileName2 = '';
       revokeAll(preview2);
       clearPreview(preview2);
       checkAndEnableSelfie();
       return;
     }
 
-    if (file.size > 2097152) {
-      showToast(`File too large (${bytesToMB(file.size)} MB). Maximum 2 MB allowed. Please compress or resize the file.`, 'danger');
+    if (storedBlob1.size > 2097152) {
+      showToast(`File too large (${bytesToMB(storedBlob1.size)} MB). Maximum 2 MB allowed. Please compress or resize the file.`, 'danger');
       this.value = '';
+      storedBlob1 = null;
+      storedFileName1 = '';
       if (input2) { input2.disabled = true; input2.value = ''; }
+      storedBlob2 = null;
+      storedFileName2 = '';
       revokeAll(preview2);
       clearPreview(preview2);
-      checkAndEnableSelfie();
-      return;
-    }
-
-    // Check file readability
-    try {
-      const testRead = await file.slice(0, 1024).arrayBuffer();
-      console.log('[Doc1] File is readable');
-    } catch (readErr) {
-      console.error('[Doc1] File read error:', readErr);
-      showToast('Cannot access this file. Please try: 1) Copy file to a different location, 2) Use a different file, or 3) Try a different browser.', 'warning');
-      // Don't clear the input - let them try to submit anyway
-      preview1.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Cannot preview file (access error). File is selected and will be uploaded when you submit.</div>';
       checkAndEnableSelfie();
       return;
     }
 
     if (isPdf) {
-      const encrypted = await pdfLooksEncrypted(file);
+      const encrypted = await pdfLooksEncrypted(new File([storedBlob1], storedFileName1, { type: storedBlob1.type }));
       if (encrypted) {
         showToast('Password-protected PDFs are not allowed. Please remove the password or use an image instead.', 'danger');
         this.value = '';
+        storedBlob1 = null;
+        storedFileName1 = '';
         if (input2) { input2.disabled = true; input2.value = ''; }
+        storedBlob2 = null;
+        storedFileName2 = '';
         revokeAll(preview2);
         clearPreview(preview2);
         checkAndEnableSelfie();
@@ -920,17 +950,19 @@
       }
       
       showToast('PDF document uploaded successfully!', 'success');
-      await renderPdf(file, preview1);
+      await renderPdf(new File([storedBlob1], storedFileName1, { type: storedBlob1.type }), preview1);
       
       if (input2) {
         input2.disabled = true;
         input2.value = '';
+        storedBlob2 = null;
+        storedFileName2 = '';
         revokeAll(preview2);
         clearPreview(preview2);
       }
     } else {
       showToast('Image document uploaded successfully!', 'success');
-      renderImage(file, preview1);
+      renderImage(new File([storedBlob1], storedFileName1, { type: storedBlob1.type }), preview1);
       if (input2) input2.disabled = false;
     }
     
@@ -943,13 +975,32 @@
     revokeAll(preview2);
     clearPreview(preview2);
     
-    if (!file) return;
+    if (!file) {
+      storedBlob2 = null;
+      storedFileName2 = '';
+      return;
+    }
 
     console.log('[Doc2] File selected:', file.name, file.type, bytesToMB(file.size) + 'MB');
 
-    const fileName = file.name.toLowerCase();
+    // IMMEDIATELY read file into Blob to prevent access issues
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      storedBlob2 = new Blob([arrayBuffer], { type: file.type });
+      storedFileName2 = file.name;
+      console.log('[Doc2] File captured to Blob:', storedFileName2, storedBlob2.size, 'bytes');
+    } catch (err) {
+      console.error('[Doc2] Failed to read file into Blob:', err);
+      showToast('Cannot access file. Please try: 1) Copy file to Downloads folder, 2) Use a different file, or 3) Try another browser.', 'danger');
+      this.value = '';
+      storedBlob2 = null;
+      storedFileName2 = '';
+      return;
+    }
+
+    const fileName = storedFileName2.toLowerCase();
     // Accept all image formats including HEIC, HEIF, WebP, AVIF, etc.
-    const isImage = file.type.startsWith('image/') || 
+    const isImage = storedBlob2.type.startsWith('image/') || 
                     fileName.endsWith('.heic') || 
                     fileName.endsWith('.heif') ||
                     fileName.endsWith('.jpg') || 
@@ -965,29 +1016,21 @@
     if (!isImage) {
       showToast('Document 2 must be an image file (JPG, PNG, HEIC, WebP, etc.).', 'danger');
       this.value = '';
+      storedBlob2 = null;
+      storedFileName2 = '';
       return;
     }
 
-    if (file.size > 2097152) {
-      showToast(`File too large (${bytesToMB(file.size)} MB). Maximum 2 MB allowed. Please compress or resize the image.`, 'danger');
+    if (storedBlob2.size > 2097152) {
+      showToast(`File too large (${bytesToMB(storedBlob2.size)} MB). Maximum 2 MB allowed. Please compress or resize the image.`, 'danger');
       this.value = '';
-      return;
-    }
-
-    // Check file readability
-    try {
-      const testRead = await file.slice(0, 1024).arrayBuffer();
-      console.log('[Doc2] File is readable');
-    } catch (readErr) {
-      console.error('[Doc2] File read error:', readErr);
-      showToast('Cannot access this file. Please try: 1) Copy file to a different location, 2) Use a different file, or 3) Try a different browser.', 'warning');
-      // Don't clear the input - let them try to submit anyway
-      preview2.innerHTML = '<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Cannot preview file (access error). File is selected and will be uploaded when you submit.</div>';
+      storedBlob2 = null;
+      storedFileName2 = '';
       return;
     }
 
     showToast('Back side image uploaded successfully!', 'success');
-    renderImage(file, preview2);
+    renderImage(new File([storedBlob2], storedFileName2, { type: storedBlob2.type }), preview2);
   });
 
   // Initialize
@@ -1044,6 +1087,35 @@
         return;
       }
     }
+    
+    // CRITICAL: Replace file inputs with stored Blobs to prevent access errors
+    if (storedBlob1 && storedFileName1) {
+      console.log('[Submit] Replacing Document 1 input with stored Blob');
+      try {
+        const file = new File([storedBlob1], storedFileName1, { type: storedBlob1.type });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input1.files = dt.files;
+        console.log('[Submit] Document 1 replaced successfully:', input1.files[0].name, input1.files[0].size);
+      } catch (err) {
+        console.error('[Submit] Failed to replace Document 1:', err);
+        // Don't prevent submission - the stored Blob should work
+      }
+    }
+
+    if (storedBlob2 && storedFileName2) {
+      console.log('[Submit] Replacing Document 2 input with stored Blob');
+      try {
+        const file = new File([storedBlob2], storedFileName2, { type: storedBlob2.type });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input2.files = dt.files;
+        console.log('[Submit] Document 2 replaced successfully:', input2.files[0].name, input2.files[0].size);
+      } catch (err) {
+        console.error('[Submit] Failed to replace Document 2:', err);
+      }
+    }
+    
     // Passed client-side validation; arm guard and show spinner
     guard.inProgress = true;
     guard.ts = now;
