@@ -598,19 +598,29 @@ def handle_booknow_booking(request, pg, has_active, context):
     try:
         with transaction.atomic():
             # Calculate payment_date from joining_date + selected payment day
+            # Rule: if payment_day < joining_day -> payment falls in NEXT month
+            #       else -> payment falls in same month
+            # Cap to last day of target month when needed
             payment_day_raw = request.POST.get('payment_day', '')
             payment_date_calculated = joining_date  # Default to joining_date
             if payment_day_raw:
                 try:
                     payment_day = int(payment_day_raw)
                     if 1 <= payment_day <= 31:
-                        # Build payment_date in the same month as joining_date
-                        # If the day doesn't exist in that month (e.g., Feb 31), use last day of month
                         from calendar import monthrange
-                        year, month = joining_date.year, joining_date.month
-                        max_day = monthrange(year, month)[1]
+                        y = joining_date.year
+                        m = joining_date.month
+                        # If payment day is less than joining day, schedule in next month
+                        if payment_day < joining_date.day:
+                            m += 1
+                            if m > 12:
+                                m = 1
+                                y += 1
+                        # Now pick actual day capped to month's max
+                        max_day = monthrange(y, m)[1]
                         actual_day = min(payment_day, max_day)
-                        payment_date_calculated = joining_date.replace(day=actual_day)
+                        from datetime import date as _date
+                        payment_date_calculated = _date(y, m, actual_day)
                 except (ValueError, TypeError):
                     pass  # Fall back to joining_date
 
@@ -876,19 +886,29 @@ def handle_booknow_booking(request, pg, has_active, context):
     try:
         with transaction.atomic():
             # Calculate payment_date from joining_date + selected payment day
+            # Rule: if payment_day < joining_day -> payment falls in NEXT month
+            #       else -> payment falls in same month
+            # Cap to last day of target month when needed
             payment_day_raw = request.POST.get('payment_day', '')
             payment_date_calculated = joining_date  # Default to joining_date
             if payment_day_raw:
                 try:
                     payment_day = int(payment_day_raw)
                     if 1 <= payment_day <= 31:
-                        # Build payment_date in the same month as joining_date
-                        # If the day doesn't exist in that month (e.g., Feb 31), use last day of month
                         from calendar import monthrange
-                        year, month = joining_date.year, joining_date.month
-                        max_day = monthrange(year, month)[1]
+                        y = joining_date.year
+                        m = joining_date.month
+                        # If payment day is less than joining day, schedule in next month
+                        if payment_day < joining_date.day:
+                            m += 1
+                            if m > 12:
+                                m = 1
+                                y += 1
+                        # Now pick actual day capped to month's max
+                        max_day = monthrange(y, m)[1]
                         actual_day = min(payment_day, max_day)
-                        payment_date_calculated = joining_date.replace(day=actual_day)
+                        from datetime import date as _date
+                        payment_date_calculated = _date(y, m, actual_day)
                 except (ValueError, TypeError):
                     pass  # Fall back to joining_date
 
@@ -1490,13 +1510,20 @@ def application_fill(request, booking_id):
             inst.decl_truth = True
             
             # Update booking's payment_date based on selected payment_day
-            # Calculate payment_date from booking's joining_date + selected day-of-month
+            # Rule: if payment_day < joining_day -> payment falls in NEXT month, else same month
             if booking.joining_date:
                 from calendar import monthrange
-                year, month = booking.joining_date.year, booking.joining_date.month
-                max_day = monthrange(year, month)[1]
+                from datetime import date as _date
+                y = booking.joining_date.year
+                m = booking.joining_date.month
+                if payment_day < booking.joining_date.day:
+                    m += 1
+                    if m > 12:
+                        m = 1
+                        y += 1
+                max_day = monthrange(y, m)[1]
                 actual_day = min(payment_day, max_day)
-                new_payment_date = booking.joining_date.replace(day=actual_day)
+                new_payment_date = _date(y, m, actual_day)
                 if booking.payment_date != new_payment_date:
                     booking.payment_date = new_payment_date
                     booking.save(update_fields=['payment_date'])
