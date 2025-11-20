@@ -138,10 +138,10 @@
       </thead>
       <tbody>
         {% for b in bookings %}
-        <tr data-booking-id="{{ b.id }}" data-start="{{ b.start_date|default:'' }}" 
-          data-joining="{{ b.joining_date|default:'' }}" 
-          data-leaving="{{ b.leaving_date|default:'' }}" 
-          data-payment="{{ b.payment_date|default:'' }}"
+        <tr data-booking-id="{{ b.id }}" data-start="{{ b.start_date|date:"Y-m-d" }}" 
+          data-joining="{{ b.joining_date|date:"Y-m-d" }}" 
+          data-leaving="{{ b.leaving_date|date:"Y-m-d" }}" 
+          data-payment="{{ b.payment_date|date:"Y-m-d" }}"
           data-room="{{ b.room.room_no }}"
           data-booking-type="{{ b.booking_type|default:'regular' }}">
           <td class="bc-name fw-semibold">
@@ -232,7 +232,7 @@
       </thead>
       <tbody>
         {% for b in bookings %}
-        <tr data-booking-id="{{ b.id }}" data-start="{{ b.start_date|default:'' }}" data-joining="{{ b.joining_date|default:'' }}" data-leaving="{{ b.leaving_date|default:'' }}" data-payment="{{ b.payment_date|default:'' }}" data-room="{{ b.room.room_no }}" data-booking-type="{{ b.booking_type|default:'regular' }}">
+        <tr data-booking-id="{{ b.id }}" data-start="{{ b.start_date|date:"Y-m-d" }}" data-joining="{{ b.joining_date|date:"Y-m-d" }}" data-leaving="{{ b.leaving_date|date:"Y-m-d" }}" data-payment="{{ b.payment_date|date:"Y-m-d" }}" data-room="{{ b.room.room_no }}" data-booking-type="{{ b.booking_type|default:'regular' }}">
           <td class="bc-name">
             <div class="d-flex align-items-center gap-2">
               <strong class="me-1">{{ b.user.get_full_name|default:b.user.email }}</strong>
@@ -307,30 +307,41 @@ document.addEventListener('DOMContentLoaded', function() {
   const pageInfoEl = document.getElementById('bcPageInfo');
 
   let currentPage = 1;
-  const today = new Date().toISOString().slice(0, 10);
+  // ISO date string for inputs and a Date object for comparisons (local date at midnight)
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const _now = new Date();
+  const todayOnly = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
   
   function normalize(s){ return (s||'').toString().toLowerCase().trim(); }
 
   // Determine booking type based on joining date and booking_type field
   function determineBookingType(row) {
     const bookingType = (row.dataset.bookingType || '').toString().toLowerCase();
-    const joiningDate = row.dataset.joining || '';
-    const startDate = row.dataset.start || '';
+    const joiningRaw = (row.dataset.joining || '').trim();
+    const startRaw = (row.dataset.start || '').trim();
+
+    function parseISO(s){
+      if (!s) return null;
+      // s expected in YYYY-MM-DD; Date constructor will treat as UTC when '-' separated
+      const d = new Date(s);
+      if (isNaN(d)) return null;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+
+    const joining = parseISO(joiningRaw);
+    const start = parseISO(startRaw);
 
     // 1) If explicitly daywise
     if (bookingType === 'daywise') return 'daywise';
 
     // 2) If joining date is present and in the past or today => regular
-    if (joiningDate && joiningDate <= today) return 'regular';
+    if (joining && joining <= todayOnly) return 'regular';
 
-    // 3) If joining date is in future and start date is today or earlier => advance
-    if (joiningDate && joiningDate > today) {
-      if (startDate && startDate <= today) return 'advance';
-      return 'advance';
-    }
+    // 3) If joining date is in future => advance
+    if (joining && joining > todayOnly) return 'advance';
 
     // 4) If no joining date but start date in future => advance
-    if (!joiningDate && startDate && startDate > today) return 'advance';
+    if (!joining && start && start > todayOnly) return 'advance';
 
     // default
     return 'regular';
