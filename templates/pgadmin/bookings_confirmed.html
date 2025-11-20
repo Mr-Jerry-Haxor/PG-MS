@@ -4,138 +4,253 @@
 {% block title %}Confirmed Bookings • PG-MS{% endblock %}
 {% block content %}
 
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h1 class="h4 mb-0">Confirmed Bookings</h1>
-  <div>
-    {% if pgs and pgs|length > 1 %}
-      <form method="get" class="m-0">
-        <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
-          {% for p in pgs %}
-          <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
-          {% endfor %}
-        </select>
-      </form>
-    {% endif %}
-  </div>
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <h1 class="h4 mb-0 fw-bold">
+    <i class="bi bi-check-circle-fill text-success me-2"></i>Confirmed Bookings
+  </h1>
+  <div class="badge bg-primary fs-6" id="bcTotalCount">0 Bookings</div>
 </div>
 
-<!-- Filters -->
-<div class="card mb-3 p-3">
-  <div class="row g-2 align-items-center">
-    <div class="col-12 col-md-5">
-      <input id="bcSearch" class="form-control" placeholder="Search by name, email or phone..." />
-    </div>
-    <div class="col-6 col-md-2">
-      <select id="bcRoom" class="form-select">
-        <option value="">All rooms</option>
-        {% for room in pg.rooms.all %}
-          <option value="{{ room.room_no }}">Room {{ room.room_no }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-6 col-md-2">
-      <input id="bcFrom" type="date" class="form-control" placeholder="From" />
-    </div>
-    <div class="col-6 col-md-2">
-      <input id="bcTo" type="date" class="form-control" placeholder="To" />
-    </div>
-    <div class="col-6 col-md-1 text-end">
-      <button id="bcClear" class="btn btn-outline-secondary btn-sm">Clear</button>
+<!-- Filters Accordion -->
+<div class="accordion mb-4" id="filtersAccordion">
+  <div class="accordion-item border-0 shadow-sm">
+    <h2 class="accordion-header">
+      <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#filtersCollapse" aria-expanded="true">
+        <i class="bi bi-funnel me-2"></i>
+        <strong>Filters</strong>
+        <span class="badge bg-secondary ms-2" id="activeFiltersCount">0</span>
+      </button>
+    </h2>
+    <div id="filtersCollapse" class="accordion-collapse collapse show">
+      <div class="accordion-body bg-light">
+        <div class="row g-3">
+          <!-- Search -->
+          <div class="col-12 col-md-6 col-lg-4">
+            <label class="form-label small fw-semibold text-muted">
+              <i class="bi bi-search"></i> Search
+            </label>
+            <input id="bcSearch" class="form-control" placeholder="Name, email or phone..." />
+          </div>
+          
+          <!-- Room Filter -->
+          <div class="col-6 col-md-3 col-lg-2">
+            <label class="form-label small fw-semibold text-muted">
+              <i class="bi bi-door-closed"></i> Room
+            </label>
+            <select id="bcRoom" class="form-select">
+              <option value="">All Rooms</option>
+              {% for room in pg.rooms.all %}
+                <option value="{{ room.room_no }}">Room {{ room.room_no }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          
+          <!-- Booking Type Filter -->
+          <div class="col-6 col-md-3 col-lg-2">
+            <label class="form-label small fw-semibold text-muted">
+              <i class="bi bi-calendar-check"></i> Booking Type
+            </label>
+            <select id="bcBookingType" class="form-select">
+              <option value="">All Types</option>
+              <option value="daywise">Day-Wise</option>
+              <option value="regular">Regular Monthly</option>
+              <option value="advance">Advance</option>
+            </select>
+          </div>
+          
+          <!-- From Date -->
+          <div class="col-6 col-md-3 col-lg-2">
+            <label class="form-label small fw-semibold text-muted">
+              <i class="bi bi-calendar-event"></i> From Date
+            </label>
+            <input id="bcFrom" type="date" class="form-control" />
+          </div>
+          
+          <!-- To Date -->
+          <div class="col-6 col-md-3 col-lg-2">
+            <label class="form-label small fw-semibold text-muted">
+              <i class="bi bi-calendar-event"></i> To Date
+            </label>
+            <input id="bcTo" type="date" class="form-control" />
+          </div>
+          
+          <!-- Reset Button -->
+          <div class="col-12 col-md-12 col-lg-12 d-flex align-items-end justify-content-end gap-2">
+            <button id="bcReset" class="btn btn-outline-secondary">
+              <i class="bi bi-arrow-clockwise"></i> Reset Filters
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <!-- Desktop table -->
-<div class="table-responsive d-none d-md-block">
-  <table id="bcTable" class="table table-striped table-hover">
-    <thead class="table-light">
-      <tr>
-        <th data-key="name" class="sortable">Name <span class="sort-indicator"></span></th>
-        <th data-key="email" class="sortable">Email <span class="sort-indicator"></span></th>
-        <th data-key="phone" class="sortable">Phone <span class="sort-indicator"></span></th>
-        <th data-key="room" class="sortable">Room <span class="sort-indicator"></span></th>
-        <th data-key="bed" class="sortable">Bed <span class="sort-indicator"></span></th>
-        <th data-key="start" class="sortable">Booking Date <span class="sort-indicator"></span></th>
-  <th data-key="joining" class="sortable">Joining Date <span class="sort-indicator"></span></th>
-  <th data-key="leaving" class="sortable">Leaving Date <span class="sort-indicator"></span></th>
-  <th>Referral</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for b in bookings %}
-      <tr data-start="{{ b.start_date|default:'' }}" data-joining="{{ b.joining_date|default:'' }}" data-leaving="{{ b.leaving_date|default:'' }}" data-room="{{ b.room.room_no }}">
-        <td class="bc-name">{{ b.user.get_full_name|default:b.user.email }}</td>
-        <td class="bc-email">{{ b.user.email }}</td>
-        <td class="bc-phone">{{ b.user.profile.phone|default:'—' }}</td>
-        <td class="bc-room">{{ b.room.room_no }}</td>
-        <td class="bc-bed">{{ b.share_no }}</td>
-        <td class="bc-start">{{ b.start_date|default:'—' }}</td>
-        <td class="bc-joining">{{ b.joining_date|default:'—' }}</td>
-        <td class="bc-leaving">{{ b.leaving_date|default:'—' }}</td>
-        <td class="bc-referral">
-          {% if b.referred_by_booking %}
-            {{ b.referred_by_booking.user.get_full_name|default:b.referred_by_booking.user.email }} (Room {{ b.referred_by_booking.room.room_no }}, Bed {{ b.referred_by_booking.share_no }})
-          {% elif b.has_application and b.application and b.application.referred_by_booking %}
-            {{ b.application.referred_by_booking.user.get_full_name|default:b.application.referred_by_booking.user.email }} (Room {{ b.application.referred_by_booking.room.room_no }}, Bed {{ b.application.referred_by_booking.share_no }})
-          {% else %}
-            —
-          {% endif %}
-        </td>
-        <td>
-          <button type="button" class="btn btn-sm btn-outline-danger mb-1 bc-cancel-btn" data-booking-id="{{ b.id }}" data-joining="{{ b.joining_date|default:'' }}">Cancel</button>
-          {% if b.has_application %}
-            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View</button>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="card shadow-sm border-0 d-none d-md-block">
+  <div class="table-responsive">
+    <table id="bcTable" class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th data-key="name" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-person-fill text-primary me-1"></i>Name 
+            <span class="sort-indicator"></span>
+          </th>
+          <th data-key="email" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-envelope-fill text-primary me-1"></i>Email 
+            <span class="sort-indicator"></span>
+          </th>
+          <th data-key="phone" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-telephone-fill text-primary me-1"></i>Phone 
+            <span class="sort-indicator"></span>
+          </th>
+          <th data-key="room" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-door-closed-fill text-primary me-1"></i>Room 
+            <span class="sort-indicator"></span>
+          </th>
+          <th data-key="bed" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-bed-fill text-primary me-1"></i>Bed 
+            <span class="sort-indicator"></span>
+          </th>
+          <th data-key="type" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-tag-fill text-primary me-1"></i>Type 
+            <span class="sort-indicator"></span>
+          </th>
+          <th data-key="joining" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-calendar-check-fill text-primary me-1"></i>Joining Date 
+            <span class="sort-indicator"></span>
+          </th>
+          <th data-key="leaving" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-calendar-x-fill text-primary me-1"></i>Leaving Date 
+            <span class="sort-indicator"></span>
+          </th>
+          <th data-key="payment" class="sortable" style="cursor: pointer;">
+            <i class="bi bi-currency-dollar text-primary me-1"></i>Payment Date
+            <span class="sort-indicator"></span>
+          </th>
+          <th>
+            <i class="bi bi-people-fill text-primary me-1"></i>Referral
+          </th>
+          <th class="text-center">
+            <i class="bi bi-gear-fill text-primary me-1"></i>Actions
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bookings %}
+        <tr data-booking-id="{{ b.id }}" data-start="{{ b.start_date|default:'' }}" 
+          data-joining="{{ b.joining_date|default:'' }}" 
+          data-leaving="{{ b.leaving_date|default:'' }}" 
+          data-payment="{{ b.payment_date|default:'' }}"
+          data-room="{{ b.room.room_no }}"
+          data-booking-type="{{ b.booking_type|default:'regular' }}">
+          <td class="bc-name fw-semibold">
+            <i class="bi bi-person-circle text-muted me-2"></i>{{ b.user.get_full_name|default:b.user.email }}
+          </td>
+          <td class="bc-email text-muted small">{{ b.user.email }}</td>
+          <td class="bc-phone">
+            {% if b.user.profile.phone %}
+              <a href="tel:{{ b.user.profile.phone }}" class="text-decoration-none">
+                {{ b.user.profile.phone }}
+              </a>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="bc-room">
+            <span class="badge bg-info">Room {{ b.room.room_no }}</span>
+          </td>
+          <td class="bc-bed">
+            <span class="badge bg-secondary">Bed {{ b.share_no }}</span>
+          </td>
+          <td class="bc-type">
+            <!-- Type badge will be set by JavaScript -->
+          </td>
+          <td class="bc-joining">
+            {% if b.joining_date %}
+              <span class="text-success fw-semibold">{{ b.joining_date }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="bc-leaving">
+            {% if b.leaving_date %}
+              <span class="text-danger">{{ b.leaving_date }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="bc-payment">
+            {% if b.payment_date %}
+              <span class="text-muted">{{ b.payment_date }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="bc-referral small">
+            {% if b.referred_by_booking %}
+              <i class="bi bi-person-check text-success me-1"></i>
+              {{ b.referred_by_booking.user.get_full_name|default:b.referred_by_booking.user.email }}
+              <small class="text-muted">(R{{ b.referred_by_booking.room.room_no }}/B{{ b.referred_by_booking.share_no }})</small>
+            {% elif b.has_application and b.application and b.application.referred_by_booking %}
+              <i class="bi bi-person-check text-success me-1"></i>
+              {{ b.application.referred_by_booking.user.get_full_name|default:b.application.referred_by_booking.user.email }}
+              <small class="text-muted">(R{{ b.application.referred_by_booking.room.room_no }}/B{{ b.application.referred_by_booking.share_no }})</small>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if b.has_application %}
+              <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">
+                <i class="bi bi-eye"></i> View
+              </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 
-<!-- Mobile cards -->
+<!-- Mobile table (horizontal scroll) -->
 <div class="d-block d-md-none">
-  <div class="row g-3">
-    {% for b in bookings %}
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body">
-          <div class="d-flex justify-content-between">
-            <div>
-              <div class="fw-semibold">{{ b.user.get_full_name|default:b.user.email }}</div>
-              <div class="small text-faded">{{ b.user.email }} • {{ b.user.profile.phone|default:'—' }}</div>
+  <div class="table-responsive" style="overflow-x:auto;">
+    <table id="bcMobileTable" class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Room</th>
+          <th>Bed</th>
+          <th>Joining</th>
+          <th>Leaving</th>
+          <th>Payment</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bookings %}
+        <tr data-booking-id="{{ b.id }}" data-start="{{ b.start_date|default:'' }}" data-joining="{{ b.joining_date|default:'' }}" data-leaving="{{ b.leaving_date|default:'' }}" data-payment="{{ b.payment_date|default:'' }}" data-room="{{ b.room.room_no }}" data-booking-type="{{ b.booking_type|default:'regular' }}">
+          <td class="bc-name">
+            <div class="d-flex align-items-center gap-2">
+              <strong class="me-1">{{ b.user.get_full_name|default:b.user.email }}</strong>
+              <span class="bc-mobile-type-badge"></span>
             </div>
-            <div class="text-end small">
-              <div>Room {{ b.room.room_no }}</div>
-              <div>Bed {{ b.share_no }}</div>
-            </div>
-          </div>
-          <div class="mt-2 small text-faded">Start: {{ b.start_date|default:'—' }}{% if b.joining_date %} • Joining: {{ b.joining_date }}{% endif %}</div>
-          {% if b.leaving_date %}
-          <div class="mt-1 small text-faded">Leaving: {{ b.leaving_date }}</div>
-          {% endif %}
-          {% if b.referred_by_booking %}
-          <div class="alert alert-info small mt-2 mb-0">
-            <strong>Referral:</strong>
-            {{ b.referred_by_booking.user.get_full_name|default:b.referred_by_booking.user.email }}
-          </div>
-          {% elif b.has_application and b.application and b.application.referred_by_booking %}
-          <div class="alert alert-info small mt-2 mb-0">
-            <strong>Referral:</strong>
-            {{ b.application.referred_by_booking.user.get_full_name|default:b.application.referred_by_booking.user.email }}
-          </div>
-          {% endif %}
-          <div class="mt-2 d-flex gap-2">
-            <button type="button" class="btn btn-sm btn-outline-danger bc-cancel-btn" data-booking-id="{{ b.id }}" data-joining="{{ b.joining_date|default:'' }}">Cancel</button>
-            {% if b.has_application %}
-              <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View Application</button>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-    {% endfor %}
+            <div class="small text-muted bc-mobile-email">({{ b.user.email }})</div>
+          </td>
+          <td class="bc-phone small">{% if b.user.profile.phone %}<a href="tel:{{ b.user.profile.phone }}">{{ b.user.profile.phone }}</a>{% else %}—{% endif %}</td>
+          <td class="bc-room">{{ b.room.room_no }}</td>
+          <td class="bc-bed">{{ b.share_no }}</td>
+          <td class="bc-joining small">{% if b.joining_date %}{{ b.joining_date }}{% else %}—{% endif %}</td>
+          <td class="bc-leaving small">{% if b.leaving_date %}{{ b.leaving_date }}{% else %}—{% endif %}</td>
+          <td class="bc-payment small">{% if b.payment_date %}{{ b.payment_date }}{% else %}—{% endif %}</td>
+          <td>{% if b.has_application %}<button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View</button>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
@@ -166,21 +281,25 @@
 </div>
 
 <script>
-// Client-side filtering, sorting and pagination for confirmed bookings
+// Enhanced client-side filtering, sorting and pagination for confirmed bookings
 document.addEventListener('DOMContentLoaded', function() {
   const table = document.getElementById('bcTable');
-  const mobileContainer = document.querySelector('.d-block.d-md-none .row');
+  const mobileTable = document.getElementById('bcMobileTable');
 
   const tbody = table ? table.tBodies[0] : null;
   const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
-  const cards = mobileContainer ? Array.from(mobileContainer.querySelectorAll('.col-12')) : [];
+  const mobileTbody = mobileTable ? mobileTable.tBodies[0] : null;
+  const mobileRows = mobileTbody ? Array.from(mobileTbody.querySelectorAll('tr')) : [];
 
   // Filtering elements
   const searchEl = document.getElementById('bcSearch');
   const roomEl = document.getElementById('bcRoom');
+  const bookingTypeEl = document.getElementById('bcBookingType');
   const fromEl = document.getElementById('bcFrom');
   const toEl = document.getElementById('bcTo');
-  const clearEl = document.getElementById('bcClear');
+  const resetEl = document.getElementById('bcReset');
+  const totalCountEl = document.getElementById('bcTotalCount');
+  const activeFiltersEl = document.getElementById('activeFiltersCount');
 
   // Pagination elements
   const pageSizeEl = document.getElementById('bcPageSize');
@@ -188,43 +307,138 @@ document.addEventListener('DOMContentLoaded', function() {
   const pageInfoEl = document.getElementById('bcPageInfo');
 
   let currentPage = 1;
+  const today = new Date().toISOString().slice(0, 10);
+  
   function normalize(s){ return (s||'').toString().toLowerCase().trim(); }
 
-  // Use booking start date (data-start) for date filters
-  function rowStartDate(row){
-    const ds = row.dataset.start || '';
-    return ds || '';
+  // Determine booking type based on joining date and booking_type field
+  function determineBookingType(row) {
+    const bookingType = (row.dataset.bookingType || '').toString().toLowerCase();
+    const joiningDate = row.dataset.joining || '';
+    const startDate = row.dataset.start || '';
+
+    // 1) If explicitly daywise
+    if (bookingType === 'daywise') return 'daywise';
+
+    // 2) If joining date is present and in the past or today => regular
+    if (joiningDate && joiningDate <= today) return 'regular';
+
+    // 3) If joining date is in future and start date is today or earlier => advance
+    if (joiningDate && joiningDate > today) {
+      if (startDate && startDate <= today) return 'advance';
+      return 'advance';
+    }
+
+    // 4) If no joining date but start date in future => advance
+    if (!joiningDate && startDate && startDate > today) return 'advance';
+
+    // default
+    return 'regular';
   }
 
-  function matchesFilters(row){
-    const name = normalize(row.querySelector('.bc-name')?.textContent);
-    const email = normalize(row.querySelector('.bc-email')?.textContent);
-    const phone = normalize(row.querySelector('.bc-phone')?.textContent);
-    const room = normalize(row.dataset.room || row.querySelector('.bc-room')?.textContent);
-    const start = rowStartDate(row);
+  // Set booking type badges for all rows and cards
+  function setBookingTypeBadges() {
+    rows.forEach(row => {
+      const type = determineBookingType(row);
+      const typeCell = row.querySelector('.bc-type');
+      if (typeCell) {
+        let badgeClass = 'bg-primary';
+        let icon = 'bi-calendar-check';
+        let label = 'Regular';
+        
+        if (type === 'daywise') {
+          badgeClass = 'bg-warning text-dark';
+          icon = 'bi-calendar-day';
+          label = 'Day-Wise';
+        } else if (type === 'advance') {
+          badgeClass = 'bg-info';
+          icon = 'bi-calendar-plus';
+          label = 'Advance';
+        }
+        
+        typeCell.innerHTML = `<span class="badge ${badgeClass}"><i class="bi ${icon} me-1"></i>${label}</span>`;
+      }
+    });
+    
+    mobileRows.forEach(card => {
+      const type = determineBookingType(card);
+      const badgeTarget = card.querySelector('.bc-mobile-type-badge');
+      if (badgeTarget) {
+        let badgeClass = 'bg-primary';
+        let icon = 'bi-calendar-check';
+        let label = 'Regular';
 
+        if (type === 'daywise') {
+          badgeClass = 'bg-warning text-dark';
+          icon = 'bi-calendar-day';
+          label = 'Day-Wise';
+        } else if (type === 'advance') {
+          badgeClass = 'bg-info';
+          icon = 'bi-calendar-plus';
+          label = 'Advance';
+        }
+
+        badgeTarget.innerHTML = `<span class="badge ${badgeClass}"><i class="bi ${icon} me-1"></i>${label}</span>`;
+      }
+    });
+  }
+
+  function matchesFilters(row) {
+    const name = normalize(row.querySelector('.bc-name, .bc-mobile-name')?.textContent);
+    const email = normalize(row.querySelector('.bc-email, .bc-mobile-email')?.textContent);
+    const phone = normalize(row.querySelector('.bc-phone, .bc-mobile-phone')?.textContent);
+    const room = normalize(row.dataset.room);
+    const joiningDate = row.dataset.joining || '';
+    
+    // Search filter
     const q = normalize(searchEl.value);
-    if (q){ if (!(name.includes(q) || email.includes(q) || phone.includes(q))) return false; }
+    if (q) {
+      if (!(name.includes(q) || email.includes(q) || phone.includes(q))) return false;
+    }
 
+    // Room filter
     const roomFilter = roomEl.value;
-    if (roomFilter){ if (room !== roomFilter.toString().toLowerCase()) return false; }
+    if (roomFilter) {
+      if (room !== roomFilter.toString().toLowerCase()) return false;
+    }
 
-    const f = fromEl.value; const t = toEl.value;
-    // If a from/to is set, require a start date and compare lexicographically (YYYY-MM-DD)
-    if (f){ if (!start || start < f) return false; }
-    if (t){ if (!start || start > t) return false; }
+    // Booking type filter
+    const typeFilter = bookingTypeEl.value;
+    if (typeFilter) {
+      const rowType = determineBookingType(row);
+      if (rowType !== typeFilter) return false;
+    }
+
+    // Date range filter (using joining date)
+    const f = fromEl.value;
+    const t = toEl.value;
+    if (f) {
+      if (!joiningDate || joiningDate < f) return false;
+    }
+    if (t) {
+      if (!joiningDate || joiningDate > t) return false;
+    }
 
     return true;
   }
 
-  function applyFiltersAndPaginate(){
+  // Count active filters
+  function updateActiveFiltersCount() {
+    let count = 0;
+    if (searchEl.value.trim()) count++;
+    if (roomEl.value) count++;
+    if (bookingTypeEl.value) count++;
+    if (fromEl.value) count++;
+    if (toEl.value) count++;
+    
+    activeFiltersEl.textContent = count;
+    activeFiltersEl.className = count > 0 ? 'badge bg-warning text-dark ms-2' : 'badge bg-secondary ms-2';
+  }
+
+  function applyFiltersAndPaginate() {
     // Determine matched rows/cards
     const matchedRows = rows.filter(matchesFilters);
-    const matchedCards = cards.filter((card, i) => {
-      // mobile cards reuse the corresponding table row for filtering when available
-      const correspondingRow = rows[i];
-      return correspondingRow ? matchesFilters(correspondingRow) : true;
-    });
+    const matchedMobileRows = mobileRows.filter(matchesFilters);
 
     // Pagination
     const pageSize = parseInt(pageSizeEl.value, 10) || 0; // 0 = all
@@ -234,20 +448,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Hide all rows/cards first
     rows.forEach(r => r.style.display = 'none');
-    cards.forEach(c => c.style.display = 'none');
+    mobileRows.forEach(c => c.style.display = 'none');
 
     if (pageSize === 0) {
       // show all matched
       matchedRows.forEach(r => r.style.display = '');
-      matchedCards.forEach(c => c.style.display = '');
+      matchedMobileRows.forEach(c => c.style.display = '');
     } else {
       const startIdx = (currentPage - 1) * pageSize;
       const pageRows = matchedRows.slice(startIdx, startIdx + pageSize);
       pageRows.forEach(r => r.style.display = '');
-      // For mobile, show same index range of cards
-      const pageCards = matchedCards.slice(startIdx, startIdx + pageSize);
-      pageCards.forEach(c => c.style.display = '');
+      const pageMobileRows = matchedMobileRows.slice(startIdx, startIdx + pageSize);
+      pageMobileRows.forEach(c => c.style.display = '');
     }
+
+    // Update total count
+    totalCountEl.textContent = `${total} Booking${total !== 1 ? 's' : ''}`;
+    
+    // Update active filters count
+    updateActiveFiltersCount();
 
     renderPager(pages, total);
   }
@@ -301,12 +520,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const key = th.dataset.key;
         let type = 'string';
   if (['room','bed','phone'].includes(key)) type = 'num';
-  if (['start','joining','leaving'].includes(key)) type = 'date';
+  if (['start','joining','leaving','payment'].includes(key)) type = 'date';
         const columnIndex = Array.from(th.parentNode.children).indexOf(th);
         // sort rows array in place
         rows.sort(comparer(columnIndex, asc, type));
         // reattach rows to tbody
         rows.forEach(r => tbody.appendChild(r));
+        // Reorder mobile rows to match desktop ordering if mobile table exists
+        if (mobileTbody) {
+          const order = rows.map(r => r.dataset.bookingId);
+          mobileRows.sort((a,b) => order.indexOf(a.dataset.bookingId) - order.indexOf(b.dataset.bookingId));
+          mobileRows.forEach(r => mobileTbody.appendChild(r));
+        }
         asc = !asc;
         table.querySelectorAll('.sort-indicator').forEach(si => si.textContent='');
         th.querySelector('.sort-indicator').textContent = asc ? ' ▲' : ' ▼';
@@ -316,50 +541,47 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Wire events
-  [searchEl, roomEl, fromEl, toEl].forEach(el => el && el.addEventListener('input', function(){ currentPage = 1; applyFiltersAndPaginate(); }));
-  if (clearEl) clearEl.addEventListener('click', function(e){ e.preventDefault(); searchEl.value=''; roomEl.value=''; fromEl.value=''; toEl.value=''; currentPage = 1; applyFiltersAndPaginate(); });
-  if (pageSizeEl) pageSizeEl.addEventListener('change', function(){ currentPage = 1; applyFiltersAndPaginate(); });
+  // Wire events - Auto-apply filters
+  [searchEl, roomEl, bookingTypeEl, fromEl, toEl].forEach(el => {
+    if (el) {
+      el.addEventListener('input', function() { 
+        currentPage = 1; 
+        applyFiltersAndPaginate(); 
+      });
+      el.addEventListener('change', function() { 
+        currentPage = 1; 
+        applyFiltersAndPaginate(); 
+      });
+    }
+  });
+  
+  // Reset button
+  if (resetEl) {
+    resetEl.addEventListener('click', function(e) { 
+      e.preventDefault(); 
+      searchEl.value = ''; 
+      roomEl.value = ''; 
+      bookingTypeEl.value = '';
+      fromEl.value = ''; 
+      toEl.value = ''; 
+      currentPage = 1; 
+      applyFiltersAndPaginate(); 
+    });
+  }
+  
+  if (pageSizeEl) {
+    pageSizeEl.addEventListener('change', function() { 
+      currentPage = 1; 
+      applyFiltersAndPaginate(); 
+    });
+  }
+
+  // Set booking type badges
+  setBookingTypeBadges();
 
   // Initial render
   applyFiltersAndPaginate();
 
-});
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-  // Only enable cancel buttons for bookings whose joining_date is in the future
-  const cancelButtons = Array.from(document.querySelectorAll('.bc-cancel-btn'));
-  const today = new Date().toISOString().slice(0,10);
-  cancelButtons.forEach(btn => {
-    const joining = btn.dataset.joining || '';
-    if (!joining || joining <= today) {
-      // hide button when joining is today or in the past
-      btn.classList.add('d-none');
-      return;
-    }
-    btn.addEventListener('click', function(){
-      const bookingId = this.dataset.bookingId;
-      if (!confirm('Cancel this booking? This will mark the booking for cancellation.')) return;
-      // POST to the leave endpoint to request a leave with default leaving_date = joining_date (admin action)
-      const url = `{% url 'pg_booking_leave_direct' 0 %}`.replace('/0/', `/${bookingId}/`);
-      const form = new FormData();
-      form.append('leaving_date', this.dataset.joining);
-      fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRFToken': getCookie('csrftoken') }, body: form })
-        .then(r => r.json())
-        .then(json => {
-          if (json.ok) location.reload();
-          else alert(json.error || 'Failed to cancel booking');
-        }).catch(err => { console.error(err); alert('Request failed'); });
-    });
-  });
-
-  // small helper to read csrf token cookie
-  function getCookie(name) {
-    const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-    return v ? v.pop() : '';
-  }
 });
 </script>
 
