@@ -31,6 +31,9 @@
   /* Smaller preview sizes for documents/images */
   #aadhaarEmbedWrap iframe{height:280px;}
   .doc-thumb-sm{max-width:220px;height:auto;}
+  /* Selfie upload preview styling */
+  #selfieUploadPreview img{border:2px solid #dee2e6;border-radius:14px;max-width:320px;width:100%;}
+  #cameraPermissionDenied{margin-top:0.5rem;margin-bottom:0.5rem;}
 </style>
 
 <h1 class="h4 mb-2">Resident Application</h1>
@@ -202,6 +205,16 @@
           </ul>
         </div>
         
+        <!-- Camera Permission Denied - File Upload Fallback -->
+        <div id="cameraPermissionDenied" class="alert alert-warning small" style="display:none;">
+          <i class="bi bi-exclamation-triangle"></i> <strong>Camera access denied or unavailable.</strong> Please upload your selfie below.
+        </div>
+        
+        <!-- Selfie Upload Preview -->
+        <div id="selfieUploadPreview" class="mb-2" style="display:none;">
+          <!-- Preview for uploaded selfie will be shown here -->
+        </div>
+        
         <!-- Document Upload Required Warning -->
         <div id="docUploadWarning" class="alert alert-secondary small mb-2" role="alert">
           <i class="bi bi-shield-check me-1"></i><strong>Security Note:</strong> You must upload your ID document (Aadhaar) first before capturing your selfie. This ensures document verification.
@@ -232,6 +245,7 @@
             <button class="btn btn-warning d-none d-flex align-items-center gap-1" type="button" id="btnRetakeSelfie" aria-label="Retake photo"><i class="bi bi-arrow-counterclockwise"></i><span class="d-sm-inline">Retake</span></button>
           </div>
           <input type="file" name="selfie" id="selfieInput" class="d-none" accept="image/*" />
+          <input type="file" id="selfieFileUpload" class="form-control mt-2" accept="image/*,.heic,.heif" style="display:none;" />
           <div class="selfie-hint text-center">Center face • Good lighting • No mask • Plain background</div>
           {% if app and app.selfie_url %}
           <div class="form-text">If you don't capture a new selfie, the existing photo will be kept.</div>
@@ -404,6 +418,91 @@
     }
   }
 
+  // File upload elements for fallback
+  const fileUpload = document.getElementById('selfieFileUpload');
+  const uploadBtn = document.getElementById('btnUploadSelfie');
+  const uploadPreview = document.getElementById('selfieUploadPreview');
+  const permissionDeniedEl = document.getElementById('cameraPermissionDenied');
+  let storedSelfieBlob = null;
+  let storedSelfieFileName = '';
+
+  // Function to switch to file upload mode
+  function switchToFileUploadMode() {
+    startBtn.style.display = 'none';
+    captureBtn.style.display = 'none';
+    retakeBtn.classList.add('d-none');
+    videoEl.classList.add('d-none');
+    overlayEl.classList.add('d-none');
+    previewEl.classList.add('d-none');
+    if (fileUpload) fileUpload.style.display = 'block';
+    if (uploadBtn) { uploadBtn.classList.remove('d-none'); uploadBtn.style.display = 'inline-block'; }
+    if (permissionDeniedEl) permissionDeniedEl.style.display = 'block';
+    
+    // Stop any active streams
+    if (selfieStream) {
+      selfieStream.getTracks().forEach(track => track.stop());
+      selfieStream = null;
+    }
+  }
+
+  // Function to revoke blob URLs
+  function revokeUploadPreviewUrls() {
+    if (!uploadPreview) return;
+    const imgs = uploadPreview.querySelectorAll('img');
+    imgs.forEach(img => {
+      if (img.src && img.src.startsWith('blob:')) {
+        try { URL.revokeObjectURL(img.src); } catch(_){}
+      }
+    });
+  }
+
+  // Function to render image preview from blob
+  async function renderSelfiePreview(file) {
+    if (!uploadPreview) return;
+    
+    revokeUploadPreviewUrls();
+    uploadPreview.innerHTML = '';
+    uploadPreview.style.display = 'block';
+    
+    const fileName = file.name.toLowerCase();
+    const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif') || 
+                   file.type === 'image/heic' || file.type === 'image/heif';
+    
+    if (isHeic && window.heic2any) {
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = 'text-muted small';
+      loadingDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Converting image format...';
+      uploadPreview.appendChild(loadingDiv);
+      
+      try {
+        const convertedBlob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 });
+        const convertedFile = new File([convertedBlob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+        uploadPreview.innerHTML = '';
+        displaySelfieImage(convertedFile);
+      } catch (err) {
+        uploadPreview.innerHTML = '<div class="alert alert-warning small">Cannot convert HEIC format. Image will still be uploaded.</div>';
+      }
+    } else {
+      displaySelfieImage(file);
+    }
+  }
+
+  function displaySelfieImage(file) {
+    const url = URL.createObjectURL(file);
+    const img = document.createElement('img');
+    img.src = url;
+    img.className = 'img-fluid border rounded';
+    img.style.maxWidth = '320px';
+    img.style.width = '100%';
+    img.alt = 'Selfie preview';
+    
+    img.onerror = function() {
+      uploadPreview.innerHTML = '<div class="alert alert-warning small">Cannot preview this file. It will still be uploaded.</div>';
+    };
+    
+    uploadPreview.appendChild(img);
+  }
+
   startBtn?.addEventListener('click', async () => {
     const loadingEl = document.getElementById('cameraLoading');
     const warningEl = document.getElementById('cameraAccessWarning');
@@ -411,6 +510,7 @@
     try {
       if (loadingEl) loadingEl.classList.remove('d-none');
       if (warningEl) warningEl.classList.add('d-none');
+      if (permissionDeniedEl) permissionDeniedEl.style.display = 'none';
       
       // Request camera access with specific constraints
       selfieStream = await navigator.mediaDevices.getUserMedia({ 
@@ -435,16 +535,20 @@
       // Determine error type and show appropriate message
       let errorMsg = 'Could not access camera. ';
       let detailedMsg = '';
+      let shouldFallback = false;
       
       if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
         errorMsg = 'Camera permission denied.';
-        detailedMsg = 'Please click the camera icon in your browser\'s address bar and allow camera access, then try again.';
+        detailedMsg = 'Please upload your selfie instead.';
+        shouldFallback = true;
       } else if (e.name === 'NotFoundError' || e.name === 'DevicesNotFoundError') {
         errorMsg = 'No camera found.';
-        detailedMsg = 'Please ensure your device has a camera and it\'s properly connected.';
+        detailedMsg = 'Please upload your selfie instead.';
+        shouldFallback = true;
       } else if (e.name === 'NotReadableError' || e.name === 'TrackStartError') {
         errorMsg = 'Camera is already in use.';
-        detailedMsg = 'Please close other apps using the camera (like Zoom, Teams, Skype) and try again.';
+        detailedMsg = 'Please close other apps using the camera and try again, or upload your selfie.';
+        shouldFallback = true;
       } else if (e.name === 'OverconstrainedError') {
         errorMsg = 'Camera settings not supported.';
         detailedMsg = 'Your camera doesn\'t support the required settings. Trying with default settings...';
@@ -460,24 +564,27 @@
           if (loadingEl) loadingEl.classList.add('d-none');
           return; // Success on retry
         } catch (retryErr) {
-          detailedMsg = 'Camera not compatible. Please try using a different device or browser.';
+          detailedMsg = 'Camera not compatible. Please upload your selfie instead.';
+          shouldFallback = true;
         }
       } else if (e.name === 'SecurityError') {
         errorMsg = 'Camera access blocked by security settings.';
-        detailedMsg = 'Please ensure you\'re using HTTPS or localhost. Camera requires a secure connection.';
+        detailedMsg = 'Please ensure you\'re using HTTPS or localhost. You can upload your selfie instead.';
+        shouldFallback = true;
       } else {
-        detailedMsg = e.message || 'Unknown error occurred. Please try refreshing the page or using a different browser.';
+        detailedMsg = e.message || 'Unknown error occurred. You can upload your selfie instead.';
+        shouldFallback = true;
       }
       
       // Show detailed error
-      showToast(errorMsg + ' ' + detailedMsg, 'danger');
+      showToast(errorMsg + ' ' + detailedMsg, 'warning');
       
-      // Show the warning panel
-      if (warningEl) warningEl.classList.remove('d-none');
-      
-      // Try to show camera permission modal if available
-      if (typeof window.showCameraPermissionModal === 'function') {
-        window.showCameraPermissionModal('Resident application selfie capture needs camera access.');
+      // Switch to file upload mode if camera unavailable
+      if (shouldFallback) {
+        switchToFileUploadMode();
+      } else {
+        // Show the warning panel for retryable errors
+        if (warningEl) warningEl.classList.remove('d-none');
       }
       
     } finally {
@@ -530,6 +637,82 @@
     retakeBtn.classList.add('d-none');
     startBtn.click();
   });
+
+  // File upload handler with blob storage (fallback mode)
+  if (fileUpload) {
+    fileUpload.addEventListener('change', async function(e) {
+      const file = e.target.files[0];
+      if (!file) {
+        storedSelfieBlob = null;
+        storedSelfieFileName = '';
+        selfieInput.value = '';
+        if (uploadPreview) uploadPreview.style.display = 'none';
+        revokeUploadPreviewUrls();
+        return;
+      }
+      
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
+      const fileName = file.name.toLowerCase();
+      const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif');
+      
+      if (!validTypes.includes(file.type) && !isHeic) {
+        showToast('Invalid file type. Please upload a valid image file.', 'danger');
+        e.target.value = '';
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        showToast('File size too large. Please upload an image smaller than 5MB.', 'danger');
+        e.target.value = '';
+        return;
+      }
+      
+      // Store in blob
+      storedSelfieBlob = file;
+      storedSelfieFileName = file.name;
+      
+      // Validate using face detection if available
+      const isValid = await validateSelfieFile(file);
+      if (!isValid) {
+        e.target.value = '';
+        storedSelfieBlob = null;
+        storedSelfieFileName = '';
+        return;
+      }
+      
+      // Populate hidden input for form submission
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      selfieInput.files = dt.files;
+      selfieOk = true;
+      
+      showToast('Selfie uploaded successfully!', 'success');
+      
+      // Show preview
+      await renderSelfiePreview(file);
+    });
+  }
+
+  // Bind upload button to open file chooser and show existing selfie if present
+  if (uploadBtn && fileUpload) {
+    uploadBtn.addEventListener('click', function(){ fileUpload.click(); });
+    try {
+      const existing = fileUpload.dataset && fileUpload.dataset.existingSelfie ? fileUpload.dataset.existingSelfie : '';
+      if (existing && uploadPreview) {
+        uploadPreview.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = existing;
+        img.alt = 'Existing selfie';
+        img.className = 'img-fluid border rounded';
+        img.style.maxWidth = '320px'; img.style.width = '100%';
+        uploadPreview.appendChild(img);
+        uploadPreview.style.display = 'block';
+        uploadBtn.classList.remove('d-none'); uploadBtn.style.display = 'inline-block';
+      }
+    } catch (_) {}
+  }
 
   // No manual upload button now
 

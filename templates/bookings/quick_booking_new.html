@@ -106,6 +106,12 @@
               <canvas id="canvas" style="display:none;"></canvas>
               <img id="selfiePreview" style="max-width:320px; width:100%; display:none;" />
             </div>
+            <div id="selfieUploadPreview" class="mb-2" style="display:none;">
+              <!-- Preview for uploaded selfie will be shown here -->
+            </div>
+            <div id="cameraPermissionWarning" class="alert alert-warning small" style="display:none;">
+              <i class="bi bi-exclamation-triangle"></i> Camera access denied or unavailable. Please upload your selfie below.
+            </div>
             <button type="button" class="btn btn-sm btn-primary" id="startCamera">
               <i class="bi bi-camera"></i> Start Camera
             </button>
@@ -115,6 +121,10 @@
             <button type="button" class="btn btn-sm btn-secondary" id="retakeBtn" style="display:none;">
               <i class="bi bi-arrow-clockwise"></i> Retake
             </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="uploadSelfieBtn" style="display:none;">
+              <i class="bi bi-upload"></i> Upload Selfie
+            </button>
+            <input type="file" class="form-control mt-2" id="selfieFileUpload" name="daywise_selfie_file" accept="image/*,.heic,.heif" style="display:none;" data-existing-selfie="">
             <input type="hidden" name="daywise_selfie_data" id="selfieData" data-daywise-required="true">
           </div>
           
@@ -265,7 +275,20 @@
   border: 2px solid #dee2e6;
   border-radius: 0.375rem;
 }
+
+#selfieUploadPreview img {
+  border: 2px solid #dee2e6;
+  border-radius: 0.375rem;
+}
+
+#cameraPermissionWarning {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
 </style>
+
+<!-- HEIC image format support -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
 <!-- Small helper to expose server-side flags to JS without embedding template tags inside scripts -->
 <input type="hidden" id="qbHasErrors" value="{{ errors|length|default:0 }}">
@@ -509,7 +532,7 @@ function resetBookingType() {
   location.reload();
 }
 
-// Selfie capture functionality
+// Selfie capture functionality with camera permission fallback
 function setupSelfieCapture() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
@@ -518,10 +541,111 @@ function setupSelfieCapture() {
   const retakeBtn = document.getElementById('retakeBtn');
   const preview = document.getElementById('selfiePreview');
   const selfieData = document.getElementById('selfieData');
+  const fileUpload = document.getElementById('selfieFileUpload');
+  const uploadPreview = document.getElementById('selfieUploadPreview');
+  const uploadBtn = document.getElementById('uploadSelfieBtn');
+  const permissionWarning = document.getElementById('cameraPermissionWarning');
   let stream = null;
+  let storedSelfieBlob = null;
+  let storedSelfieFileName = '';
   
   if (!startBtn) return;
   
+  // Function to switch to file upload mode
+  function switchToFileUploadMode() {
+    startBtn.style.display = 'none';
+    captureBtn.style.display = 'none';
+    retakeBtn.style.display = 'none';
+    video.style.display = 'none';
+    preview.style.display = 'none';
+    fileUpload.style.display = 'block';
+    permissionWarning.style.display = 'block';
+    if (uploadBtn) { uploadBtn.style.display = 'inline-block'; }
+    
+    // Stop any active streams
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+  }
+  
+  // Function to show toast notification
+  function showSelfieToast(msg, variant) {
+    if (!document.getElementById('toastContainer')) {
+      const container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container position-fixed top-0 end-0 p-3';
+      container.style.zIndex = '9999';
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${variant} border-0`;
+    toast.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    document.getElementById('toastContainer').appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    toast.addEventListener('hidden.bs.toast', ()=> toast.remove());
+  }
+  
+  // Function to revoke blob URLs
+  function revokeUploadPreviewUrls() {
+    if (!uploadPreview) return;
+    const imgs = uploadPreview.querySelectorAll('img');
+    imgs.forEach(img => {
+      if (img.src && img.src.startsWith('blob:')) {
+        try { URL.revokeObjectURL(img.src); } catch(_){}
+      }
+    });
+  }
+  
+  // Function to render image preview from blob
+  async function renderSelfiePreview(file) {
+    if (!uploadPreview) return;
+    
+    revokeUploadPreviewUrls();
+    uploadPreview.innerHTML = '';
+    uploadPreview.style.display = 'block';
+    
+    const fileName = file.name.toLowerCase();
+    const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif') || 
+                   file.type === 'image/heic' || file.type === 'image/heif';
+    
+    if (isHeic && window.heic2any) {
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = 'text-muted small';
+      loadingDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2" role="status"></div>Converting image format...';
+      uploadPreview.appendChild(loadingDiv);
+      
+      try {
+        const convertedBlob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 });
+        const convertedFile = new File([convertedBlob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+        uploadPreview.innerHTML = '';
+        displaySelfieImage(convertedFile);
+      } catch (err) {
+        uploadPreview.innerHTML = '<div class="alert alert-warning small">Cannot convert HEIC format. Image will still be uploaded.</div>';
+      }
+    } else {
+      displaySelfieImage(file);
+    }
+  }
+  
+  function displaySelfieImage(file) {
+    const url = URL.createObjectURL(file);
+    const img = document.createElement('img');
+    img.src = url;
+    img.className = 'img-fluid border rounded';
+    img.style.maxWidth = '320px';
+    img.style.width = '100%';
+    img.alt = 'Selfie preview';
+    
+    img.onerror = function() {
+      uploadPreview.innerHTML = '<div class="alert alert-warning small">Cannot preview this file. It will still be uploaded.</div>';
+    };
+    
+    uploadPreview.appendChild(img);
+  }
+  
+  // Start camera button handler
   startBtn.addEventListener('click', async function() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -529,18 +653,32 @@ function setupSelfieCapture() {
       video.style.display = 'block';
       startBtn.style.display = 'none';
       captureBtn.style.display = 'inline-block';
+      permissionWarning.style.display = 'none';
     } catch (err) {
-      alert('Could not access camera: ' + err.message);
+      console.error('Camera access error:', err);
+      
+      // Check if it's a permission error or camera not available
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        showSelfieToast('Camera permission denied. Please upload your selfie instead.', 'warning');
+      } else if (err.name === 'NotFoundError') {
+        showSelfieToast('No camera found. Please upload your selfie instead.', 'warning');
+      } else {
+        showSelfieToast('Camera not accessible: ' + err.message, 'warning');
+      }
+      
+      // Switch to file upload mode
+      switchToFileUploadMode();
     }
   });
   
+  // Capture button handler
   captureBtn.addEventListener('click', function() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0);
     
-    const imageData = canvas.toDataURL('image/jpeg');
+    const imageData = canvas.toDataURL('image/jpeg', 0.92);
     selfieData.value = imageData;
     
     preview.src = imageData;
@@ -552,15 +690,88 @@ function setupSelfieCapture() {
     // Stop camera
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
+      stream = null;
     }
   });
   
+  // Retake button handler
   retakeBtn.addEventListener('click', function() {
     preview.style.display = 'none';
     retakeBtn.style.display = 'none';
     startBtn.style.display = 'inline-block';
     selfieData.value = '';
   });
+  
+  // File upload handler with blob storage
+  if (fileUpload) {
+    fileUpload.addEventListener('change', async function(e) {
+      const file = e.target.files[0];
+      if (!file) {
+        storedSelfieBlob = null;
+        storedSelfieFileName = '';
+        selfieData.value = '';
+        uploadPreview.style.display = 'none';
+        revokeUploadPreviewUrls();
+        return;
+      }
+      
+      // Validate file type
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
+      const fileName = file.name.toLowerCase();
+      const isHeic = fileName.endsWith('.heic') || fileName.endsWith('.heif');
+      
+      if (!validTypes.includes(file.type) && !isHeic) {
+        showSelfieToast('Invalid file type. Please upload a valid image file.', 'danger');
+        e.target.value = '';
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        showSelfieToast('File size too large. Please upload an image smaller than 5MB.', 'danger');
+        e.target.value = '';
+        return;
+      }
+      
+      // Store in blob
+      storedSelfieBlob = file;
+      storedSelfieFileName = file.name;
+      
+      // Convert to base64 for form submission (same as camera capture)
+      const reader = new FileReader();
+      reader.onload = function(readerEvent) {
+        selfieData.value = readerEvent.target.result;
+        showSelfieToast('Selfie uploaded successfully!', 'success');
+      };
+      reader.onerror = function() {
+        showSelfieToast('Error reading file. Please try again.', 'danger');
+        e.target.value = '';
+      };
+      reader.readAsDataURL(file);
+      
+      // Show preview
+      await renderSelfiePreview(file);
+    });
+  }
+
+  // Bind upload button to open file chooser and show existing selfie if present
+  if (uploadBtn && fileUpload) {
+    uploadBtn.addEventListener('click', function(){ fileUpload.click(); });
+    try {
+      const existing = fileUpload.dataset && fileUpload.dataset.existingSelfie ? fileUpload.dataset.existingSelfie : '';
+      if (existing && uploadPreview) {
+        uploadPreview.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = existing;
+        img.alt = 'Existing selfie';
+        img.className = 'img-fluid border rounded';
+        img.style.maxWidth = '320px'; img.style.width = '100%';
+        uploadPreview.appendChild(img);
+        uploadPreview.style.display = 'block';
+        uploadBtn.style.display = 'inline-block';
+      }
+    } catch (_) {}
+  }
 }
 
 // Load rooms for future booking
