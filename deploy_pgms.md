@@ -7,7 +7,7 @@ This file contains the full step-by-step deployment guide for your **PGMS** Djan
 ## 1. Update and Install System Packages
 
 ```bash
-sudo apt-get update && sudo apt-get upgrade -y
+sudo apt update && sudo apt upgrade -y
 sudo apt install python3-pip python3-venv python3-dev nginx -y
 ```
 
@@ -51,6 +51,8 @@ Copy any required secret files into the project (e.g. `.env`, `credentials.json`
 ## 5. Run Django Setup Commands
 
 ```bash
+#copy db file 
+ wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=FILEID' -O db.sqlite3
 # Apply database migrations
 python manage.py migrate
 
@@ -120,10 +122,10 @@ Requires=gunicorn.socket
 After=network.target
 
 [Service]
-User=ubuntu
+User=root
 Group=www-data
-WorkingDirectory=/home/ubuntu/PGMS/PG-MS
-ExecStart=/home/ubuntu/PGMS/venv/bin/gunicorn \
+WorkingDirectory=/root/PGMS/PG-MS
+ExecStart=/root/PGMS/venv/bin/gunicorn \
           --access-logfile - \
           --workers 3 \
           --bind unix:/run/gunicorn.sock \
@@ -154,7 +156,7 @@ Paste:
 ```nginx
 server {
     listen 80;
-    server_name pgms.devhost.my;
+    server_name srilakshmibalajihostels.com www.srilakshmibalajihostels.com pgms.devhost.my;
 
     client_max_body_size 200M;   # allow up to 200 MB uploads
     client_body_timeout 300s;         # allow 5 minutes to send file
@@ -164,14 +166,14 @@ server {
 
     # Serve static files
     location /static/ {
-        alias /home/ubuntu/PGMS/PG-MS/staticfiles/;
+        alias /root/PGMS/PG-MS/staticfiles/;
         expires 30d;
         add_header Cache-Control "public, no-transform";
     }
 
     # Serve media files (user uploads)
     location /media/ {
-        alias /home/ubuntu/PGMS/PG-MS/media/;
+        alias /root/PGMS/PG-MS/media/;
         expires 30d;
         add_header Cache-Control "public, no-transform";
     }
@@ -198,18 +200,18 @@ sudo systemctl restart nginx
 Ensure Nginx can traverse and read the directories:
 
 ```bash
-sudo chown -R ubuntu:www-data /home/ubuntu/PGMS/PG-MS/staticfiles /home/ubuntu/PGMS/PG-MS/media
+sudo chown -R ubuntu:www-data /root/PGMS/PG-MS/staticfiles /root/PGMS/PG-MS/media
 
 # Directories need execute permission
-sudo find /home/ubuntu/PGMS/PG-MS/staticfiles -type d -exec chmod 755 {} \;
-sudo find /home/ubuntu/PGMS/PG-MS/media -type d -exec chmod 755 {} \;
+sudo find /root/PGMS/PG-MS/staticfiles -type d -exec chmod 755 {} \;
+sudo find /root/PGMS/PG-MS/media -type d -exec chmod 755 {} \;
 
 # Files need read permission
-sudo find /home/ubuntu/PGMS/PG-MS/staticfiles -type f -exec chmod 644 {} \;
-sudo find /home/ubuntu/PGMS/PG-MS/media -type f -exec chmod 644 {} \;
+sudo find /root/PGMS/PG-MS/staticfiles -type f -exec chmod 644 {} \;
+sudo find /root/PGMS/PG-MS/media -type f -exec chmod 644 {} \;
 
 # Parent dirs must also be traversable
-sudo chmod 755 /home /home/ubuntu /home/ubuntu/PGMS /home/ubuntu/PGMS/PG-MS
+sudo chmod 755 /root /root/PGMS /root/PGMS/PG-MS
 ```
 
 Reload Nginx after changes:
@@ -224,6 +226,7 @@ sudo systemctl reload nginx
 
 ```bash
 sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d srilakshmibalajihostels.com -d www.srilakshmibalajihostels.com
 sudo certbot --nginx -d pgms.devhost.my
 ```
 
