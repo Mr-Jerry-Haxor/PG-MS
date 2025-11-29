@@ -28,6 +28,11 @@ class Fees(TimeStampedModel):
 		('3', '3-Sharing'),
 		('4', '4-Sharing'),
 		('5', '5-Sharing'),
+		('6', '6-Sharing'),
+		('7', '7-Sharing'),
+		('8', '8-Sharing'),
+		('9', '9-Sharing'),
+		('10', '10-Sharing'),
 	]
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='fees')
 	share_type = models.CharField(max_length=2, choices=SHARE_TYPES)
