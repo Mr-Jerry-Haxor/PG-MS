@@ -427,34 +427,60 @@
           // Stash the event so it can be triggered later
           deferredPrompt = e;
           
-          // Show custom install button/banner (optional - you can add this to your UI)
+          // Check if user permanently dismissed the install banner
+          if (localStorage.getItem('pwa-install-dismissed') === 'permanent') {
+            return; // Don't show banner
+          }
+          
+          // Show custom install button/banner
           const installBanner = document.createElement('div');
           installBanner.id = 'pwa-install-banner';
           installBanner.innerHTML = `
-            <div class="alert alert-info alert-dismissible fade show position-fixed bottom-0 start-50 translate-middle-x mb-3 shadow-lg" style="z-index: 9999; max-width: 90%; width: 400px;" role="alert">
-              <div class="d-flex align-items-center gap-2">
+            <div class="alert alert-info fade show position-fixed bottom-0 start-50 translate-middle-x mb-3 shadow-lg" style="z-index: 9999; max-width: 90%; width: 420px;" role="alert">
+              <div class="d-flex align-items-center gap-2 mb-2">
                 <i class="bi bi-download fs-4"></i>
                 <div class="flex-grow-1">
                   <strong>Install PG-MS App</strong>
                   <p class="mb-0 small">Add to your home screen for quick access</p>
                 </div>
-                <button type="button" class="btn btn-sm btn-primary" id="pwa-install-btn">Install</button>
               </div>
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              <div class="d-flex gap-2 justify-content-end flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="pwa-dismiss-temp" title="Hide for now">
+                  <i class="bi bi-x-lg me-1"></i>Not Now
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="pwa-dismiss-perm" title="Never show again">
+                  <i class="bi bi-x-circle me-1"></i>Don't Ask Again
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" id="pwa-install-btn">
+                  <i class="bi bi-download me-1"></i>Install
+                </button>
+              </div>
             </div>
           `;
           document.body.appendChild(installBanner);
           
           // Handle install button click
           document.getElementById('pwa-install-btn').addEventListener('click', async () => {
-            // Show the install prompt
             deferredPrompt.prompt();
-            // Wait for the user to respond to the prompt
             const { outcome } = await deferredPrompt.userChoice;
             console.log(`User response to the install prompt: ${outcome}`);
-            // Clear the deferredPrompt
             deferredPrompt = null;
-            // Remove the install banner
+            document.getElementById('pwa-install-banner').remove();
+            // If user accepted, mark as installed
+            if (outcome === 'accepted') {
+              localStorage.setItem('pwa-install-dismissed', 'installed');
+            }
+          });
+          
+          // Handle temporary dismiss (just for this session/page)
+          document.getElementById('pwa-dismiss-temp').addEventListener('click', () => {
+            document.getElementById('pwa-install-banner').remove();
+            // Banner will show again on next page load
+          });
+          
+          // Handle permanent dismiss
+          document.getElementById('pwa-dismiss-perm').addEventListener('click', () => {
+            localStorage.setItem('pwa-install-dismissed', 'permanent');
             document.getElementById('pwa-install-banner').remove();
           });
         });
@@ -462,7 +488,7 @@
         // Track if app was launched from home screen
         window.addEventListener('appinstalled', () => {
           console.log('✅ PWA installed successfully');
-          // Hide install banner if visible
+          localStorage.setItem('pwa-install-dismissed', 'installed');
           const banner = document.getElementById('pwa-install-banner');
           if (banner) banner.remove();
         });
