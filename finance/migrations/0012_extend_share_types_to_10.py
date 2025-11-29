@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('finance', '0012_monthlyadjustment'),
+        ('finance', '0011_change_category_delete_to_set_null'),
     ]
 
     operations = [
