@@ -45,7 +45,7 @@ class RoomForm(forms.ModelForm):
         fields = ["room_no", "total_shares"]
         widgets = {
             "room_no": forms.TextInput(attrs={"class": "form-control"}),
-            "total_shares": forms.NumberInput(attrs={"class": "form-control", "min": 1, "max": 5}),
+            "total_shares": forms.NumberInput(attrs={"class": "form-control", "min": 1, "max": 10}),
         }
 
 
