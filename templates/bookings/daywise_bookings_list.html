@@ -238,7 +238,6 @@
             <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
             <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
             <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Completed</option>
-            <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
           </select>
         </div>
         <div class="col-md-2">
@@ -401,6 +400,21 @@
                         <label class="small text-muted">Emergency Contact</label>
                         <div>{{ item.emergency_contact|default:"—" }}</div>
                       </div>
+                      <!-- Selfie & Documents Preview -->
+                      <div class="col-12">
+                        <div class="d-flex gap-2 flex-wrap mt-2">
+                          {% if item.selfie_url %}
+                          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#selfieModal{{ item.booking.id }}">
+                            <i class="bi bi-person-bounding-box me-1"></i>View Selfie
+                          </button>
+                          {% endif %}
+                          {% if item.aadhaar_file_url %}
+                          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#documentsModal{{ item.booking.id }}">
+                            <i class="bi bi-file-earmark-text me-1"></i>Preview Documents
+                          </button>
+                          {% endif %}
+                        </div>
+                      </div>
                       <div class="col-12"><hr class="my-2"></div>
                       <div class="col-6">
                         <label class="small text-muted">Check-in</label>
@@ -475,6 +489,95 @@
                 </div>
               </div>
             </div>
+            
+            <!-- Selfie Modal -->
+            {% if item.selfie_url %}
+            <div class="modal fade" id="selfieModal{{ item.booking.id }}" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-person-bounding-box me-2"></i>Guest Selfie</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body text-center p-4">
+                    <img src="{{ item.selfie_url }}" alt="Guest Selfie" class="img-fluid rounded shadow" style="max-height: 400px;">
+                    <div class="mt-3">
+                      <strong>{{ item.guest_name }}</strong>
+                      <div class="text-muted small">{{ item.email }}</div>
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <a href="{{ item.selfie_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                      <i class="bi bi-box-arrow-up-right me-1"></i>Open Full Size
+                    </a>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+            
+            <!-- Documents Modal -->
+            {% if item.aadhaar_file_url %}
+            <div class="modal fade" id="documentsModal{{ item.booking.id }}" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-file-earmark-text me-2"></i>Guest Documents</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="row g-3">
+                      <div class="col-12">
+                        <label class="small text-muted fw-semibold">Aadhaar / ID Document</label>
+                      </div>
+                      {% if item.aadhaar_file_url|slice:"-4:" == ".pdf" or "pdf" in item.aadhaar_file_url|lower %}
+                      <!-- PDF Document -->
+                      <div class="col-12">
+                        <div class="border rounded p-3 bg-light text-center">
+                          <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 3rem;"></i>
+                          <div class="mt-2">PDF Document</div>
+                          <a href="{{ item.aadhaar_file_url }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>View PDF
+                          </a>
+                        </div>
+                      </div>
+                      {% else %}
+                      <!-- Image Documents -->
+                      <div class="col-{% if item.aadhaar_file_url_2 %}6{% else %}12{% endif %}">
+                        <div class="text-center">
+                          <div class="small text-muted mb-1">{% if item.aadhaar_file_url_2 %}Front Side{% else %}Document{% endif %}</div>
+                          <img src="{{ item.aadhaar_file_url }}" alt="Document" class="img-fluid rounded border" style="max-height: 280px;">
+                          <div class="mt-2">
+                            <a href="{{ item.aadhaar_file_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                              <i class="bi bi-box-arrow-up-right me-1"></i>Full Size
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                      {% if item.aadhaar_file_url_2 %}
+                      <div class="col-6">
+                        <div class="text-center">
+                          <div class="small text-muted mb-1">Back Side</div>
+                          <img src="{{ item.aadhaar_file_url_2 }}" alt="Document Back" class="img-fluid rounded border" style="max-height: 280px;">
+                          <div class="mt-2">
+                            <a href="{{ item.aadhaar_file_url_2 }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                              <i class="bi bi-box-arrow-up-right me-1"></i>Full Size
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                      {% endif %}
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
             {% endfor %}
           </tbody>
         </table>

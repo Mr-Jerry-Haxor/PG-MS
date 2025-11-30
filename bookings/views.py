@@ -1973,21 +1973,21 @@ def daywise_bookings_list(request):
     pg = _active_pg(request)
     pgs = list(_admin_pgs(request.user))
     
-    # Base queryset - only day-wise bookings
+    # Base queryset - only day-wise bookings (exclude rejected)
     if pg:
         bookings_qs = Booking.objects.filter(
             booking_type=Booking.DAYWISE,
             room__pg=pg
-        )
+        ).exclude(status=Booking.REJECTED)
     else:
         bookings_qs = Booking.objects.filter(
             booking_type=Booking.DAYWISE,
             room__pg__in=pgs
-        )
+        ).exclude(status=Booking.REJECTED)
     
-    # Select related for performance
+    # Select related for performance (application is OneToOne)
     bookings_qs = bookings_qs.select_related(
-        'user', 'room', 'room__pg', 'assigned_by'
+        'user', 'room', 'room__pg', 'assigned_by', 'application', 'user__profile'
     )
     
     # Filters
@@ -2039,23 +2039,29 @@ def daywise_bookings_list(request):
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
     
-    # Attach data to each booking
+    # Attach data to each booking (include application details if available)
     bookings_data = []
     for booking in page_obj:
+        app = getattr(booking, 'application', None)
         bookings_data.append({
             'booking': booking,
-            'guest_name': booking.user.get_full_name() or booking.user.email,
-            'phone': getattr(booking.user.profile, 'phone', '') if hasattr(booking.user, 'profile') else '',
-            'emergency_contact': '',
+            'application': app,
+            'guest_name': (app.name if app else None) or booking.user.get_full_name() or booking.user.email,
+            'phone': (app.phone if app else None) or (getattr(booking.user.profile, 'phone', '') if hasattr(booking.user, 'profile') else ''),
+            'email': (app.email if app else None) or booking.user.email,
+            'emergency_contact': app.emergency_contact if app else '',
+            'selfie_url': app.selfie_url if app else '',
+            'aadhaar_file_url': app.aadhaar_file_url if app else '',
+            'aadhaar_file_url_2': getattr(app, 'aadhaar_file_url_2', '') if app else '',
             'days': (booking.leaving_date - booking.joining_date).days + 1 if booking.joining_date and booking.leaving_date else 0,
         })
     
-    # Summary stats
+    # Summary stats (exclude rejected)
     today = date.today()
     if pg:
-        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg=pg)
+        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg=pg).exclude(status=Booking.REJECTED)
     else:
-        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg__in=pgs)
+        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg__in=pgs).exclude(status=Booking.REJECTED)
     
     total_daywise = base_qs.count()
     pending_count = base_qs.filter(status=Booking.PENDING).count()
