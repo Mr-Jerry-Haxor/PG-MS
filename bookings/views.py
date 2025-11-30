@@ -1988,7 +1988,7 @@ def daywise_bookings_list(request):
     # Select related for performance
     bookings_qs = bookings_qs.select_related(
         'user', 'room', 'room__pg', 'assigned_by'
-    ).prefetch_related('applications')
+    )
     
     # Filters
     status_filter = request.GET.get('status', '').strip()
