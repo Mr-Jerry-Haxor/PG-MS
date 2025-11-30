@@ -1973,6 +1973,28 @@ def daywise_bookings_list(request):
     pg = _active_pg(request)
     pgs = list(_admin_pgs(request.user))
     
+    # Auto-complete day-wise bookings where leaving_date is in the past
+    today = date.today()
+    if pg:
+        expired_bookings = Booking.objects.filter(
+            booking_type=Booking.DAYWISE,
+            room__pg=pg,
+            status=Booking.APPROVED,
+            leaving_date__lt=today
+        )
+    else:
+        expired_bookings = Booking.objects.filter(
+            booking_type=Booking.DAYWISE,
+            room__pg__in=pgs,
+            status=Booking.APPROVED,
+            leaving_date__lt=today
+        )
+    
+    # Mark expired bookings as completed (don't change room share status)
+    for booking in expired_bookings:
+        booking.status = Booking.COMPLETED
+        booking.save(update_fields=['status'])
+    
     # Base queryset - only day-wise bookings (exclude rejected)
     if pg:
         bookings_qs = Booking.objects.filter(
@@ -2057,7 +2079,6 @@ def daywise_bookings_list(request):
         })
     
     # Summary stats (exclude rejected)
-    today = date.today()
     if pg:
         base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg=pg).exclude(status=Booking.REJECTED)
     else:

@@ -89,6 +89,17 @@
     overflow: hidden;
     border: 1px solid #e5e7eb;
   }
+  .dw-table-card .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dw-table-card table {
+    min-width: 900px; /* Ensure table doesn't shrink on mobile */
+  }
+  .dw-table-card th, .dw-table-card td {
+    white-space: nowrap;
+    vertical-align: middle;
+  }
   .dw-badge {
     display: inline-flex;
     align-items: center;
@@ -120,6 +131,61 @@
     background: #f9fafb;
     border-radius: 12px;
     border: 2px dashed #e5e7eb;
+  }
+  
+  /* Mobile Responsive */
+  @media (max-width: 767.98px) {
+    .container-fluid {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .dw-page-header h1 {
+      font-size: 1.25rem;
+    }
+    .dw-summary-card {
+      padding: 12px 14px;
+    }
+    .dw-summary-icon {
+      width: 36px;
+      height: 36px;
+      font-size: 1rem;
+    }
+    .dw-summary-value {
+      font-size: 1.25rem;
+    }
+    .dw-summary-label {
+      font-size: 0.65rem;
+    }
+    .dw-filter-header {
+      padding: 12px 14px;
+    }
+    .dw-filter-body {
+      padding: 14px;
+    }
+    .dw-filter-body .row > div {
+      margin-bottom: 0.5rem;
+    }
+    .dw-table-card {
+      border-radius: 8px;
+    }
+    .dw-empty-state {
+      padding: 2rem 1rem;
+    }
+    /* Horizontal scroll hint */
+    .dw-scroll-hint {
+      display: block;
+      text-align: center;
+      padding: 8px;
+      background: #f0f9ff;
+      color: #0369a1;
+      font-size: 0.75rem;
+      border-bottom: 1px solid #e0f2fe;
+    }
+  }
+  @media (min-width: 768px) {
+    .dw-scroll-hint {
+      display: none;
+    }
   }
 </style>
 
@@ -268,6 +334,9 @@
   <!-- Bookings Table -->
   {% if bookings_data %}
   <div class="card dw-table-card border-0 shadow-sm">
+    <div class="dw-scroll-hint">
+      <i class="bi bi-arrow-left-right me-1"></i> Swipe horizontally to see all columns
+    </div>
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-hover mb-0">
@@ -333,11 +402,7 @@
                 {% if item.booking.status == 'pending' %}
                   <span class="dw-badge dw-badge-pending"><i class="bi bi-clock"></i> Pending</span>
                 {% elif item.booking.status == 'approved' %}
-                  {% if item.booking.leaving_date < today %}
-                    <span class="dw-badge dw-badge-completed"><i class="bi bi-flag"></i> Completed</span>
-                  {% else %}
-                    <span class="dw-badge dw-badge-approved"><i class="bi bi-check"></i> Approved</span>
-                  {% endif %}
+                  <span class="dw-badge dw-badge-approved"><i class="bi bi-check"></i> Approved</span>
                 {% elif item.booking.status == 'completed' %}
                   <span class="dw-badge dw-badge-completed"><i class="bi bi-flag"></i> Completed</span>
                 {% elif item.booking.status == 'rejected' %}
@@ -433,12 +498,7 @@
                     <div class="dw-field-grid">
                       <div class="dw-field dw-field-box"><small>Status</small><span>
                         {% if item.booking.status == 'pending' %}<span class="dw-badge dw-badge-pending">Pending</span>
-                        {% elif item.booking.status == 'approved' %}
-                          {% if item.booking.leaving_date < today %}
-                            <span class="dw-badge dw-badge-completed">Completed</span>
-                          {% else %}
-                            <span class="dw-badge dw-badge-approved">Approved</span>
-                          {% endif %}
+                        {% elif item.booking.status == 'approved' %}<span class="dw-badge dw-badge-approved">Approved</span>
                         {% elif item.booking.status == 'completed' %}<span class="dw-badge dw-badge-completed">Completed</span>
                         {% endif %}
                       </span></div>
