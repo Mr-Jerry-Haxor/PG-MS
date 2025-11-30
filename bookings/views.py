@@ -2078,6 +2078,7 @@ def daywise_bookings_list(request):
         'pgs': pgs,
         'bookings_data': bookings_data,
         'page_obj': page_obj,
+        'today': today,
         # Filters
         'status_filter': status_filter,
         'payment_filter': payment_filter,
@@ -2094,46 +2095,3 @@ def daywise_bookings_list(request):
     }
     
     return render(request, 'bookings/daywise_bookings_list.html', context)
-
-
-@login_required
-def daywise_booking_complete(request, booking_id):
-    """Mark a day-wise booking as completed."""
-    if not _require_pg_admin(request.user):
-        return JsonResponse({'success': False, 'error': 'Access denied'}, status=403)
-    
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'POST required'}, status=405)
-    
-    booking = get_object_or_404(Booking, pk=booking_id, booking_type=Booking.DAYWISE)
-    
-    # Verify access
-    pgs = _admin_pgs(request.user)
-    if booking.room.pg not in pgs:
-        return JsonResponse({'success': False, 'error': 'Access denied'}, status=403)
-    
-    if booking.status != Booking.APPROVED:
-        return JsonResponse({'success': False, 'error': 'Only approved bookings can be marked complete'}, status=400)
-    
-    booking.status = Booking.COMPLETED
-    booking.save(update_fields=['status'])
-    
-    # Update room share status to vacant
-    from bookings.models import RoomShareStatus
-    share_status = RoomShareStatus.objects.filter(room=booking.room, share_no=booking.share_no).first()
-    if share_status:
-        share_status.status = RoomShareStatus.VACANT
-        share_status.save(update_fields=['status'])
-    
-    log(
-        actor=request.user,
-        action='daywise_booking_completed',
-        target_type='Booking',
-        target_id=booking.id,
-        message=f"Day-wise booking marked as completed"
-    )
-    
-    return JsonResponse({
-        'success': True,
-        'message': 'Booking marked as completed'
-    })

@@ -18,6 +18,5 @@ urlpatterns = [
     path('leave/cancel/<int:booking_id>/', views.cancel_leave_request, name='cancel_leave_request'),
     # Day-wise bookings management (PG Admin)
     path('daywise/', views.daywise_bookings_list, name='daywise_bookings_list'),
-    path('daywise/<int:booking_id>/complete/', views.daywise_booking_complete, name='daywise_booking_complete'),
 ]
 

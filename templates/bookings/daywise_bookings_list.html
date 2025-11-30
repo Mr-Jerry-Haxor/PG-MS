@@ -333,7 +333,11 @@
                 {% if item.booking.status == 'pending' %}
                   <span class="dw-badge dw-badge-pending"><i class="bi bi-clock"></i> Pending</span>
                 {% elif item.booking.status == 'approved' %}
-                  <span class="dw-badge dw-badge-approved"><i class="bi bi-check"></i> Approved</span>
+                  {% if item.booking.leaving_date < today %}
+                    <span class="dw-badge dw-badge-completed"><i class="bi bi-flag"></i> Completed</span>
+                  {% else %}
+                    <span class="dw-badge dw-badge-approved"><i class="bi bi-check"></i> Approved</span>
+                  {% endif %}
                 {% elif item.booking.status == 'completed' %}
                   <span class="dw-badge dw-badge-completed"><i class="bi bi-flag"></i> Completed</span>
                 {% elif item.booking.status == 'rejected' %}
@@ -359,11 +363,6 @@
                     <a href="{% url 'pg_booking_reject' item.booking.id %}" class="btn btn-sm btn-outline-danger dw-action-btn" title="Reject">
                       <i class="bi bi-x-lg"></i>
                     </a>
-                  {% elif item.booking.status == 'approved' %}
-                    <button type="button" class="btn btn-sm btn-outline-secondary dw-action-btn complete-booking-btn"
-                            data-booking-id="{{ item.booking.id }}" title="Mark Complete">
-                      <i class="bi bi-flag-fill"></i>
-                    </button>
                   {% endif %}
                   <!-- View Details Modal Trigger -->
                   <button type="button" class="btn btn-sm btn-outline-info dw-action-btn" 
@@ -376,200 +375,113 @@
             
             <!-- Detail Modal -->
             <div class="modal fade" id="detailModal{{ item.booking.id }}" tabindex="-1" aria-hidden="true">
-              <div class="modal-dialog">
+              <div class="modal-dialog modal-lg modal-dialog-scrollable">
                 <div class="modal-content">
                   <div class="modal-header">
                     <h5 class="modal-title"><i class="bi bi-calendar-day me-2"></i>Day-wise Booking Details</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
-                    <div class="row g-3">
-                      <div class="col-6">
-                        <label class="small text-muted">Guest Name</label>
-                        <div class="fw-semibold">{{ item.guest_name }}</div>
-                      </div>
-                      <div class="col-6">
-                        <label class="small text-muted">Phone</label>
-                        <div>{{ item.phone|default:"—" }}</div>
-                      </div>
-                      <div class="col-6">
-                        <label class="small text-muted">Email</label>
-                        <div>{{ item.booking.user.email }}</div>
-                      </div>
-                      <div class="col-6">
-                        <label class="small text-muted">Emergency Contact</label>
-                        <div>{{ item.emergency_contact|default:"—" }}</div>
-                      </div>
-                      <!-- Selfie & Documents Preview -->
-                      <div class="col-12">
-                        <div class="d-flex gap-2 flex-wrap mt-2">
-                          {% if item.selfie_url %}
-                          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#selfieModal{{ item.booking.id }}">
-                            <i class="bi bi-person-bounding-box me-1"></i>View Selfie
-                          </button>
-                          {% endif %}
-                          {% if item.aadhaar_file_url %}
-                          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#documentsModal{{ item.booking.id }}">
-                            <i class="bi bi-file-earmark-text me-1"></i>Preview Documents
-                          </button>
-                          {% endif %}
+                    <style>
+                      .dw-section-title{font-size:.7rem;letter-spacing:.08em;font-weight:600;text-transform:uppercase;color:#64748b;margin:1rem 0 .35rem}
+                      .dw-field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+                      .dw-field small{display:block;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:.15rem}
+                      .dw-field-box{background:#f8fafc;padding:.55rem .6rem;border:1px solid #e2e8f0;border-radius:.6rem;min-height:60px}
+                      .dw-doc-embed{border:1px solid #e2e8f0;border-radius:.6rem;background:#f8fafc}
+                      .dw-selfie-embed{border:1px solid #e2e8f0;border-radius:.75rem;background:#f1f5f9;position:relative;overflow:hidden}
+                      .dw-selfie-embed iframe{width:100%;height:280px;border:0}
+                      .dw-doc-thumb{width:64px;height:64px;object-fit:cover;border:1px solid #e2e8f0;border-radius:.5rem}
+                      @media (min-width:768px){.dw-selfie-embed iframe{height:320px}}
+                    </style>
+                    
+                    <div class="dw-section-title mt-0">Guest Information</div>
+                    <!-- Selfie Preview (Collapsible) -->
+                    {% if item.selfie_url %}
+                    <div class="mb-3">
+                      <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#selfieWrap{{ item.booking.id }}" aria-expanded="false" aria-controls="selfieWrap{{ item.booking.id }}">
+                        <i class="bi bi-person-bounding-box me-1"></i>Show Selfie
+                      </button>
+                      <a href="{{ item.selfie_url }}" target="_blank" class="btn btn-sm btn-outline-secondary ms-1" title="Open in new tab">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                      </a>
+                      <div class="collapse mt-2" id="selfieWrap{{ item.booking.id }}">
+                        <div class="dw-selfie-embed p-2">
+                          <iframe src="{{ item.selfie_url }}" title="Selfie" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>
+                          <div class="small text-secondary mt-2">If the selfie doesn't render, <a href="{{ item.selfie_url }}" target="_blank">open in new tab</a>.</div>
                         </div>
                       </div>
-                      <div class="col-12"><hr class="my-2"></div>
-                      <div class="col-6">
-                        <label class="small text-muted">Check-in</label>
-                        <div>{{ item.booking.joining_date|date:"M d, Y" }} {% if item.booking.start_time %}{{ item.booking.start_time|time:"g:i A" }}{% endif %}</div>
-                      </div>
-                      <div class="col-6">
-                        <label class="small text-muted">Check-out</label>
-                        <div>{{ item.booking.leaving_date|date:"M d, Y" }} {% if item.booking.end_time %}{{ item.booking.end_time|time:"g:i A" }}{% endif %}</div>
-                      </div>
-                      <div class="col-6">
-                        <label class="small text-muted">Duration</label>
-                        <div>{{ item.days }} day{{ item.days|pluralize }}</div>
-                      </div>
-                      <div class="col-6">
-                        <label class="small text-muted">Room Assignment</label>
-                        <div>
-                          {% if item.booking.assigned_by %}
-                            Room {{ item.booking.room.room_no }}, Bed {{ item.booking.share_no }}
-                          {% else %}
-                            <span class="text-warning">Not assigned</span>
-                          {% endif %}
-                        </div>
-                      </div>
-                      <div class="col-12"><hr class="my-2"></div>
-                      <div class="col-12">
-                        <label class="small text-muted">Purpose</label>
-                        <div>{{ item.booking.purpose|default:"—" }}</div>
-                      </div>
-                      <div class="col-6">
-                        <label class="small text-muted">Status</label>
-                        <div>
-                          {% if item.booking.status == 'pending' %}
-                            <span class="dw-badge dw-badge-pending">Pending</span>
-                          {% elif item.booking.status == 'approved' %}
-                            <span class="dw-badge dw-badge-approved">Approved</span>
-                          {% elif item.booking.status == 'completed' %}
+                    </div>
+                    {% endif %}
+                    
+                    <div class="dw-field-grid">
+                      <div class="dw-field dw-field-box"><small>Name</small><span class="fw-semibold">{{ item.guest_name }}</span></div>
+                      <div class="dw-field dw-field-box"><small>Phone</small><span>{{ item.phone|default:"—" }}</span></div>
+                      <div class="dw-field dw-field-box"><small>Email</small><span class="text-break small">{{ item.email }}</span></div>
+                      <div class="dw-field dw-field-box"><small>Emergency Contact</small><span>{{ item.emergency_contact|default:"—" }}</span></div>
+                    </div>
+                    
+                    <div class="dw-section-title">Stay Details</div>
+                    <div class="dw-field-grid">
+                      <div class="dw-field dw-field-box"><small>Check-in</small><span>{{ item.booking.joining_date|date:"M d, Y" }} {% if item.booking.start_time %}{{ item.booking.start_time|time:"g:i A" }}{% endif %}</span></div>
+                      <div class="dw-field dw-field-box"><small>Check-out</small><span>{{ item.booking.leaving_date|date:"M d, Y" }} {% if item.booking.end_time %}{{ item.booking.end_time|time:"g:i A" }}{% endif %}</span></div>
+                      <div class="dw-field dw-field-box"><small>Duration</small><span>{{ item.days }} day{{ item.days|pluralize }}</span></div>
+                      <div class="dw-field dw-field-box"><small>Room</small><span>{% if item.booking.assigned_by %}Room {{ item.booking.room.room_no }}, Bed {{ item.booking.share_no }}{% else %}<span class="text-warning">Not assigned</span>{% endif %}</span></div>
+                    </div>
+                    <div class="dw-field dw-field-box mt-2"><small>Purpose</small><div>{{ item.booking.purpose|default:"—" }}</div></div>
+                    
+                    <div class="dw-section-title">Status & Payment</div>
+                    <div class="dw-field-grid">
+                      <div class="dw-field dw-field-box"><small>Status</small><span>
+                        {% if item.booking.status == 'pending' %}<span class="dw-badge dw-badge-pending">Pending</span>
+                        {% elif item.booking.status == 'approved' %}
+                          {% if item.booking.leaving_date < today %}
                             <span class="dw-badge dw-badge-completed">Completed</span>
-                          {% elif item.booking.status == 'rejected' %}
-                            <span class="dw-badge dw-badge-rejected">Rejected</span>
-                          {% endif %}
-                        </div>
-                      </div>
-                      <div class="col-6">
-                        <label class="small text-muted">Payment</label>
-                        <div>
-                          {% if item.booking.payment_received %}
-                            <span class="dw-badge dw-badge-paid">Paid</span>
                           {% else %}
-                            <span class="dw-badge dw-badge-unpaid">Unpaid</span>
+                            <span class="dw-badge dw-badge-approved">Approved</span>
                           {% endif %}
-                          {% if item.booking.payment_amount %}
-                            <span class="ms-1">₹{{ item.booking.payment_amount|floatformat:0 }}</span>
-                          {% endif %}
-                        </div>
-                      </div>
-                      <div class="col-12"><hr class="my-2"></div>
-                      <div class="col-6">
-                        <label class="small text-muted">Created</label>
-                        <div class="small">{{ item.booking.created_at|date:"M d, Y g:i A" }}</div>
-                      </div>
+                        {% elif item.booking.status == 'completed' %}<span class="dw-badge dw-badge-completed">Completed</span>
+                        {% endif %}
+                      </span></div>
+                      <div class="dw-field dw-field-box"><small>Payment</small><span>
+                        {% if item.booking.payment_received %}<span class="dw-badge dw-badge-paid">Paid</span>{% else %}<span class="dw-badge dw-badge-unpaid">Unpaid</span>{% endif %}
+                        {% if item.booking.payment_amount %}<span class="ms-1">₹{{ item.booking.payment_amount|floatformat:0 }}</span>{% endif %}
+                      </span></div>
+                      <div class="dw-field dw-field-box"><small>Created</small><span class="small">{{ item.booking.created_at|date:"M d, Y g:i A" }}</span></div>
                       {% if item.booking.assigned_by %}
-                      <div class="col-6">
-                        <label class="small text-muted">Assigned By</label>
-                        <div class="small">{{ item.booking.assigned_by.get_full_name|default:item.booking.assigned_by.email }}</div>
-                      </div>
+                      <div class="dw-field dw-field-box"><small>Assigned By</small><span class="small">{{ item.booking.assigned_by.get_full_name|default:item.booking.assigned_by.email }}</span></div>
                       {% endif %}
                     </div>
-                  </div>
-                  <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Selfie Modal -->
-            {% if item.selfie_url %}
-            <div class="modal fade" id="selfieModal{{ item.booking.id }}" tabindex="-1" aria-hidden="true">
-              <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                  <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-person-bounding-box me-2"></i>Guest Selfie</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                  </div>
-                  <div class="modal-body text-center p-4">
-                    <img src="{{ item.selfie_url }}" alt="Guest Selfie" class="img-fluid rounded shadow" style="max-height: 400px;">
-                    <div class="mt-3">
-                      <strong>{{ item.guest_name }}</strong>
-                      <div class="text-muted small">{{ item.email }}</div>
-                    </div>
-                  </div>
-                  <div class="modal-footer">
-                    <a href="{{ item.selfie_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                      <i class="bi bi-box-arrow-up-right me-1"></i>Open Full Size
-                    </a>
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            {% endif %}
-            
-            <!-- Documents Modal -->
-            {% if item.aadhaar_file_url %}
-            <div class="modal fade" id="documentsModal{{ item.booking.id }}" tabindex="-1" aria-hidden="true">
-              <div class="modal-dialog modal-lg modal-dialog-centered">
-                <div class="modal-content">
-                  <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-file-earmark-text me-2"></i>Guest Documents</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                  </div>
-                  <div class="modal-body">
-                    <div class="row g-3">
-                      <div class="col-12">
-                        <label class="small text-muted fw-semibold">Aadhaar / ID Document</label>
-                      </div>
-                      {% if item.aadhaar_file_url|slice:"-4:" == ".pdf" or "pdf" in item.aadhaar_file_url|lower %}
-                      <!-- PDF Document -->
-                      <div class="col-12">
-                        <div class="border rounded p-3 bg-light text-center">
-                          <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 3rem;"></i>
-                          <div class="mt-2">PDF Document</div>
-                          <a href="{{ item.aadhaar_file_url }}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">
-                            <i class="bi bi-box-arrow-up-right me-1"></i>View PDF
-                          </a>
-                        </div>
-                      </div>
-                      {% else %}
-                      <!-- Image Documents -->
-                      <div class="col-{% if item.aadhaar_file_url_2 %}6{% else %}12{% endif %}">
-                        <div class="text-center">
-                          <div class="small text-muted mb-1">{% if item.aadhaar_file_url_2 %}Front Side{% else %}Document{% endif %}</div>
-                          <img src="{{ item.aadhaar_file_url }}" alt="Document" class="img-fluid rounded border" style="max-height: 280px;">
-                          <div class="mt-2">
-                            <a href="{{ item.aadhaar_file_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                              <i class="bi bi-box-arrow-up-right me-1"></i>Full Size
-                            </a>
-                          </div>
-                        </div>
-                      </div>
+                    
+                    <!-- Documents Preview (Collapsible) -->
+                    {% if item.aadhaar_file_url %}
+                    <div class="dw-section-title">Documents</div>
+                    <div class="d-flex gap-2 flex-wrap mb-2">
+                      <a class="btn btn-outline-secondary btn-sm" href="{{ item.aadhaar_file_url }}" target="_blank">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Open Aadhaar/Document
+                      </a>
                       {% if item.aadhaar_file_url_2 %}
-                      <div class="col-6">
-                        <div class="text-center">
-                          <div class="small text-muted mb-1">Back Side</div>
-                          <img src="{{ item.aadhaar_file_url_2 }}" alt="Document Back" class="img-fluid rounded border" style="max-height: 280px;">
-                          <div class="mt-2">
-                            <a href="{{ item.aadhaar_file_url_2 }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                              <i class="bi bi-box-arrow-up-right me-1"></i>Full Size
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                      {% endif %}
+                      <a class="btn btn-outline-secondary btn-sm" href="{{ item.aadhaar_file_url_2 }}" target="_blank">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Open Back Side
+                      </a>
                       {% endif %}
                     </div>
+                    <div class="mt-2">
+                      <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#aadhaarPreview{{ item.booking.id }}" aria-expanded="false" aria-controls="aadhaarPreview{{ item.booking.id }}">
+                        <i class="bi bi-file-earmark-text me-1"></i>Preview Document
+                      </button>
+                      <div class="collapse mt-2" id="aadhaarPreview{{ item.booking.id }}">
+                        <div class="dw-doc-embed p-2">
+                          <iframe src="{{ item.aadhaar_file_url }}" title="Aadhaar/Document" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer"></iframe>
+                          {% if item.aadhaar_file_url_2 %}
+                          <div class="small text-secondary mt-2">Back Side</div>
+                          <iframe src="{{ item.aadhaar_file_url_2 }}" title="Aadhaar/Document Back Side" style="width:100%;height:360px;border:0;" loading="lazy" referrerpolicy="no-referrer"></iframe>
+                          {% endif %}
+                          <div class="small text-secondary mt-2">If the document doesn't display, it may be blocked by the server. Use the "Open" buttons above.</div>
+                        </div>
+                      </div>
+                    </div>
+                    {% endif %}
+                    
                   </div>
                   <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
@@ -577,7 +489,6 @@
                 </div>
               </div>
             </div>
-            {% endif %}
             {% endfor %}
           </tbody>
         </table>
@@ -628,9 +539,6 @@
   {% endif %}
 </div>
 
-<!-- CSRF Token for AJAX -->
-<form id="csrfForm" style="display:none;">{% csrf_token %}</form>
-
 {% endblock %}
 
 {% block body_extra %}
@@ -645,32 +553,6 @@ $(document).ready(function() {
   // Auto-submit on filter change
   $('.filter-auto').on('change', function() {
     $('#filterForm').submit();
-  });
-  
-  // Mark booking as complete
-  $(document).on('click', '.complete-booking-btn', function() {
-    if (!confirm('Mark this booking as completed? The room will be marked as vacant.')) {
-      return;
-    }
-    
-    const bookingId = $(this).data('booking-id');
-    const csrfToken = $('#csrfForm [name=csrfmiddlewaretoken]').val();
-    
-    $.ajax({
-      url: '/bookings/daywise/' + bookingId + '/complete/',
-      method: 'POST',
-      headers: { 'X-CSRFToken': csrfToken },
-      success: function(data) {
-        if (data.success) {
-          location.reload();
-        } else {
-          alert('Error: ' + (data.error || 'Failed to complete booking'));
-        }
-      },
-      error: function(xhr, status, error) {
-        alert('An error occurred. Please try again.');
-      }
-    });
   });
 });
 </script>
