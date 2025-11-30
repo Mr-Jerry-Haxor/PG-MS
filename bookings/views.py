@@ -1921,3 +1921,215 @@ def cancel_leave_request(request, booking_id):
     messages.success(request, "Leave request cancelled successfully.")
     return redirect('dashboard')
 
+
+# ============================================================================
+# DAY-WISE BOOKINGS MANAGEMENT (PG Admin)
+# ============================================================================
+
+def _require_pg_admin(user):
+    """Check if user is a PG admin."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    if hasattr(user, 'profile') and getattr(user.profile, 'is_website_admin', False):
+        return True
+    try:
+        if PGAdmin.objects.filter(user=user).exists():
+            return True
+    except Exception:
+        pass
+    return hasattr(user, 'profile') and getattr(user.profile, 'is_pg_admin', False) and getattr(user.profile, 'status', 'active') == 'active'
+
+
+def _admin_pgs(user):
+    """PGs visible/manageable by the current user."""
+    if getattr(user, 'is_superuser', False) or (hasattr(user, 'profile') and getattr(user.profile, 'is_website_admin', False)):
+        return PG.objects.all().order_by('name')
+    return PG.objects.filter(admins__user=user).order_by('name')
+
+
+def _active_pg(request):
+    """Get currently active PG from session or query params."""
+    qs = _admin_pgs(request.user)
+    pg = None
+    pg_id = request.GET.get('pg') or request.session.get('active_pg_id')
+    if pg_id:
+        pg = qs.filter(id=pg_id).first()
+    if not pg:
+        pg = qs.first()
+    if pg:
+        request.session['active_pg_id'] = pg.id
+    return pg
+
+
+@login_required
+def daywise_bookings_list(request):
+    """
+    PG Admin view to list all day-wise bookings with filters and sorting.
+    """
+    if not _require_pg_admin(request.user):
+        messages.error(request, "Access denied. PG Admin privileges required.")
+        return redirect('dashboard')
+    
+    pg = _active_pg(request)
+    pgs = list(_admin_pgs(request.user))
+    
+    # Base queryset - only day-wise bookings
+    if pg:
+        bookings_qs = Booking.objects.filter(
+            booking_type=Booking.DAYWISE,
+            room__pg=pg
+        )
+    else:
+        bookings_qs = Booking.objects.filter(
+            booking_type=Booking.DAYWISE,
+            room__pg__in=pgs
+        )
+    
+    # Select related for performance
+    bookings_qs = bookings_qs.select_related(
+        'user', 'room', 'room__pg', 'assigned_by'
+    ).prefetch_related('applications')
+    
+    # Filters
+    status_filter = request.GET.get('status', '').strip()
+    payment_filter = request.GET.get('payment', '').strip()
+    search_query = request.GET.get('search', '').strip()
+    date_from = request.GET.get('date_from', '').strip()
+    date_to = request.GET.get('date_to', '').strip()
+    
+    if status_filter:
+        bookings_qs = bookings_qs.filter(status=status_filter)
+    
+    if payment_filter == 'paid':
+        bookings_qs = bookings_qs.filter(payment_received=True)
+    elif payment_filter == 'unpaid':
+        bookings_qs = bookings_qs.filter(payment_received=False)
+    
+    if search_query:
+        bookings_qs = bookings_qs.filter(
+            Q(user__first_name__icontains=search_query) |
+            Q(user__last_name__icontains=search_query) |
+            Q(user__email__icontains=search_query) |
+            Q(purpose__icontains=search_query) |
+            Q(room__room_no__icontains=search_query)
+        )
+    
+    if date_from:
+        from_date = parse_date(date_from)
+        if from_date:
+            bookings_qs = bookings_qs.filter(joining_date__gte=from_date)
+    
+    if date_to:
+        to_date = parse_date(date_to)
+        if to_date:
+            bookings_qs = bookings_qs.filter(joining_date__lte=to_date)
+    
+    # Sorting
+    sort_by = request.GET.get('sort', '-created_at')
+    valid_sorts = ['created_at', '-created_at', 'joining_date', '-joining_date', 
+                   'leaving_date', '-leaving_date', 'status', '-status',
+                   'payment_amount', '-payment_amount']
+    if sort_by not in valid_sorts:
+        sort_by = '-created_at'
+    bookings_qs = bookings_qs.order_by(sort_by)
+    
+    # Pagination
+    from django.core.paginator import Paginator
+    paginator = Paginator(bookings_qs, 20)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    
+    # Attach application data to each booking
+    bookings_data = []
+    for booking in page_obj:
+        app = booking.applications.first()
+        bookings_data.append({
+            'booking': booking,
+            'application': app,
+            'guest_name': app.name if app else (booking.user.get_full_name() or booking.user.email),
+            'phone': app.phone if app else (getattr(booking.user.profile, 'phone', '') if hasattr(booking.user, 'profile') else ''),
+            'emergency_contact': app.emergency_contact if app else '',
+            'days': (booking.leaving_date - booking.joining_date).days + 1 if booking.joining_date and booking.leaving_date else 0,
+        })
+    
+    # Summary stats
+    today = date.today()
+    if pg:
+        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg=pg)
+    else:
+        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg__in=pgs)
+    
+    total_daywise = base_qs.count()
+    pending_count = base_qs.filter(status=Booking.PENDING).count()
+    approved_count = base_qs.filter(status=Booking.APPROVED).count()
+    completed_count = base_qs.filter(status=Booking.COMPLETED).count()
+    active_today = base_qs.filter(
+        status=Booking.APPROVED,
+        joining_date__lte=today,
+        leaving_date__gte=today
+    ).count()
+    
+    context = {
+        'pg': pg,
+        'pgs': pgs,
+        'bookings_data': bookings_data,
+        'page_obj': page_obj,
+        # Filters
+        'status_filter': status_filter,
+        'payment_filter': payment_filter,
+        'search_query': search_query,
+        'date_from': date_from,
+        'date_to': date_to,
+        'sort_by': sort_by,
+        # Stats
+        'total_daywise': total_daywise,
+        'pending_count': pending_count,
+        'approved_count': approved_count,
+        'completed_count': completed_count,
+        'active_today': active_today,
+    }
+    
+    return render(request, 'bookings/daywise_bookings_list.html', context)
+
+
+@login_required
+def daywise_booking_complete(request, booking_id):
+    """Mark a day-wise booking as completed."""
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'success': False, 'error': 'Access denied'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required'}, status=405)
+    
+    booking = get_object_or_404(Booking, pk=booking_id, booking_type=Booking.DAYWISE)
+    
+    # Verify access
+    pgs = _admin_pgs(request.user)
+    if booking.room.pg not in pgs:
+        return JsonResponse({'success': False, 'error': 'Access denied'}, status=403)
+    
+    if booking.status != Booking.APPROVED:
+        return JsonResponse({'success': False, 'error': 'Only approved bookings can be marked complete'}, status=400)
+    
+    booking.status = Booking.COMPLETED
+    booking.save(update_fields=['status'])
+    
+    # Update room share status to vacant
+    from bookings.models import RoomShareStatus
+    share_status = RoomShareStatus.objects.filter(room=booking.room, share_no=booking.share_no).first()
+    if share_status:
+        share_status.status = RoomShareStatus.VACANT
+        share_status.save(update_fields=['status'])
+    
+    log(
+        actor=request.user,
+        action='daywise_booking_completed',
+        target_type='Booking',
+        target_id=booking.id,
+        message=f"Day-wise booking marked as completed"
+    )
+    
+    return JsonResponse({
+        'success': True,
+        'message': 'Booking marked as completed'
+    })

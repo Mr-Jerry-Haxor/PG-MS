@@ -1,9 +1,10 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 
 from pgadmin.models import PG
-from .models import Fees, Payment, Expenditure, ExpenditureCategory
+from .models import Fees, Payment, Expenditure, ExpenditureCategory, MonthlyAdjustment
 from core.audit import log
 from .forms import FeesForm, PaymentForm, ExpenditureForm
 from bookings.models import Booking, ReferralCredit
@@ -12,7 +13,7 @@ from django.db.models import Q, Sum, Count
 from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from collections import defaultdict
 import calendar
 from django.http import HttpResponse, JsonResponse
@@ -969,6 +970,37 @@ def _expected_rent_for_user_pg_month(u, pg, booking, m_first, m_last, today=None
         due_date = date(m_first.year, m_first.month, due_day)
         if month_marker == today_marker and today < due_date:
             return 0.0
+
+    # Apply monthly adjustments (discounts/increments)
+    year_month_str = m_first.strftime('%Y-%m')
+    adjustments = MonthlyAdjustment.objects.filter(
+        user=u,
+        pg=pg,
+        is_active=True
+    )
+    
+    for adj in adjustments:
+        if adj.applies_to_month(year_month_str):
+            if adj.adjustment_type == 'discount':
+                discount_amount = float(adj.amount)
+                expected = max(0, expected - discount_amount)
+                _add_detail(
+                    'adjustment',
+                    adjustment_type='Discount',
+                    amount=-discount_amount,
+                    notes=f"Discount: {adj.notes}" if adj.notes else "Discount applied",
+                )
+            else:  # increment
+                increment_amount = float(adj.amount)
+                expected = expected + increment_amount
+                _add_detail(
+                    'adjustment',
+                    adjustment_type='Increment',
+                    amount=increment_amount,
+                    notes=f"Increment: {adj.notes}" if adj.notes else "Increment applied",
+                )
+    
+    expected = round(expected, 2)
 
     return expected
 
@@ -3653,3 +3685,474 @@ def monthly_quick_payment(request):
     if pg: params.append(f'pg={pg.id}')
     q = ('?' + '&'.join(params)) if params else ''
     return redirect(base + q)
+
+
+# ============================================================================
+# MONTHLY ADJUSTMENTS (DISCOUNTS & INCREMENTS)
+# ============================================================================
+
+@login_required
+def monthly_adjustments_list(request):
+    """List all monthly adjustments (discounts/increments) for the active PG."""
+    if not _require_pg_admin(request.user):
+        messages.error(request, 'PG Admin access required.')
+        return redirect('dashboard')
+    
+    pg = _active_pg(request)
+    if not pg:
+        messages.error(request, 'No PG selected.')
+        return redirect('dashboard')
+    
+    from datetime import date
+    today = date.today()
+    current_month_str = today.strftime('%Y-%m')
+    
+    # NOTE: We do NOT auto-deactivate adjustments anymore.
+    # Instead, we compute a display_status ('Active' or 'Completed') for the frontend.
+    # Backend is_active always stays True unless manually changed.
+    
+    # Get all adjustments for this PG
+    adjustments_qs = MonthlyAdjustment.objects.filter(pg=pg).select_related('user', 'user__profile', 'created_by').order_by('-created_at')
+    
+    # Apply filters
+    search_query = request.GET.get('search', '').strip()
+    adjustment_type_filter = request.GET.get('adjustment_type', '')
+    duration_type_filter = request.GET.get('duration_type', '')
+    status_filter = request.GET.get('status', '')  # Changed from is_active to status
+    
+    if search_query:
+        adjustments_qs = adjustments_qs.filter(
+            Q(user__email__icontains=search_query) |
+            Q(user__first_name__icontains=search_query) |
+            Q(user__last_name__icontains=search_query) |
+            Q(notes__icontains=search_query)
+        )
+    
+    if adjustment_type_filter:
+        adjustments_qs = adjustments_qs.filter(adjustment_type=adjustment_type_filter)
+    
+    if duration_type_filter:
+        adjustments_qs = adjustments_qs.filter(duration_type=duration_type_filter)
+    
+    # Status filter: 'active' means ongoing/not completed, 'completed' means all months passed
+    # We filter in Python after computing display_status since it's computed, not a DB field
+    
+    # Sorting
+    sort_by = request.GET.get('sort', '-created_at')
+    valid_sort_fields = ['user__email', 'user__first_name', 'adjustment_type', 'amount', 'duration_type', 'is_active', 'created_at', '-user__email', '-user__first_name', '-adjustment_type', '-amount', '-duration_type', '-is_active', '-created_at']
+    if sort_by in valid_sort_fields:
+        adjustments_qs = adjustments_qs.order_by(sort_by)
+    
+    # Enrich adjustments with additional data for display
+    from bookings.models import Booking
+    enriched_adjustments = []
+    for adj in adjustments_qs:
+        # Get user's current booking info
+        booking = Booking.objects.filter(
+            user=adj.user, 
+            room__pg=pg, 
+            status=Booking.APPROVED
+        ).select_related('room').first()
+        
+        room_info = f"Room {booking.room.room_no}, Bed {booking.share_no}" if booking else "No active booking"
+        
+        # Calculate applied and pending months
+        applied_months = []
+        pending_months = []
+        
+        # Compute display_status: 'Completed' if all selected months passed, 'Active' otherwise
+        # For 'continuous' type, it's always 'Active' (never completes)
+        display_status = 'Active'
+        if adj.duration_type in ['one_month', 'multiple_months'] and adj.selected_months:
+            for m in adj.selected_months:
+                if m < current_month_str:
+                    applied_months.append(m)
+                else:
+                    pending_months.append(m)
+            # If all months are applied (none pending), it's completed
+            if len(pending_months) == 0 and len(applied_months) > 0:
+                display_status = 'Completed'
+        elif adj.duration_type == 'continuous':
+            pending_months = ['Ongoing (Continuous)']
+            display_status = 'Active'  # Continuous is never completed
+        
+        enriched_adjustments.append({
+            'adjustment': adj,
+            'room_info': room_info,
+            'applied_months': applied_months,
+            'pending_months': pending_months,
+            'display_status': display_status,
+        })
+    
+    # Apply status filter after computing display_status
+    if status_filter:
+        if status_filter.lower() == 'active':
+            enriched_adjustments = [item for item in enriched_adjustments if item['display_status'] == 'Active']
+        elif status_filter.lower() == 'completed':
+            enriched_adjustments = [item for item in enriched_adjustments if item['display_status'] == 'Completed']
+    
+    # Pagination
+    from django.core.paginator import Paginator
+    paginator = Paginator(enriched_adjustments, 25)
+    page_num = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_num)
+    
+    # Calculate summary amounts for the three cards
+    # Card 1: This month's amounts (adjustments that apply to current month)
+    # Card 2: Completed amounts (adjustments for months that have passed)
+    # Card 3: Remaining/Future amounts (adjustments for future months)
+    
+    this_month_discounts = Decimal('0')
+    this_month_increments = Decimal('0')
+    completed_discounts = Decimal('0')
+    completed_increments = Decimal('0')
+    remaining_discounts = Decimal('0')
+    remaining_increments = Decimal('0')
+    
+    for adj in adjustments_qs:
+        amount = adj.amount or Decimal('0')
+        is_discount = adj.adjustment_type == 'discount'
+        
+        if adj.duration_type == 'continuous':
+            # Continuous applies to current month and all future months
+            if is_discount:
+                this_month_discounts += amount
+                remaining_discounts += amount  # Will keep applying
+            else:
+                this_month_increments += amount
+                remaining_increments += amount
+        elif adj.duration_type in ['one_month', 'multiple_months'] and adj.selected_months:
+            for m in adj.selected_months:
+                if m == current_month_str:
+                    # This month
+                    if is_discount:
+                        this_month_discounts += amount
+                    else:
+                        this_month_increments += amount
+                elif m < current_month_str:
+                    # Completed (past months)
+                    if is_discount:
+                        completed_discounts += amount
+                    else:
+                        completed_increments += amount
+                else:
+                    # Future months (remaining)
+                    if is_discount:
+                        remaining_discounts += amount
+                    else:
+                        remaining_increments += amount
+    
+    # Check if user is admin (superuser or website admin)
+    is_website_admin = hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False)
+    is_admin = request.user.is_superuser or is_website_admin
+    
+    context = {
+        'pg': pg,
+        'pgs': list(_admin_pgs(request.user)),
+        'page_obj': page_obj,
+        'adjustments': page_obj.object_list,
+        'this_month_discounts': this_month_discounts,
+        'this_month_increments': this_month_increments,
+        'completed_discounts': completed_discounts,
+        'completed_increments': completed_increments,
+        'remaining_discounts': remaining_discounts,
+        'remaining_increments': remaining_increments,
+        'current_month_display': datetime.now().strftime('%B %Y'),
+        'search_query': search_query,
+        'adjustment_type_filter': adjustment_type_filter,
+        'duration_type_filter': duration_type_filter,
+        'status_filter': status_filter,
+        'sort_by': sort_by,
+        'is_admin': is_admin,
+    }
+    
+    return render(request, 'finance/monthly_adjustments_list.html', context)
+
+
+@login_required
+def monthly_adjustment_add(request):
+    """Render the add adjustment page."""
+    if not _require_pg_admin(request.user):
+        messages.error(request, 'PG Admin access required.')
+        return redirect('monthly_adjustments_list')
+    
+    pg = _active_pg(request)
+    if not pg:
+        messages.error(request, 'Please select a PG first.')
+        return redirect('home')
+    
+    context = {
+        'pg': pg,
+        'residents_api_url': reverse('monthly_adjustments_residents_api'),
+    }
+    
+    return render(request, 'finance/monthly_adjustment_add.html', context)
+
+
+@login_required
+@transaction.atomic
+def monthly_adjustment_create(request):
+    """Create a new monthly adjustment."""
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+    
+    pg = _active_pg(request)
+    if not pg:
+        return JsonResponse({'error': 'No PG selected.'}, status=400)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required.'}, status=405)
+    
+    # Get form data directly from POST
+    user_id = request.POST.get('user')
+    adjustment_type = request.POST.get('adjustment_type')
+    amount = request.POST.get('amount')
+    duration_type = request.POST.get('duration_type')
+    selected_months_str = request.POST.get('selected_months', '')
+    # is_active is always True by default - we don't allow setting it to False on creation
+    is_active = True
+    notes = request.POST.get('notes', '')
+    
+    # Validate required fields
+    errors = {}
+    if not user_id:
+        errors['user'] = 'Resident is required.'
+    if not adjustment_type:
+        errors['adjustment_type'] = 'Adjustment type is required.'
+    if not amount:
+        errors['amount'] = 'Amount is required.'
+    if not duration_type:
+        errors['duration_type'] = 'Duration type is required.'
+    
+    # Validate amount
+    try:
+        amount = Decimal(amount)
+        if amount <= 0:
+            errors['amount'] = 'Amount must be greater than 0.'
+    except (ValueError, TypeError, InvalidOperation):
+        errors['amount'] = 'Invalid amount.'
+    
+    # Validate user exists and is a resident of this PG
+    User = get_user_model()
+    try:
+        user = User.objects.get(id=user_id)
+        from bookings.models import Booking
+        from datetime import date
+        from django.db.models import Q
+        today = date.today()
+        has_active_booking = Booking.objects.filter(
+            user=user,
+            room__pg=pg,
+            status=Booking.APPROVED
+        ).filter(
+            Q(leaving_date__isnull=True) | Q(leaving_date__gte=today)
+        ).exists()
+        if not has_active_booking:
+            errors['user'] = 'Selected user is not an active resident of this PG.'
+    except User.DoesNotExist:
+        errors['user'] = 'Invalid user.'
+    
+    # Process selected_months based on duration_type
+    selected_months = []
+    if duration_type in ['one_month', 'multiple_months']:
+        if selected_months_str:
+            selected_months = [m.strip() for m in selected_months_str.split(',') if m.strip()]
+        if not selected_months:
+            errors['selected_months'] = 'Please select at least one month.'
+    
+    if errors:
+        return JsonResponse({'error': 'Validation failed.', 'errors': errors}, status=400)
+    
+    # Create the adjustment
+    adjustment = MonthlyAdjustment.objects.create(
+        user=user,
+        pg=pg,
+        adjustment_type=adjustment_type,
+        amount=amount,
+        duration_type=duration_type,
+        selected_months=selected_months,
+        is_active=is_active,
+        created_by=request.user,
+        notes=notes
+    )
+    
+    log(request.user, 'create', 'MonthlyAdjustment', adjustment.id, f'Created {adjustment.adjustment_type} of ₹{adjustment.amount} for {adjustment.user.email}')
+    
+    return JsonResponse({
+        'success': True,
+        'message': f'{adjustment.get_adjustment_type_display()} created successfully.',
+        'adjustment_id': adjustment.id
+    })
+
+
+@login_required
+@transaction.atomic
+def monthly_adjustment_edit(request, pk):
+    """Edit an existing monthly adjustment."""
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+    
+    adjustment = get_object_or_404(MonthlyAdjustment, pk=pk)
+    
+    if not _is_authorized_pg(request.user, adjustment.pg.id):
+        return JsonResponse({'error': 'Unauthorized PG.'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required.'}, status=405)
+    
+    # Get form data directly from POST
+    adjustment_type = request.POST.get('adjustment_type')
+    amount = request.POST.get('amount')
+    duration_type = request.POST.get('duration_type')
+    selected_months_str = request.POST.get('selected_months', '')
+    is_active = request.POST.get('is_active') == 'on'
+    notes = request.POST.get('notes', '')
+    
+    # Validate required fields
+    errors = {}
+    if not adjustment_type:
+        errors['adjustment_type'] = 'Adjustment type is required.'
+    if not amount:
+        errors['amount'] = 'Amount is required.'
+    if not duration_type:
+        errors['duration_type'] = 'Duration type is required.'
+    
+    # Validate amount
+    try:
+        amount = Decimal(amount)
+        if amount <= 0:
+            errors['amount'] = 'Amount must be greater than 0.'
+    except (ValueError, TypeError, InvalidOperation):
+        errors['amount'] = 'Invalid amount.'
+    
+    # Process selected_months based on duration_type
+    selected_months = []
+    if duration_type in ['one_month', 'multiple_months']:
+        if selected_months_str:
+            selected_months = [m.strip() for m in selected_months_str.split(',') if m.strip()]
+        if not selected_months:
+            errors['selected_months'] = 'Please select at least one month.'
+    
+    if errors:
+        return JsonResponse({'error': 'Validation failed.', 'errors': errors}, status=400)
+    
+    # Update the adjustment
+    adjustment.adjustment_type = adjustment_type
+    adjustment.amount = amount
+    adjustment.duration_type = duration_type
+    adjustment.selected_months = selected_months
+    adjustment.is_active = is_active
+    adjustment.notes = notes
+    adjustment.save()
+    
+    log(request.user, 'update', 'MonthlyAdjustment', adjustment.id, f'Updated {adjustment.adjustment_type} for {adjustment.user.email}')
+    
+    return JsonResponse({
+        'success': True,
+        'message': f'{adjustment.get_adjustment_type_display()} updated successfully.',
+    })
+
+
+@login_required
+@transaction.atomic
+def monthly_adjustment_delete(request, pk):
+    """Delete a monthly adjustment. Only superusers/website admins can delete."""
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+    
+    # Only superusers or website admins can delete
+    is_website_admin = hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False)
+    if not (request.user.is_superuser or is_website_admin):
+        return JsonResponse({'error': 'Only administrators can delete adjustments.'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required.'}, status=405)
+    
+    adjustment = get_object_or_404(MonthlyAdjustment, pk=pk)
+    
+    if not _is_authorized_pg(request.user, adjustment.pg.id):
+        return JsonResponse({'error': 'Unauthorized PG.'}, status=403)
+    
+    user_email = adjustment.user.email
+    adjustment_type = adjustment.get_adjustment_type_display()
+    amount = adjustment.amount
+    adjustment_id = adjustment.id
+    
+    adjustment.delete()
+    
+    log(request.user, 'delete', 'MonthlyAdjustment', adjustment_id, f'Deleted {adjustment_type} of ₹{amount} for {user_email}')
+    
+    return JsonResponse({'success': True, 'message': f'{adjustment_type} deleted successfully.'})
+
+
+@login_required
+@transaction.atomic
+def monthly_adjustment_toggle(request, pk):
+    """Toggle active status of a monthly adjustment. Only superusers/website admins can toggle."""
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+    
+    # Only superusers or website admins can toggle
+    is_website_admin = hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False)
+    if not (request.user.is_superuser or is_website_admin):
+        return JsonResponse({'error': 'Only administrators can toggle adjustments.'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required.'}, status=405)
+    
+    adjustment = get_object_or_404(MonthlyAdjustment, pk=pk)
+    
+    if not _is_authorized_pg(request.user, adjustment.pg.id):
+        return JsonResponse({'error': 'Unauthorized PG.'}, status=403)
+    
+    adjustment.is_active = not adjustment.is_active
+    adjustment.save(update_fields=['is_active'])
+    
+    status_text = 'activated' if adjustment.is_active else 'deactivated'
+    log(request.user, 'update', 'MonthlyAdjustment', adjustment.id, f'{adjustment.get_adjustment_type_display()} {status_text} for {adjustment.user.email}')
+    
+    return JsonResponse({
+        'success': True,
+        'message': f'Adjustment {status_text} successfully.',
+        'is_active': adjustment.is_active
+    })
+
+
+@login_required
+def monthly_adjustments_residents_api(request):
+    """API endpoint to get list of residents for a PG (for the adjustment form)."""
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'error': 'PG Admin access required.'}, status=403)
+    
+    pg = _active_pg(request)
+    if not pg:
+        return JsonResponse({'error': 'No PG selected.'}, status=400)
+    
+    # Get current active residents (approved bookings who haven't left)
+    from bookings.models import Booking
+    from django.db.models import Q
+    from datetime import date
+    
+    today = date.today()
+    resident_bookings = Booking.objects.filter(
+        status=Booking.APPROVED,
+        room__pg=pg
+    ).filter(
+        # Include only if: no leaving_date OR leaving_date is today or in the future
+        Q(leaving_date__isnull=True) | Q(leaving_date__gte=today)
+    ).select_related('user', 'room').order_by('room__room_no', 'share_no')
+    
+    residents = []
+    for booking in resident_bookings:
+        user = booking.user
+        name = user.get_full_name() or user.email
+        residents.append({
+            'id': user.id,
+            'name': name,
+            'email': user.email,
+            'room': f"Room {booking.room.room_no}, Bed {booking.share_no}",
+            'display': f"{name} - Room {booking.room.room_no}, Bed {booking.share_no}"
+        })
+    
+    return JsonResponse({'residents': residents})
+

@@ -1,0 +1,794 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Add Adjustment • {{ pg.name }}{% endblock %}
+
+{% block content %}
+<style>
+  /* Scoped styles for Add Adjustment page - prefixed with adj- to avoid conflicts */
+  .adj-form-container {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  
+  .adj-form-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+  }
+  
+  .adj-form-header {
+    background: #fff;
+    color: #1f2937;
+    padding: 24px 28px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .adj-form-header h1 {
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 0;
+    color: #1f2937;
+  }
+  
+  .adj-form-header p {
+    margin: 6px 0 0;
+    color: #6b7280;
+    font-size: 0.9rem;
+  }
+  
+  .adj-form-body {
+    padding: 28px;
+  }
+  
+  .adj-form-section {
+    margin-bottom: 24px;
+  }
+  
+  .adj-form-section:last-child {
+    margin-bottom: 0;
+  }
+  
+  .adj-section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6b7280;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  
+  .adj-form-label {
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    display: block;
+  }
+  
+  .adj-form-control {
+    border: 1px solid #d1d5db !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    font-size: 0.95rem !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+    background: #fff !important;
+  }
+  
+  .adj-form-control:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+    outline: none !important;
+  }
+  
+  .adj-form-control::placeholder {
+    color: #9ca3af !important;
+  }
+  
+  /* Resident Search Dropdown */
+  .adj-resident-wrapper {
+    position: relative;
+  }
+  
+  .adj-resident-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1200;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    margin-top: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    display: none;
+  }
+  
+  .adj-resident-dropdown.show {
+    display: block;
+  }
+  
+  .adj-resident-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid #f3f4f6;
+    transition: background 0.15s;
+  }
+  
+  .adj-resident-item:last-child {
+    border-bottom: none;
+  }
+  
+  .adj-resident-item:hover {
+    background: #f9fafb;
+  }
+  
+  .adj-resident-item .name {
+    font-weight: 500;
+    color: #111827;
+    font-size: 0.9rem;
+  }
+  
+  .adj-resident-item .details {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+  
+  /* Type Selection Cards */
+  .adj-type-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  
+  .adj-type-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 18px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    background: #fff;
+  }
+  
+  .adj-type-card:hover {
+    border-color: #9ca3af;
+    background: #fafafa;
+  }
+  
+  .adj-type-card.selected.discount {
+    border-color: #10b981;
+    background: #ecfdf5;
+  }
+  
+  .adj-type-card.selected.increment {
+    border-color: #3b82f6;
+    background: #eff6ff;
+  }
+  
+  .adj-type-card i {
+    font-size: 1.75rem;
+    margin-bottom: 6px;
+    display: block;
+  }
+  
+  .adj-type-card.discount i { color: #10b981; }
+  .adj-type-card.increment i { color: #3b82f6; }
+  
+  .adj-type-card .type-label {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #374151;
+  }
+  
+  .adj-type-card .type-desc {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+  
+  /* Duration Pills */
+  .adj-duration-pills {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  
+  .adj-duration-pill {
+    padding: 10px 18px;
+    border: 2px solid #e5e7eb;
+    border-radius: 50px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #6b7280;
+    transition: all 0.2s ease;
+    background: #fff;
+  }
+  
+  .adj-duration-pill:hover {
+    border-color: #9ca3af;
+    color: #374151;
+  }
+  
+  .adj-duration-pill.selected {
+    border-color: #3b82f6;
+    background: #3b82f6;
+    color: #fff;
+  }
+  
+  /* Month Selector */
+  .adj-month-selector {
+    position: relative;
+  }
+  
+  .adj-month-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #fff;
+    transition: all 0.2s;
+  }
+  
+  .adj-month-control:hover {
+    border-color: #9ca3af;
+  }
+  
+  .adj-month-control .selected-text {
+    color: #374151;
+    flex: 1;
+    font-size: 0.95rem;
+  }
+  
+  .adj-month-control .selected-text.placeholder {
+    color: #9ca3af;
+  }
+  
+  .adj-month-control .arrow {
+    color: #6b7280;
+    font-size: 0.9rem;
+    transition: transform 0.2s;
+  }
+  
+  .adj-month-selector.open .adj-month-control .arrow {
+    transform: rotate(180deg);
+  }
+  
+  .adj-month-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1100;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    margin-top: 4px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    max-height: 280px;
+    overflow-y: auto;
+    display: none;
+    padding: 6px;
+  }
+  
+  .adj-month-selector.open .adj-month-dropdown {
+    display: block;
+  }
+  
+  .adj-month-option {
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: #374151;
+    font-size: 0.9rem;
+  }
+  
+  .adj-month-option:hover {
+    background: #f3f4f6;
+  }
+  
+  .adj-month-option.selected {
+    background: #3b82f6;
+    color: #fff;
+    font-weight: 500;
+  }
+  
+  /* Amount Input */
+  .adj-amount-wrapper {
+    position: relative;
+  }
+  
+  .adj-amount-wrapper .currency {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1rem;
+    color: #6b7280;
+    font-weight: 500;
+  }
+  
+  .adj-amount-wrapper input {
+    padding-left: 32px !important;
+    font-size: 1rem !important;
+    font-weight: 500 !important;
+  }
+  
+  /* Notes Textarea */
+  textarea.adj-form-control {
+    min-height: 90px;
+    resize: vertical;
+  }
+  
+  /* Form Actions */
+  .adj-form-actions {
+    display: flex;
+    gap: 12px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+    margin-top: 28px;
+  }
+  
+  .adj-btn-cancel {
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-weight: 500;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #6b7280;
+    text-decoration: none;
+    transition: all 0.2s;
+    display: inline-block;
+  }
+  
+  .adj-btn-cancel:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+    color: #374151;
+    text-decoration: none;
+  }
+  
+  .adj-btn-submit {
+    padding: 10px 28px;
+    border-radius: 8px;
+    font-weight: 600;
+    background: #10b981;
+    border: none;
+    color: #fff;
+    transition: all 0.2s;
+    flex: 1;
+    cursor: pointer;
+  }
+  
+  .adj-btn-submit:hover {
+    background: #059669;
+  }
+  
+  .adj-btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  /* Responsive */
+  @media (max-width: 640px) {
+    .adj-form-body { padding: 20px; }
+    .adj-type-cards { grid-template-columns: 1fr; }
+    .adj-duration-pills { flex-direction: column; }
+    .adj-form-actions { flex-direction: column; }
+    .adj-btn-cancel { order: 2; text-align: center; }
+    .adj-btn-submit { order: 1; }
+  }
+</style>
+
+<div class="adj-form-container">
+  <!-- Back Link -->
+  <a href="{% url 'monthly_adjustments_list' %}" class="text-decoration-none text-muted d-inline-flex align-items-center mb-3">
+    <i class="bi bi-arrow-left me-2"></i> Back to Adjustments
+  </a>
+  
+  <div class="adj-form-card">
+    <div class="adj-form-header">
+      <h1><i class="bi bi-plus-circle me-2 text-success"></i>Add Monthly Adjustment</h1>
+      <p>Create a new discount or increment for a resident's monthly fee</p>
+    </div>
+    
+    <form id="adjustmentForm" method="post">
+      {% csrf_token %}
+      <div class="adj-form-body">
+        
+        <!-- Section: Resident -->
+        <div class="adj-form-section">
+          <div class="adj-section-title">Select Resident</div>
+          <div class="adj-resident-wrapper">
+            <label class="adj-form-label">Resident <span class="text-danger">*</span></label>
+            <input type="text" id="residentSearch" class="form-control adj-form-control" placeholder="Search by name, email, or room number..." autocomplete="off">
+            <input type="hidden" name="user" id="userId">
+            <div class="adj-resident-dropdown" id="residentDropdown">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+        
+        <!-- Section: Adjustment Type -->
+        <div class="adj-form-section">
+          <div class="adj-section-title">Adjustment Type</div>
+          <input type="hidden" name="adjustment_type" id="adjustmentType">
+          <div class="adj-type-cards">
+            <div class="adj-type-card discount" data-type="discount">
+              <i class="bi bi-arrow-down-circle-fill"></i>
+              <div class="type-label">Discount</div>
+              <div class="type-desc">Reduces monthly fee</div>
+            </div>
+            <div class="adj-type-card increment" data-type="increment">
+              <i class="bi bi-arrow-up-circle-fill"></i>
+              <div class="type-label">Increment</div>
+              <div class="type-desc">Adds to monthly fee</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Section: Amount -->
+        <div class="adj-form-section">
+          <div class="adj-section-title">Amount</div>
+          <label class="adj-form-label">Amount <span class="text-danger">*</span></label>
+          <div class="adj-amount-wrapper">
+            <span class="currency">₹</span>
+            <input type="number" name="amount" id="amount" class="form-control adj-form-control" placeholder="0.00" step="0.01" min="0" required>
+          </div>
+        </div>
+        
+        <!-- Section: Duration -->
+        <div class="adj-form-section">
+          <div class="adj-section-title">Duration</div>
+          <label class="adj-form-label">How long should this apply? <span class="text-danger">*</span></label>
+          <input type="hidden" name="duration_type" id="durationType">
+          <div class="adj-duration-pills">
+            <div class="adj-duration-pill" data-duration="continuous">
+              <i class="bi bi-infinity me-1"></i> Continuous
+            </div>
+            <div class="adj-duration-pill" data-duration="one_month">
+              <i class="bi bi-1-circle me-1"></i> One Month
+            </div>
+            <div class="adj-duration-pill" data-duration="multiple_months">
+              <i class="bi bi-calendar3 me-1"></i> Multiple Months
+            </div>
+          </div>
+        </div>
+        
+        <!-- Section: Month Selection (conditional) -->
+        <div class="adj-form-section" id="monthSection" style="display: none;">
+          <div class="adj-section-title">Select Month(s)</div>
+          <input type="hidden" name="selected_months" id="selectedMonths">
+          
+          <!-- Single Month Selector -->
+          <div id="singleMonthSelector" style="display: none;">
+            <label class="adj-form-label">Month <span class="text-danger">*</span></label>
+            <div class="adj-month-selector" id="singleMonthPicker">
+              <div class="adj-month-control">
+                <span class="selected-text placeholder">Select a month...</span>
+                <i class="bi bi-chevron-down arrow"></i>
+              </div>
+              <div class="adj-month-dropdown">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+          </div>
+          
+          <!-- Multiple Months Selector -->
+          <div id="multiMonthSelector" style="display: none;">
+            <label class="adj-form-label">Months <span class="text-danger">*</span></label>
+            <div class="adj-month-selector" id="multiMonthPicker">
+              <div class="adj-month-control">
+                <span class="selected-text placeholder">Select months...</span>
+                <i class="bi bi-chevron-down arrow"></i>
+              </div>
+              <div class="adj-month-dropdown">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Section: Notes -->
+        <div class="adj-form-section">
+          <div class="adj-section-title">Additional Information</div>
+          <label class="adj-form-label">Notes <span class="text-muted">(optional)</span></label>
+          <textarea name="notes" id="notes" class="form-control adj-form-control" placeholder="Add any notes about this adjustment..."></textarea>
+        </div>
+        
+        <!-- Form Actions -->
+        <div class="adj-form-actions">
+          <a href="{% url 'monthly_adjustments_list' %}" class="adj-btn-cancel">Cancel</a>
+          <button type="submit" class="adj-btn-submit" id="submitBtn">
+            <i class="bi bi-check-circle me-2"></i>Create Adjustment
+          </button>
+        </div>
+        
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+let residentsData = [];
+let selectedMonths = new Set();
+
+$(document).ready(function() {
+  // Load residents
+  loadResidents();
+  
+  // Build month options
+  buildMonthOptions();
+  
+  // Type card selection
+  $('.adj-type-card').on('click', function() {
+    $('.adj-type-card').removeClass('selected');
+    $(this).addClass('selected');
+    $('#adjustmentType').val($(this).data('type'));
+  });
+  
+  // Duration pill selection
+  $('.adj-duration-pill').on('click', function() {
+    $('.adj-duration-pill').removeClass('selected');
+    $(this).addClass('selected');
+    const duration = $(this).data('duration');
+    $('#durationType').val(duration);
+    
+    // Show/hide month section
+    if (duration === 'continuous') {
+      $('#monthSection').hide();
+      $('#selectedMonths').val('');
+    } else if (duration === 'one_month') {
+      $('#monthSection').show();
+      $('#singleMonthSelector').show();
+      $('#multiMonthSelector').hide();
+      selectedMonths.clear();
+      updateSelectedMonthsDisplay();
+    } else {
+      $('#monthSection').show();
+      $('#singleMonthSelector').hide();
+      $('#multiMonthSelector').show();
+      selectedMonths.clear();
+      updateMultiSelectDisplay();
+    }
+  });
+  
+  // Month selector toggle (single)
+  $('#singleMonthPicker .adj-month-control').on('click', function(e) {
+    e.stopPropagation();
+    $('#singleMonthPicker').toggleClass('open');
+    $('#multiMonthPicker').removeClass('open');
+  });
+  
+  // Month selector toggle (multi)
+  $('#multiMonthPicker .adj-month-control').on('click', function(e) {
+    e.stopPropagation();
+    $('#multiMonthPicker').toggleClass('open');
+    $('#singleMonthPicker').removeClass('open');
+  });
+  
+  // Close dropdowns when clicking outside
+  $(document).on('click', function() {
+    $('#singleMonthPicker, #multiMonthPicker').removeClass('open');
+  });
+  
+  // Form submission
+  $('#adjustmentForm').on('submit', function(e) {
+    e.preventDefault();
+    
+    // Validation
+    if (!$('#userId').val()) {
+      alert('Please select a resident.');
+      return;
+    }
+    if (!$('#adjustmentType').val()) {
+      alert('Please select an adjustment type.');
+      return;
+    }
+    if (!$('#amount').val() || parseFloat($('#amount').val()) <= 0) {
+      alert('Please enter a valid amount.');
+      return;
+    }
+    if (!$('#durationType').val()) {
+      alert('Please select a duration.');
+      return;
+    }
+    
+    const durationType = $('#durationType').val();
+    if (durationType !== 'continuous' && !$('#selectedMonths').val()) {
+      alert('Please select at least one month.');
+      return;
+    }
+    
+    // Submit
+    const $btn = $('#submitBtn');
+    const originalHtml = $btn.html();
+    $btn.html('<span class="spinner-border spinner-border-sm me-2"></span>Creating...').prop('disabled', true);
+    
+    $.ajax({
+      url: "{% url 'monthly_adjustment_create' %}",
+      method: 'POST',
+      data: $(this).serialize(),
+      headers: { 'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val() },
+      success: function(data) {
+        if (data.success) {
+          window.location.href = "{% url 'monthly_adjustments_list' %}";
+        } else {
+          let msg = data.error || 'Failed to create adjustment.';
+          if (data.errors) {
+            msg += '\n' + Object.entries(data.errors).map(([k,v]) => k + ': ' + v).join('\n');
+          }
+          alert(msg);
+          $btn.html(originalHtml).prop('disabled', false);
+        }
+      },
+      error: function() {
+        alert('An error occurred. Please try again.');
+        $btn.html(originalHtml).prop('disabled', false);
+      }
+    });
+  });
+});
+
+function loadResidents() {
+  $.ajax({
+    url: "{{ residents_api_url }}",
+    method: 'GET',
+    dataType: 'json',
+    success: function(data) {
+      if (data.residents) {
+        residentsData = data.residents;
+        setupResidentSearch();
+      }
+    }
+  });
+}
+
+function setupResidentSearch() {
+  const $input = $('#residentSearch');
+  const $dropdown = $('#residentDropdown');
+  
+  $input.on('input', function() {
+    const q = $(this).val().toLowerCase().trim();
+    renderResidents(q);
+    $dropdown.addClass('show');
+  });
+  
+  $input.on('focus', function() {
+    renderResidents($(this).val().toLowerCase().trim());
+    $dropdown.addClass('show');
+  });
+  
+  $(document).on('click', function(e) {
+    if (!$(e.target).closest('.adj-resident-wrapper').length) {
+      $dropdown.removeClass('show');
+    }
+  });
+}
+
+function renderResidents(filter) {
+  const $dropdown = $('#residentDropdown');
+  $dropdown.empty();
+  
+  const filtered = residentsData.filter(r => {
+    const text = (r.display + ' ' + r.email + ' ' + r.room).toLowerCase();
+    return !filter || text.includes(filter);
+  });
+  
+  if (!filtered.length) {
+    $dropdown.append('<div class="adj-resident-item"><span class="text-muted">No residents found</span></div>');
+    return;
+  }
+  
+  filtered.forEach(r => {
+    const $item = $(`
+      <div class="adj-resident-item" data-id="${r.id}">
+        <div class="name">${r.name || r.email}</div>
+        <div class="details">${r.room || ''} • ${r.email}</div>
+      </div>
+    `);
+    $item.on('click', function() {
+      $('#userId').val(r.id);
+      $('#residentSearch').val(r.display || r.name || r.email);
+      $('#residentDropdown').removeClass('show');
+    });
+    $dropdown.append($item);
+  });
+}
+
+function buildMonthOptions() {
+  const months = [];
+  const today = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    months.push({ value, label });
+  }
+  
+  // Single month dropdown
+  const $singleDropdown = $('#singleMonthPicker .adj-month-dropdown');
+  months.forEach(m => {
+    const $opt = $(`<div class="adj-month-option" data-value="${m.value}">${m.label}</div>`);
+    $opt.on('click', function(e) {
+      e.stopPropagation();
+      $('#singleMonthPicker .adj-month-option').removeClass('selected');
+      $(this).addClass('selected');
+      $('#singleMonthPicker .selected-text').text(m.label).removeClass('placeholder');
+      $('#selectedMonths').val(m.value);
+      $('#singleMonthPicker').removeClass('open');
+    });
+    $singleDropdown.append($opt);
+  });
+  
+  // Multi month dropdown
+  const $multiDropdown = $('#multiMonthPicker .adj-month-dropdown');
+  months.forEach(m => {
+    const $opt = $(`<div class="adj-month-option" data-value="${m.value}">${m.label}</div>`);
+    $opt.on('click', function(e) {
+      e.stopPropagation();
+      if (selectedMonths.has(m.value)) {
+        selectedMonths.delete(m.value);
+        $(this).removeClass('selected');
+      } else {
+        selectedMonths.add(m.value);
+        $(this).addClass('selected');
+      }
+      updateMultiSelectDisplay();
+    });
+    $multiDropdown.append($opt);
+  });
+}
+
+function updateSelectedMonthsDisplay() {
+  const $text = $('#singleMonthPicker .selected-text');
+  const val = $('#selectedMonths').val();
+  if (!val) {
+    $text.text('Select a month...').addClass('placeholder');
+  }
+}
+
+function updateMultiSelectDisplay() {
+  const $text = $('#multiMonthPicker .selected-text');
+  const arr = Array.from(selectedMonths);
+  $('#selectedMonths').val(arr.join(','));
+  
+  if (arr.length === 0) {
+    $text.text('Select months...').addClass('placeholder');
+  } else if (arr.length === 1) {
+    const months = buildMonthsArray();
+    const m = months.find(x => x.value === arr[0]);
+    $text.text(m ? m.label : arr[0]).removeClass('placeholder');
+  } else {
+    $text.text(arr.length + ' months selected').removeClass('placeholder');
+  }
+}
+
+function buildMonthsArray() {
+  const months = [];
+  const today = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    months.push({ value, label });
+  }
+  return months;
+}
+</script>
+{% endblock %}

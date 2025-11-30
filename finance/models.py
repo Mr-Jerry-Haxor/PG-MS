@@ -157,3 +157,50 @@ class Adjustment(TimeStampedModel):
 
 	def __str__(self):
 		return f"{self.user} {self.type} {self.amount}"
+
+
+class MonthlyAdjustment(TimeStampedModel):
+	"""Discount or increment to monthly fees for specific residents."""
+	ADJUSTMENT_TYPE_CHOICES = [
+		('discount', 'Discount'),
+		('increment', 'Increment'),
+	]
+	DURATION_TYPE_CHOICES = [
+		('continuous', 'Continuous'),
+		('one_month', 'One Month'),
+		('multiple_months', 'Multiple Months'),
+	]
+	
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='monthly_adjustments')
+	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='monthly_adjustments')
+	adjustment_type = models.CharField(max_length=16, choices=ADJUSTMENT_TYPE_CHOICES)
+	amount = models.DecimalField(max_digits=10, decimal_places=2, help_text='Amount to discount or increment')
+	duration_type = models.CharField(max_length=16, choices=DURATION_TYPE_CHOICES)
+	selected_months = models.JSONField(default=list, blank=True, help_text='List of YYYY-MM strings for specific months')
+	is_active = models.BooleanField(default=True)
+	created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_monthly_adjustments')
+	notes = models.TextField(blank=True)
+	
+	class Meta:
+		ordering = ['-created_at']
+	
+	def __str__(self):
+		return f"{self.user} - {self.adjustment_type} ₹{self.amount} ({self.duration_type})"
+	
+	def applies_to_month(self, year_month_str):
+		"""Check if this adjustment applies to a given month (YYYY-MM format)."""
+		if not self.is_active:
+			return False
+		if self.duration_type == 'continuous':
+			return True
+		# For one_month or multiple_months, check if the month is in selected_months
+		return year_month_str in (self.selected_months or [])
+	
+	def get_adjusted_amount(self, base_amount, year_month_str):
+		"""Return the adjusted amount for a given base amount and month."""
+		if not self.applies_to_month(year_month_str):
+			return base_amount
+		if self.adjustment_type == 'discount':
+			return max(0, base_amount - self.amount)
+		else:  # increment
+			return base_amount + self.amount

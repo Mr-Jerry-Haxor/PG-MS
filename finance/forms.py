@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from .models import Fees, Payment, Expenditure, ExpenditureCategory
+from .models import Fees, Payment, Expenditure, ExpenditureCategory, MonthlyAdjustment
 
 
 class UserChoiceField(forms.ModelChoiceField):

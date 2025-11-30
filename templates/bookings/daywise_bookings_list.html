@@ -1,0 +1,574 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Day-wise Bookings • {{ pg.name|default:"PG-MS" }}{% endblock %}
+
+{% block content %}
+<style>
+  /* Summary Cards */
+  .dw-summary-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    padding: 16px 20px;
+    height: 100%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: box-shadow 0.2s;
+  }
+  .dw-summary-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .dw-summary-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+  }
+  .dw-summary-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .dw-summary-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  /* Filter Accordion */
+  .dw-filter-accordion {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .dw-filter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: #f9fafb;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+  }
+  .dw-filter-header:hover {
+    background: #f3f4f6;
+  }
+  .dw-filter-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.95rem;
+  }
+  .dw-filter-arrow {
+    transition: transform 0.3s ease;
+    color: #6b7280;
+  }
+  .dw-filter-accordion.open .dw-filter-arrow {
+    transform: rotate(180deg);
+  }
+  .dw-filter-body {
+    display: none;
+    padding: 18px;
+    border-top: 1px solid #e5e7eb;
+  }
+  .dw-filter-accordion.open .dw-filter-body {
+    display: block;
+  }
+  
+  /* Table styling */
+  .dw-table-card {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+  }
+  .dw-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .dw-badge-pending { background: #fef3c7; color: #92400e; }
+  .dw-badge-approved { background: #d1fae5; color: #065f46; }
+  .dw-badge-completed { background: #e0e7ff; color: #3730a3; }
+  .dw-badge-rejected { background: #fee2e2; color: #991b1b; }
+  .dw-badge-paid { background: #d1fae5; color: #065f46; }
+  .dw-badge-unpaid { background: #fee2e2; color: #991b1b; }
+  
+  .dw-action-btn {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    border-radius: 6px;
+  }
+  
+  /* Empty state */
+  .dw-empty-state {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    background: #f9fafb;
+    border-radius: 12px;
+    border: 2px dashed #e5e7eb;
+  }
+</style>
+
+<div class="container-fluid">
+  <!-- Header -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h1 class="h3 mb-1 fw-bold">
+        <i class="bi bi-calendar-day text-primary me-2"></i>Day-wise Bookings
+      </h1>
+      <p class="text-muted small mb-0">Manage short-term and day-wise guest bookings</p>
+    </div>
+    {% if pgs and pgs|length > 1 %}
+    <form method="get" class="m-0">
+      <select name="pg" class="form-select form-select-sm" style="min-width: 180px;" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg">
+      <div class="dw-summary-card">
+        <div class="d-flex align-items-center gap-3">
+          <div class="dw-summary-icon bg-primary bg-opacity-10 text-primary">
+            <i class="bi bi-calendar-range"></i>
+          </div>
+          <div>
+            <div class="dw-summary-value">{{ total_daywise }}</div>
+            <div class="dw-summary-label">Total Bookings</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+      <div class="dw-summary-card">
+        <div class="d-flex align-items-center gap-3">
+          <div class="dw-summary-icon bg-warning bg-opacity-10 text-warning">
+            <i class="bi bi-hourglass-split"></i>
+          </div>
+          <div>
+            <div class="dw-summary-value">{{ pending_count }}</div>
+            <div class="dw-summary-label">Pending</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+      <div class="dw-summary-card">
+        <div class="d-flex align-items-center gap-3">
+          <div class="dw-summary-icon bg-success bg-opacity-10 text-success">
+            <i class="bi bi-check-circle"></i>
+          </div>
+          <div>
+            <div class="dw-summary-value">{{ approved_count }}</div>
+            <div class="dw-summary-label">Approved</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+      <div class="dw-summary-card">
+        <div class="d-flex align-items-center gap-3">
+          <div class="dw-summary-icon bg-info bg-opacity-10 text-info">
+            <i class="bi bi-person-check"></i>
+          </div>
+          <div>
+            <div class="dw-summary-value">{{ active_today }}</div>
+            <div class="dw-summary-label">Active Today</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+      <div class="dw-summary-card">
+        <div class="d-flex align-items-center gap-3">
+          <div class="dw-summary-icon bg-secondary bg-opacity-10 text-secondary">
+            <i class="bi bi-flag"></i>
+          </div>
+          <div>
+            <div class="dw-summary-value">{{ completed_count }}</div>
+            <div class="dw-summary-label">Completed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters Accordion -->
+  <div class="dw-filter-accordion mb-4" id="filterAccordion">
+    <div class="dw-filter-header" id="filterToggle">
+      <div class="dw-filter-title">
+        <i class="bi bi-funnel"></i>
+        <span>Filters</span>
+        {% if search_query or status_filter or payment_filter or date_from or date_to %}
+        <span class="badge bg-primary rounded-pill">Active</span>
+        {% endif %}
+      </div>
+      <i class="bi bi-chevron-down dw-filter-arrow"></i>
+    </div>
+    <div class="dw-filter-body">
+      <form id="filterForm" method="get" class="row g-3">
+        {% if pg %}<input type="hidden" name="pg" value="{{ pg.id }}">{% endif %}
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold">Search</label>
+          <input type="text" name="search" class="form-control" value="{{ search_query }}" placeholder="Name, email, room, purpose...">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Status</label>
+          <select name="status" class="form-select filter-auto">
+            <option value="">All Statuses</option>
+            <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+            <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Completed</option>
+            <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Payment</label>
+          <select name="payment" class="form-select filter-auto">
+            <option value="">All</option>
+            <option value="paid" {% if payment_filter == 'paid' %}selected{% endif %}>Paid</option>
+            <option value="unpaid" {% if payment_filter == 'unpaid' %}selected{% endif %}>Unpaid</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">From Date</label>
+          <input type="date" name="date_from" class="form-control filter-auto" value="{{ date_from }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">To Date</label>
+          <input type="date" name="date_to" class="form-control filter-auto" value="{{ date_to }}">
+        </div>
+        <div class="col-md-1 d-flex align-items-end">
+          <a href="{% url 'daywise_bookings_list' %}{% if pg %}?pg={{ pg.id }}{% endif %}" class="btn btn-outline-secondary w-100" title="Clear filters">
+            <i class="bi bi-x-circle"></i>
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bookings Table -->
+  {% if bookings_data %}
+  <div class="card dw-table-card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>
+                <a href="?{% if pg %}pg={{ pg.id }}&{% endif %}sort={% if sort_by == '-created_at' %}created_at{% else %}-created_at{% endif %}&search={{ search_query }}&status={{ status_filter }}&payment={{ payment_filter }}&date_from={{ date_from }}&date_to={{ date_to }}" class="text-decoration-none text-dark">
+                  Guest <i class="bi bi-arrow-down-up small text-muted"></i>
+                </a>
+              </th>
+              <th>Contact</th>
+              <th>
+                <a href="?{% if pg %}pg={{ pg.id }}&{% endif %}sort={% if sort_by == '-joining_date' %}joining_date{% else %}-joining_date{% endif %}&search={{ search_query }}&status={{ status_filter }}&payment={{ payment_filter }}&date_from={{ date_from }}&date_to={{ date_to }}" class="text-decoration-none text-dark">
+                  Dates <i class="bi bi-arrow-down-up small text-muted"></i>
+                </a>
+              </th>
+              <th>Room</th>
+              <th>Purpose</th>
+              <th>Status</th>
+              <th>Payment</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in bookings_data %}
+            <tr>
+              <td>
+                <div class="fw-semibold">{{ item.guest_name }}</div>
+                <small class="text-muted">{{ item.booking.user.email }}</small>
+              </td>
+              <td>
+                <div class="small">{{ item.phone|default:"—" }}</div>
+                {% if item.emergency_contact %}
+                <div class="small text-muted">Emg: {{ item.emergency_contact }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <div class="small">
+                  <i class="bi bi-calendar-event text-primary me-1"></i>
+                  {{ item.booking.joining_date|date:"M d" }}
+                  {% if item.booking.start_time %}<span class="text-muted">{{ item.booking.start_time|time:"g A" }}</span>{% endif %}
+                </div>
+                <div class="small">
+                  <i class="bi bi-calendar-check text-success me-1"></i>
+                  {{ item.booking.leaving_date|date:"M d" }}
+                  {% if item.booking.end_time %}<span class="text-muted">{{ item.booking.end_time|time:"g A" }}</span>{% endif %}
+                </div>
+                <div class="small text-muted">{{ item.days }} day{{ item.days|pluralize }}</div>
+              </td>
+              <td>
+                {% if item.booking.assigned_by %}
+                <span class="badge bg-success-subtle text-success">Room {{ item.booking.room.room_no }}, Bed {{ item.booking.share_no }}</span>
+                {% else %}
+                <span class="badge bg-warning-subtle text-warning">Not Assigned</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="text-truncate d-inline-block" style="max-width: 120px;" title="{{ item.booking.purpose }}">
+                  {{ item.booking.purpose|truncatewords:5|default:"—" }}
+                </span>
+              </td>
+              <td>
+                {% if item.booking.status == 'pending' %}
+                  <span class="dw-badge dw-badge-pending"><i class="bi bi-clock"></i> Pending</span>
+                {% elif item.booking.status == 'approved' %}
+                  <span class="dw-badge dw-badge-approved"><i class="bi bi-check"></i> Approved</span>
+                {% elif item.booking.status == 'completed' %}
+                  <span class="dw-badge dw-badge-completed"><i class="bi bi-flag"></i> Completed</span>
+                {% elif item.booking.status == 'rejected' %}
+                  <span class="dw-badge dw-badge-rejected"><i class="bi bi-x"></i> Rejected</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if item.booking.payment_received %}
+                  <span class="dw-badge dw-badge-paid"><i class="bi bi-check-circle"></i> Paid</span>
+                {% else %}
+                  <span class="dw-badge dw-badge-unpaid"><i class="bi bi-x-circle"></i> Unpaid</span>
+                {% endif %}
+                {% if item.booking.payment_amount %}
+                <div class="small text-muted mt-1">₹{{ item.booking.payment_amount|floatformat:0 }}</div>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <div class="d-flex gap-1 justify-content-end flex-wrap">
+                  {% if item.booking.status == 'pending' %}
+                    <a href="{% url 'pg_booking_approve' item.booking.id %}" class="btn btn-sm btn-success dw-action-btn" title="Approve">
+                      <i class="bi bi-check-lg"></i>
+                    </a>
+                    <a href="{% url 'pg_booking_reject' item.booking.id %}" class="btn btn-sm btn-outline-danger dw-action-btn" title="Reject">
+                      <i class="bi bi-x-lg"></i>
+                    </a>
+                  {% elif item.booking.status == 'approved' %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary dw-action-btn complete-booking-btn"
+                            data-booking-id="{{ item.booking.id }}" title="Mark Complete">
+                      <i class="bi bi-flag-fill"></i>
+                    </button>
+                  {% endif %}
+                  <!-- View Details Modal Trigger -->
+                  <button type="button" class="btn btn-sm btn-outline-info dw-action-btn" 
+                          data-bs-toggle="modal" data-bs-target="#detailModal{{ item.booking.id }}" title="View Details">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            
+            <!-- Detail Modal -->
+            <div class="modal fade" id="detailModal{{ item.booking.id }}" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-calendar-day me-2"></i>Day-wise Booking Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="row g-3">
+                      <div class="col-6">
+                        <label class="small text-muted">Guest Name</label>
+                        <div class="fw-semibold">{{ item.guest_name }}</div>
+                      </div>
+                      <div class="col-6">
+                        <label class="small text-muted">Phone</label>
+                        <div>{{ item.phone|default:"—" }}</div>
+                      </div>
+                      <div class="col-6">
+                        <label class="small text-muted">Email</label>
+                        <div>{{ item.booking.user.email }}</div>
+                      </div>
+                      <div class="col-6">
+                        <label class="small text-muted">Emergency Contact</label>
+                        <div>{{ item.emergency_contact|default:"—" }}</div>
+                      </div>
+                      <div class="col-12"><hr class="my-2"></div>
+                      <div class="col-6">
+                        <label class="small text-muted">Check-in</label>
+                        <div>{{ item.booking.joining_date|date:"M d, Y" }} {% if item.booking.start_time %}{{ item.booking.start_time|time:"g:i A" }}{% endif %}</div>
+                      </div>
+                      <div class="col-6">
+                        <label class="small text-muted">Check-out</label>
+                        <div>{{ item.booking.leaving_date|date:"M d, Y" }} {% if item.booking.end_time %}{{ item.booking.end_time|time:"g:i A" }}{% endif %}</div>
+                      </div>
+                      <div class="col-6">
+                        <label class="small text-muted">Duration</label>
+                        <div>{{ item.days }} day{{ item.days|pluralize }}</div>
+                      </div>
+                      <div class="col-6">
+                        <label class="small text-muted">Room Assignment</label>
+                        <div>
+                          {% if item.booking.assigned_by %}
+                            Room {{ item.booking.room.room_no }}, Bed {{ item.booking.share_no }}
+                          {% else %}
+                            <span class="text-warning">Not assigned</span>
+                          {% endif %}
+                        </div>
+                      </div>
+                      <div class="col-12"><hr class="my-2"></div>
+                      <div class="col-12">
+                        <label class="small text-muted">Purpose</label>
+                        <div>{{ item.booking.purpose|default:"—" }}</div>
+                      </div>
+                      <div class="col-6">
+                        <label class="small text-muted">Status</label>
+                        <div>
+                          {% if item.booking.status == 'pending' %}
+                            <span class="dw-badge dw-badge-pending">Pending</span>
+                          {% elif item.booking.status == 'approved' %}
+                            <span class="dw-badge dw-badge-approved">Approved</span>
+                          {% elif item.booking.status == 'completed' %}
+                            <span class="dw-badge dw-badge-completed">Completed</span>
+                          {% elif item.booking.status == 'rejected' %}
+                            <span class="dw-badge dw-badge-rejected">Rejected</span>
+                          {% endif %}
+                        </div>
+                      </div>
+                      <div class="col-6">
+                        <label class="small text-muted">Payment</label>
+                        <div>
+                          {% if item.booking.payment_received %}
+                            <span class="dw-badge dw-badge-paid">Paid</span>
+                          {% else %}
+                            <span class="dw-badge dw-badge-unpaid">Unpaid</span>
+                          {% endif %}
+                          {% if item.booking.payment_amount %}
+                            <span class="ms-1">₹{{ item.booking.payment_amount|floatformat:0 }}</span>
+                          {% endif %}
+                        </div>
+                      </div>
+                      <div class="col-12"><hr class="my-2"></div>
+                      <div class="col-6">
+                        <label class="small text-muted">Created</label>
+                        <div class="small">{{ item.booking.created_at|date:"M d, Y g:i A" }}</div>
+                      </div>
+                      {% if item.booking.assigned_by %}
+                      <div class="col-6">
+                        <label class="small text-muted">Assigned By</label>
+                        <div class="small">{{ item.booking.assigned_by.get_full_name|default:item.booking.assigned_by.email }}</div>
+                      </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer bg-transparent">
+      <nav>
+        <ul class="pagination pagination-sm mb-0 justify-content-center">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if pg %}&pg={{ pg.id }}{% endif %}&search={{ search_query }}&status={{ status_filter }}&payment={{ payment_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort_by }}">Previous</a>
+            </li>
+          {% endif %}
+          
+          {% for num in page_obj.paginator.page_range %}
+            {% if num == page_obj.number %}
+              <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+              <li class="page-item"><a class="page-link" href="?page={{ num }}{% if pg %}&pg={{ pg.id }}{% endif %}&search={{ search_query }}&status={{ status_filter }}&payment={{ payment_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort_by }}">{{ num }}</a></li>
+            {% endif %}
+          {% endfor %}
+          
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if pg %}&pg={{ pg.id }}{% endif %}&search={{ search_query }}&status={{ status_filter }}&payment={{ payment_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort_by }}">Next</a>
+            </li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="dw-empty-state">
+    <i class="bi bi-calendar-x display-4 text-muted mb-3 d-block"></i>
+    <h5 class="text-muted">No Day-wise Bookings Found</h5>
+    <p class="text-secondary small mb-0">
+      {% if search_query or status_filter or payment_filter or date_from or date_to %}
+        No bookings match your filters. Try adjusting your search criteria.
+      {% else %}
+        There are no day-wise bookings yet.
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- CSRF Token for AJAX -->
+<form id="csrfForm" style="display:none;">{% csrf_token %}</form>
+
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function() {
+  // Filter accordion toggle
+  $('#filterToggle').on('click', function() {
+    $('#filterAccordion').toggleClass('open');
+  });
+  
+  // Auto-submit on filter change
+  $('.filter-auto').on('change', function() {
+    $('#filterForm').submit();
+  });
+  
+  // Mark booking as complete
+  $(document).on('click', '.complete-booking-btn', function() {
+    if (!confirm('Mark this booking as completed? The room will be marked as vacant.')) {
+      return;
+    }
+    
+    const bookingId = $(this).data('booking-id');
+    const csrfToken = $('#csrfForm [name=csrfmiddlewaretoken]').val();
+    
+    $.ajax({
+      url: '/bookings/daywise/' + bookingId + '/complete/',
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrfToken },
+      success: function(data) {
+        if (data.success) {
+          location.reload();
+        } else {
+          alert('Error: ' + (data.error || 'Failed to complete booking'));
+        }
+      },
+      error: function(xhr, status, error) {
+        alert('An error occurred. Please try again.');
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

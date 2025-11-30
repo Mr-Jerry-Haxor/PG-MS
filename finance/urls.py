@@ -41,4 +41,13 @@ urlpatterns = [
     path('expenditure/categories/', views.expenditure_categories_list, name='expenditure_categories_list'),
     path('expenditure/categories/create/', views.expenditure_category_create, name='expenditure_category_create'),
     path('expenditure/categories/<int:pk>/delete/', views.expenditure_category_delete, name='expenditure_category_delete'),
+    
+    # Monthly Adjustments (Discounts/Increments)
+    path('monthly-adjustments/', views.monthly_adjustments_list, name='monthly_adjustments_list'),
+    path('monthly-adjustments/add/', views.monthly_adjustment_add, name='monthly_adjustment_add'),
+    path('monthly-adjustments/create/', views.monthly_adjustment_create, name='monthly_adjustment_create'),
+    path('monthly-adjustments/<int:pk>/edit/', views.monthly_adjustment_edit, name='monthly_adjustment_edit'),
+    path('monthly-adjustments/<int:pk>/delete/', views.monthly_adjustment_delete, name='monthly_adjustment_delete'),
+    path('monthly-adjustments/<int:pk>/toggle/', views.monthly_adjustment_toggle, name='monthly_adjustment_toggle'),
+    path('monthly-adjustments/residents-api/', views.monthly_adjustments_residents_api, name='monthly_adjustments_residents_api'),
 ]
