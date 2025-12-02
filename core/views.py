@@ -1,13 +1,158 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from .models import Notification
-from bookings.models import RoomShareStatus, Booking, ReferralCredit
+from bookings.models import RoomShareStatus, Booking, ReferralCredit, RoomSwap
 from finance.models import Payment, Expenditure
 from django.utils import timezone
 from django.db.models import Sum, Q
 from pgadmin.models import PG, Complaint
 from datetime import date as _date
 from datetime import datetime as _datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _auto_sync_pg_on_dashboard(pg, user):
+    """
+    Auto-sync bed statuses and execute pending future swaps for a PG.
+    Called silently when a PG admin opens the dashboard.
+    This keeps bed statuses accurate without requiring manual Refresh.
+    """
+    if not pg:
+        return {'synced': False, 'swaps_executed': 0, 'swaps_failed': 0}
+    
+    today = timezone.now().date()
+    results = {'synced': False, 'swaps_executed': 0, 'swaps_failed': 0}
+    
+    try:
+        # 1. Execute pending future swaps that are due
+        from bookings.models import RoomSwap
+        pending_swaps = RoomSwap.objects.filter(
+            status=RoomSwap.PENDING,
+            is_future_swap=True,
+            effective_date__lte=today,
+            booking__room__pg=pg
+        ).select_related('booking', 'from_room', 'to_room', 'booking__user').order_by('effective_date', 'requested_at')
+        
+        for swap in pending_swaps:
+            try:
+                result = _execute_future_swap_silent(swap, user)
+                if result['success']:
+                    results['swaps_executed'] += 1
+                else:
+                    results['swaps_failed'] += 1
+            except Exception as e:
+                logger.warning(f"Auto-execute swap #{swap.id} failed: {e}")
+                results['swaps_failed'] += 1
+        
+        # 2. Sync bed statuses
+        from bookings.utils import sync_room_share_statuses
+        sync_room_share_statuses(pg=pg)
+        results['synced'] = True
+        
+    except Exception as e:
+        logger.warning(f"Auto-sync for PG {pg.id} failed: {e}")
+    
+    return results
+
+
+def _execute_future_swap_silent(swap, executor):
+    """
+    Execute a pending future swap silently (no messages).
+    Returns: {'success': bool, 'error': str or None}
+    """
+    from django.db import transaction
+    from bookings.models import Room, RoomShareStatus, Booking, RoomSwap
+    from core.audit import log
+    
+    try:
+        with transaction.atomic():
+            # Re-fetch with lock
+            swap = RoomSwap.objects.select_for_update().get(pk=swap.id)
+            
+            if swap.status != RoomSwap.PENDING:
+                return {'success': False, 'error': f'Swap status is {swap.status}'}
+            
+            booking = Booking.objects.select_for_update().get(pk=swap.booking_id, status=Booking.APPROVED)
+            from_room = Room.objects.select_for_update().get(pk=swap.from_room_id)
+            to_room = Room.objects.select_for_update().get(pk=swap.to_room_id)
+            from_share = RoomShareStatus.objects.select_for_update().get(room=from_room, share_no=swap.from_share_no)
+            to_share = RoomShareStatus.objects.select_for_update().get(room=to_room, share_no=swap.to_share_no)
+            
+            # Verify booking is still at source location
+            if booking.room_id != from_room.id or booking.share_no != swap.from_share_no:
+                swap.status = RoomSwap.CANCELLED
+                swap.reason += f" | Auto-cancelled: booking moved"
+                swap.processed_at = timezone.now()
+                swap.save(update_fields=['status', 'reason', 'processed_at'])
+                return {'success': False, 'error': 'Booking moved'}
+            
+            today = timezone.now().date()
+            
+            # Check if target bed is actually available (by checking bookings, not status)
+            blocking_booking = Booking.objects.filter(
+                room=to_room,
+                share_no=swap.to_share_no,
+                status=Booking.APPROVED,
+                joining_date__lte=today
+            ).filter(
+                Q(leaving_date__isnull=True) | Q(leaving_date__gt=today)
+            ).exclude(pk=booking.pk).first()
+            
+            if blocking_booking:
+                swap.status = RoomSwap.CANCELLED
+                blocker_name = blocking_booking.user.get_full_name() or blocking_booking.user.email
+                swap.reason += f" | Auto-cancelled: occupied by {blocker_name}"
+                swap.processed_at = timezone.now()
+                swap.save(update_fields=['status', 'reason', 'processed_at'])
+                return {'success': False, 'error': f'Bed occupied by {blocker_name}'}
+            
+            # Execute the swap
+            booking.room = to_room
+            booking.share_no = swap.to_share_no
+            try:
+                booking.pg = to_room.pg
+            except Exception:
+                pass
+            booking.save(update_fields=['room', 'pg', 'share_no'])
+            
+            # Update application if exists
+            app = getattr(booking, 'application', None)
+            if app and app.room_id != to_room.id:
+                app.room = to_room
+                app.save(update_fields=['room'])
+            
+            # Update share statuses
+            from_share.status = RoomShareStatus.VACANT
+            from_share.vacant_from = None
+            from_share.save(update_fields=['status', 'vacant_from'])
+            
+            to_share.status = RoomShareStatus.OCCUPIED
+            to_share.vacant_from = None
+            to_share.save(update_fields=['status', 'vacant_from'])
+            
+            # Mark swap completed
+            swap.status = RoomSwap.COMPLETED
+            swap.processed_at = timezone.now()
+            swap.processed_by = executor
+            swap.save(update_fields=['status', 'processed_at', 'processed_by'])
+            
+            # Log
+            log(
+                executor,
+                'future_swap_auto_executed',
+                'RoomSwap',
+                swap.id,
+                f"Auto-executed swap: {booking.user.get_full_name() or booking.user.email} from room {from_room.room_no} bed {swap.from_share_no} to room {to_room.room_no} bed {swap.to_share_no}"
+            )
+            
+            return {'success': True, 'error': None}
+            
+    except Booking.DoesNotExist:
+        return {'success': False, 'error': 'Booking not found'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
 
 @login_required
@@ -124,6 +269,21 @@ def dashboard(request):
 			pg = pgs_qs.first()
 		if pg:
 			request.session['active_pg_id'] = pg.id
+			
+			# AUTO-SYNC: Silently execute pending future swaps and sync bed statuses
+			# This ensures beds are always up-to-date when admin views dashboard
+			try:
+				sync_result = _auto_sync_pg_on_dashboard(pg, request.user)
+				# Optionally show a message if swaps were executed
+				if sync_result.get('swaps_executed', 0) > 0:
+					from django.contrib import messages
+					messages.success(
+						request,
+						f"Auto-executed {sync_result['swaps_executed']} scheduled room swap(s)."
+					)
+			except Exception as e:
+				logger.warning(f"Dashboard auto-sync failed: {e}")
+		
 		# Metrics for selected PG (or across all if none)
 		today = timezone.now().date()
 		month_start = today.replace(day=1)

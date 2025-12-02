@@ -63,7 +63,9 @@
         <div class="d-flex flex-wrap gap-2">
           {% for s in room.shares.all|dictsort:'share_no' %}
             {% with data=s.leaving_data %}
-              {% if s.status == 'vacant' %}
+              {% if s.has_future_swap %}
+                <span class="share-chip chip-reserved chip-disabled" title="This bed has a pending room swap">Bed {{ s.share_no }} <span class="badge bg-info-subtle text-info">Swap Pending</span></span>
+              {% elif s.status == 'vacant' %}
                 <a href="{% url 'request_booking' room.id s.share_no %}" class="share-chip chip-vacant text-decoration-none">Bed {{ s.share_no }} <span class="badge bg-success-subtle text-success">Now</span></a>
               {% elif s.status == 'reserved' %}
                 <span class="share-chip chip-reserved chip-disabled">Bed {{ s.share_no }} <span class="badge bg-warning-subtle text-warning-emphasis">Reserved</span></span>

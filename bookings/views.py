@@ -21,7 +21,7 @@ from pgadmin.models import PG, PGAdmin
 
 from .application_forms import ResidentApplicationForm
 from .forms import AadhaarForm, BookingRequestForm
-from .models import Room, RoomShareStatus, Booking
+from .models import Room, RoomShareStatus, Booking, RoomSwap
 
 def _pg_by_slug_or_404(slug: str):
     from django.shortcuts import get_object_or_404
@@ -378,6 +378,17 @@ def handle_future_booking(request, pg, has_active):
         
         if not can_book_on_date:
             errors.append('Selected share is not available for the chosen joining date.')
+        
+        # Check for pending future swaps targeting this bed
+        if room and share_no:
+            has_future_swap = RoomSwap.objects.filter(
+                to_room=room,
+                to_share_no=share_no,
+                is_future_swap=True,
+                status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
+            ).exists()
+            if has_future_swap:
+                errors.append('This bed has a pending room swap and is not available for booking.')
     
     if errors:
         for error in errors:
@@ -550,6 +561,17 @@ def handle_booknow_booking(request, pg, has_active, context):
             # If there's no current booking or leaving date doesn't free it before requested joining_date, reject
             if not current or not current.leaving_date or not (joining_date and joining_date > current.leaving_date):
                 errors.append('Selected share is not yet available for the chosen date.')
+        
+        # Check for pending future swaps targeting this bed
+        if room and share_no:
+            has_future_swap = RoomSwap.objects.filter(
+                to_room=room,
+                to_share_no=share_no,
+                is_future_swap=True,
+                status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
+            ).exists()
+            if has_future_swap:
+                errors.append('This bed has a pending room swap and is not available for booking.')
 
     # Validate application form last, accumulate errors
     if not form.is_valid():
@@ -838,6 +860,17 @@ def handle_booknow_booking(request, pg, has_active, context):
             # If there's no current booking or leaving date doesn't free it before requested joining_date, reject
             if not current or not current.leaving_date or not (joining_date and joining_date > current.leaving_date):
                 errors.append('Selected share is not yet available for the chosen date.')
+        
+        # Check for pending future swaps targeting this bed
+        if room and share_no:
+            has_future_swap = RoomSwap.objects.filter(
+                to_room=room,
+                to_share_no=share_no,
+                is_future_swap=True,
+                status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
+            ).exists()
+            if has_future_swap:
+                errors.append('This bed has a pending room swap and is not available for booking.')
 
     # Validate application form last, accumulate errors
     if not form.is_valid():
@@ -1066,7 +1099,19 @@ def pg_quick_rooms(request, pgslug):
     today = timezone.now().date()
     include_vacant_from = request.GET.get('include_vacant_from', 'false').lower() == 'true'
     
+    # Get all beds with pending/approved future swaps for this PG
+    beds_with_future_swaps = set(
+        RoomSwap.objects.filter(
+            to_room__pg=pg,
+            is_future_swap=True,
+            status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
+        ).values_list('to_room_id', 'to_share_no')
+    )
+    
     def share_is_available(rs: RoomShareStatus):
+        # Check if this bed has a pending future swap
+        if (rs.room_id, rs.share_no) in beds_with_future_swaps:
+            return False
         if rs.status == RoomShareStatus.VACANT:
             return True
         if include_vacant_from and rs.status == RoomShareStatus.VACANT_FROM:
@@ -1098,8 +1143,22 @@ def pg_quick_shares(request, pgslug, room_id):
     today = timezone.now().date()
     include_vacant_from = request.GET.get('include_vacant_from', 'false').lower() == 'true'
     shares = RoomShareStatus.objects.filter(room=room).order_by('share_no')
+    
+    # Get beds with pending/approved future swaps for this room
+    beds_with_future_swaps = set(
+        RoomSwap.objects.filter(
+            to_room=room,
+            is_future_swap=True,
+            status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
+        ).values_list('to_share_no', flat=True)
+    )
+    
     result = []
     for s in shares:
+        # Check if this bed has a pending future swap - if so, skip it entirely
+        if s.share_no in beds_with_future_swaps:
+            continue
+        
         # Include based on include_vacant_from parameter
         if s.status == RoomShareStatus.VACANT:
             include_this = True
@@ -1153,6 +1212,18 @@ def availability(request):
     # Preload approved bookings to find leaving dates (confirmed/unconfirmed) for the selected PG
     leaving_map = {}
     today = timezone.now().date()
+    
+    # Get beds with pending future swaps for this PG
+    beds_with_future_swaps = set()
+    if pg:
+        beds_with_future_swaps = set(
+            RoomSwap.objects.filter(
+                to_room__pg=pg,
+                is_future_swap=True,
+                status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
+            ).values_list('to_room_id', 'to_share_no')
+        )
+    
     if pg:
         qs = (
             Booking.objects.filter(status=Booking.APPROVED, room__pg=pg, leaving_date__isnull=False)
@@ -1169,11 +1240,12 @@ def availability(request):
                     'confirmed_date': b.leaving_confirmed_date,
                     'available_from': b.leaving_date + timedelta(days=1) if b.leaving_date else None,
                 }
-        # Attach leaving map data directly to share objects for simpler template access
+        # Attach leaving map data and future swap info directly to share objects for simpler template access
         for room_obj in rooms:
             for share in room_obj.shares.all():
                 key = f"{room_obj.id}:{share.share_no}"
                 setattr(share, 'leaving_data', leaving_map.get(key))
+                setattr(share, 'has_future_swap', (room_obj.id, share.share_no) in beds_with_future_swaps)
     return render(request, 'bookings/availability.html', {"pg": pg, "pgs": list(pgs), "rooms": rooms, "leaving_map": leaving_map, "today": today})
 
 
@@ -1227,6 +1299,17 @@ def request_booking(request, room_id, share_no):
     if has_active:
         messages.error(request, "You already have an active booking in this PG. You can book in another PG, but only one booking per PG is allowed.")
         return redirect('dashboard')
+    
+    # Check if this bed has a pending future swap - if so, don't allow booking
+    has_future_swap = RoomSwap.objects.filter(
+        to_room=room,
+        to_share_no=share_no,
+        is_future_swap=True,
+        status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
+    ).exists()
+    if has_future_swap:
+        messages.error(request, "This bed has a pending room swap and is not available for booking.")
+        return redirect('availability')
 
     if request.method == 'POST':
         form = BookingRequestForm(request.POST)
