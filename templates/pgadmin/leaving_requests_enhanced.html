@@ -413,11 +413,9 @@
                     </button>
                   {% else %}
                     <span class="badge bg-success">Confirmed</span>
-                    {% if booking.leaving_confirmed_date >= today %}
-                      <button class="btn btn-sm btn-outline-warning mt-1 show-recontinue-btn" data-booking-id="{{ booking.id }}">
-                        <i class="bi bi-arrow-counterclockwise me-1"></i>Re-Continue
-                      </button>
-                    {% endif %}
+                    <button class="btn btn-sm btn-outline-warning mt-1 show-recontinue-btn" data-booking-id="{{ booking.id }}">
+                      <i class="bi bi-arrow-counterclockwise me-1"></i>Re-Continue
+                    </button>
                     <button class="btn btn-sm btn-outline-danger delete-booking-btn" 
                             data-booking-id="{{ booking.id }}"
                             data-full-name="{{ booking.user.get_full_name }}"

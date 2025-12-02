@@ -5182,24 +5182,27 @@ def re_continue_booking(request, booking_id):
     if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
         return JsonResponse({'error': 'Unauthorized'}, status=403)
     
-    # Can only re-continue if leaving_confirmed_date exists and is future/today
+    # Can only re-continue if leaving_confirmed_date exists
     if not booking.leaving_confirmed_date:
         return JsonResponse({'error': 'No confirmed leaving date'}, status=400)
     
-    if booking.leaving_confirmed_date < date.today():
-        return JsonResponse({'error': 'Cannot re-continue - leaving date has passed'}, status=400)
+    # Note: Re-continue is now allowed even after leaving date has passed
+    # This allows PG admins to bring back tenants who left but want to return
     
     if request.method == 'GET':
         # Show options: same room or change room
         # Check for conflicts in same room
         same_room_conflicts = []
         
+        # Use today's date if leaving date has already passed, otherwise use leaving_confirmed_date
+        reference_date = max(booking.leaving_confirmed_date, date.today())
+        
         # Check future bookings on this bed
         future_bookings = Booking.objects.filter(
             room=booking.room,
             share_no=booking.share_no,
             status__in=[Booking.PENDING, Booking.APPROVED],
-            joining_date__gte=booking.leaving_confirmed_date
+            joining_date__gte=reference_date
         ).exclude(id=booking.id).select_related('user')
         
         if future_bookings.exists():
@@ -5209,27 +5212,43 @@ def re_continue_booking(request, booking_id):
                     'detail': f"Booking for {fb.user.get_full_name()} from {fb.joining_date}"
                 })
         
-        # Check future swaps
+        # Check future swaps (both PENDING and APPROVED)
         future_swaps = RoomSwap.objects.filter(
             to_room=booking.room,
             to_share_no=booking.share_no,
-            effective_date__gte=booking.leaving_confirmed_date,
-            status=RoomSwap.APPROVED
+            effective_date__gte=reference_date,
+            status__in=[RoomSwap.PENDING, RoomSwap.APPROVED],
+            is_future_swap=True
         ).select_related('booking', 'booking__user')
         
         if future_swaps.exists():
             for fs in future_swaps:
+                swap_status = "Pending" if fs.status == RoomSwap.PENDING else "Approved"
                 same_room_conflicts.append({
                     'type': 'swap',
-                    'detail': f"Swap for {fs.booking.user.get_full_name()} effective {fs.effective_date}"
+                    'detail': f"Future Swap ({swap_status}) for {fs.booking.user.get_full_name()} effective {fs.effective_date}"
                 })
         
         # Get available rooms for change option
+        # First, collect beds that have pending/approved future swaps
+        beds_with_future_swaps = set()
+        all_future_swaps = RoomSwap.objects.filter(
+            to_room__pg=booking.room.pg,
+            effective_date__gte=date.today(),
+            status__in=[RoomSwap.PENDING, RoomSwap.APPROVED],
+            is_future_swap=True
+        ).values_list('to_room_id', 'to_share_no')
+        for room_id, share_no in all_future_swaps:
+            beds_with_future_swaps.add((room_id, share_no))
+        
         vacant_rooms = []
         all_rooms = Room.objects.filter(pg=booking.room.pg).prefetch_related('shares')
         for room in all_rooms:
             for share in room.shares.all():
                 if share.status == RoomShareStatus.VACANT:
+                    # Skip beds that have pending/approved future swaps
+                    if (room.id, share.share_no) in beds_with_future_swaps:
+                        continue
                     vacant_rooms.append({
                         'room_id': room.id,
                         'room_no': room.room_no,
@@ -5248,20 +5267,24 @@ def re_continue_booking(request, booking_id):
     elif request.method == 'POST':
         option = request.POST.get('option')  # 'same' or 'change'
         
+        # Use today's date if leaving date has already passed, otherwise use leaving_confirmed_date
+        reference_date = max(booking.leaving_confirmed_date, date.today())
+        
         if option == 'same':
-            # Validate no conflicts
+            # Validate no conflicts (including both PENDING and APPROVED future swaps)
             conflicts_exist = (
                 Booking.objects.filter(
                     room=booking.room,
                     share_no=booking.share_no,
                     status__in=[Booking.PENDING, Booking.APPROVED],
-                    joining_date__gte=booking.leaving_confirmed_date
+                    joining_date__gte=reference_date
                 ).exclude(id=booking.id).exists() or
                 RoomSwap.objects.filter(
                     to_room=booking.room,
                     to_share_no=booking.share_no,
-                    effective_date__gte=booking.leaving_confirmed_date,
-                    status=RoomSwap.APPROVED
+                    effective_date__gte=reference_date,
+                    status__in=[RoomSwap.PENDING, RoomSwap.APPROVED],
+                    is_future_swap=True
                 ).exists()
             )
             
