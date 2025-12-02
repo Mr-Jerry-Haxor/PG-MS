@@ -92,6 +92,9 @@ class Booking(TimeStampedModel):
 	advance_returned = models.BooleanField(default=False, help_text="Advance amount returned by PG admin")
 	advance_returned_at = models.DateTimeField(null=True, blank=True)
 	advance_returned_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+	# WhatsApp invite tracking
+	whatsapp_invite_sent = models.BooleanField(default=False, help_text="Whether WhatsApp group invite has been sent to this tenant")
+	whatsapp_invite_sent_at = models.DateTimeField(null=True, blank=True, help_text="When WhatsApp invite was marked as sent")
 
 	class Meta:
 		constraints = [

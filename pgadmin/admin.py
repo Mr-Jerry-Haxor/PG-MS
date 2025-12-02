@@ -6,6 +6,24 @@ from .models import PG, PGAdmin, Complaint, ComplaintComment
 class PGAdminAdmin(admin.ModelAdmin):
 	list_display = ("name", "address", "created_at")
 	search_fields = ("name", "address")
+	
+	fieldsets = (
+		(None, {
+			"fields": ("name", "slug", "address", "phone")
+		}),
+		("Fees & Settings", {
+			"fields": ("referral_amount", "daywise_fee", "notice_period", "past_joining_date_allowed", "allow_custom_leave_date")
+		}),
+		("WhatsApp Group Settings", {
+			"fields": ("whatsapp_invite_link", "whatsapp_invite_message"),
+			"classes": ("collapse",),
+			"description": "Optional: Configure WhatsApp group invite settings for this PG."
+		}),
+		("Admin", {
+			"fields": ("created_by_admin",),
+			"classes": ("collapse",)
+		}),
+	)
 
 
 @admin.register(PGAdmin)

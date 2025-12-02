@@ -63,6 +63,11 @@ urlpatterns = [
     # Bed status sync
     path('sync-bed-statuses/', views.sync_bed_statuses, name='pg_sync_bed_statuses'),
     
+    # WhatsApp group management
+    path('whatsapp/', views.whatsapp_management, name='pg_whatsapp_management'),
+    path('whatsapp/mark-sent/<int:booking_id>/', views.whatsapp_mark_sent, name='pg_whatsapp_mark_sent'),
+    path('whatsapp/stats/', views.whatsapp_stats, name='pg_whatsapp_stats'),
+    
     # Complaint management
     path('complaints/', complaint_views.admin_complaints, name='admin_complaints'),
     path('complaints/<int:complaint_id>/', complaint_views.admin_complaint_detail, name='admin_complaint_detail'),

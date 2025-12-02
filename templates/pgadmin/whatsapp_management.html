@@ -1,0 +1,409 @@
+{% extends 'base.html' %}
+{% block title %}WhatsApp Group Management • {{ pg.name }} • PG-MS{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <a href="{% url 'dashboard' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+    <h1 class="h4 mb-0"><i class="bi bi-whatsapp text-success me-2"></i>WhatsApp Group Management</h1>
+    {% if pgs and pgs|length > 1 %}
+    <form method="get">
+      <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for p in pgs %}
+        <option value="{{ p.id }}" {% if pg and p.id == pg.id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+  <span class="badge bg-light text-dark">{{ pg.name }}</span>
+</div>
+
+<!-- Stats Card -->
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-secondary small">Total Active Tenants</div>
+            <div class="h3 mb-0" id="statTotal">{{ total_bookings }}</div>
+          </div>
+          <div class="bg-primary bg-opacity-10 rounded-circle p-3">
+            <i class="bi bi-people text-primary fs-4"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-secondary small">Invite Sent</div>
+            <div class="h3 mb-0 text-success" id="statSent">{{ sent_count }}</div>
+          </div>
+          <div class="bg-success bg-opacity-10 rounded-circle p-3">
+            <i class="bi bi-check-circle text-success fs-4"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-secondary small">Pending</div>
+            <div class="h3 mb-0 text-warning" id="statPending">{{ pending_count }}</div>
+          </div>
+          <div class="bg-warning bg-opacity-10 rounded-circle p-3">
+            <i class="bi bi-clock text-warning fs-4"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not whatsapp_invite_link %}
+<div class="alert alert-warning d-flex align-items-center">
+  <i class="bi bi-exclamation-triangle me-2"></i>
+  <div>
+    <strong>WhatsApp invite link not configured!</strong> 
+    <a href="{% url 'pg_my' %}" class="alert-link">Go to My PG settings</a> to add your WhatsApp group invite link.
+  </div>
+</div>
+{% endif %}
+
+<!-- Filters Accordion -->
+<div class="accordion mb-3" id="filtersAccordion">
+  <div class="accordion-item border-0 shadow-sm">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#filtersPanel">
+        <i class="bi bi-funnel me-2"></i> Filters & Sort
+      </button>
+    </h2>
+    <div id="filtersPanel" class="accordion-collapse collapse" data-bs-parent="#filtersAccordion">
+      <div class="accordion-body">
+        <div class="row g-3">
+          <div class="col-6 col-md-3">
+            <label class="form-label small">Invite Status</label>
+            <select id="filterStatus" class="form-select form-select-sm">
+              <option value="pending" selected>Pending Only</option>
+              <option value="sent">Sent Only</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label small">Booking Status</label>
+            <select id="filterBookingStatus" class="form-select form-select-sm">
+              <option value="active" selected>Active Only</option>
+              <option value="all">All Bookings</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label small">Sort By</label>
+            <select id="sortBy" class="form-select form-select-sm">
+              <option value="joining_date_desc" selected>Joining Date (Newest)</option>
+              <option value="joining_date_asc">Joining Date (Oldest)</option>
+              <option value="name_asc">Name (A-Z)</option>
+              <option value="name_desc">Name (Z-A)</option>
+              <option value="room_asc">Room (Ascending)</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label small">Search</label>
+            <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Name, email, room...">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bookings Table -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="bookingsTable">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">User Info</th>
+            <th class="text-center">Send Link</th>
+            <th class="text-center pe-3">Status</th>
+          </tr>
+        </thead>
+        <tbody id="bookingsTableBody">
+          <!-- Populated by JavaScript -->
+        </tbody>
+      </table>
+    </div>
+    <div id="noResults" class="text-center text-secondary py-4 d-none">
+      <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+      No bookings found matching your filters.
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Parse bookings data from server
+  const bookingsData = {{ bookings_json|safe }};
+  const whatsappInviteLink = "{{ whatsapp_invite_link|escapejs }}";
+  const whatsappInviteMessage = "{{ whatsapp_invite_message|escapejs }}";
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
+  
+  // DOM elements
+  const tableBody = document.getElementById('bookingsTableBody');
+  const noResults = document.getElementById('noResults');
+  const filterStatus = document.getElementById('filterStatus');
+  const filterBookingStatus = document.getElementById('filterBookingStatus');
+  const sortBy = document.getElementById('sortBy');
+  const searchInput = document.getElementById('searchInput');
+  
+  // Build WhatsApp URL for a booking
+  function buildWhatsAppUrl(booking) {
+    if (!booking.whatsapp_number) return null;
+    
+    // Clean phone number - remove spaces and ensure country code
+    let phone = booking.whatsapp_number.replace(/\s+/g, '').replace(/[^0-9+]/g, '');
+    if (!phone.startsWith('+')) {
+      // Assume Indian number if no country code
+      if (phone.startsWith('0')) phone = phone.substring(1);
+      phone = '91' + phone;
+    } else {
+      phone = phone.substring(1); // Remove + for WhatsApp URL
+    }
+    
+    // Build message with greeting, message, and link
+    let message = `Hello ${booking.user_name},`;
+    
+    if (whatsappInviteMessage) {
+      message += '\n\n' + whatsappInviteMessage;
+    }
+    
+    if (whatsappInviteLink) {
+      message += '\n\n' + whatsappInviteLink;
+    }
+    
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  }
+  
+  // Render table
+  function renderTable() {
+    let filtered = [...bookingsData];
+    
+    // Apply filters
+    const statusFilter = filterStatus.value;
+    const bookingStatusFilter = filterBookingStatus.value;
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    
+    // Filter by invite status
+    if (statusFilter === 'pending') {
+      filtered = filtered.filter(b => !b.whatsapp_invite_sent);
+    } else if (statusFilter === 'sent') {
+      filtered = filtered.filter(b => b.whatsapp_invite_sent);
+    }
+    
+    // Filter by booking status
+    if (bookingStatusFilter === 'active') {
+      filtered = filtered.filter(b => b.is_active);
+    }
+    
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(b => 
+        b.user_name.toLowerCase().includes(searchTerm) ||
+        b.user_email.toLowerCase().includes(searchTerm) ||
+        b.room_no.toLowerCase().includes(searchTerm) ||
+        String(b.bed_no).includes(searchTerm)
+      );
+    }
+    
+    // Sort
+    const sortValue = sortBy.value;
+    filtered.sort((a, b) => {
+      switch(sortValue) {
+        case 'joining_date_desc':
+          return (b.joining_date || '').localeCompare(a.joining_date || '');
+        case 'joining_date_asc':
+          return (a.joining_date || '').localeCompare(b.joining_date || '');
+        case 'name_asc':
+          return a.user_name.localeCompare(b.user_name);
+        case 'name_desc':
+          return b.user_name.localeCompare(a.user_name);
+        case 'room_asc':
+          return a.room_no.localeCompare(b.room_no, undefined, {numeric: true});
+        default:
+          return 0;
+      }
+    });
+    
+    // Render
+    if (filtered.length === 0) {
+      tableBody.innerHTML = '';
+      noResults.classList.remove('d-none');
+    } else {
+      noResults.classList.add('d-none');
+      tableBody.innerHTML = filtered.map(b => {
+        const whatsappUrl = buildWhatsAppUrl(b);
+        const statusBadge = b.is_active 
+          ? '<span class="badge bg-success-subtle text-success">Active</span>'
+          : '<span class="badge bg-secondary-subtle text-secondary">Completed</span>';
+        
+        return `
+          <tr data-booking-id="${b.id}">
+            <td class="ps-3">
+              <div class="fw-semibold">${escapeHtml(b.user_name)}</div>
+              <div class="small text-secondary">${escapeHtml(b.user_email)}</div>
+              <div class="small">
+                <span class="text-primary">Room ${escapeHtml(b.room_no)}</span> • 
+                <span class="text-secondary">Bed ${b.bed_no}</span>
+                ${b.joining_date !== '-' ? `• <span class="text-muted">Joined: ${b.joining_date}</span>` : ''}
+              </div>
+              ${!b.is_active ? statusBadge : ''}
+            </td>
+            <td class="text-center">
+              ${whatsappUrl 
+                ? `<a href="${whatsappUrl}" target="_blank" class="btn btn-sm btn-success" title="Send WhatsApp message">
+                    <i class="bi bi-whatsapp"></i> Send
+                  </a>`
+                : `<span class="text-secondary small" title="No WhatsApp number available">
+                    <i class="bi bi-exclamation-circle"></i> No number
+                  </span>`
+              }
+            </td>
+            <td class="text-center pe-3">
+              ${b.whatsapp_invite_sent
+                ? `<button class="btn btn-sm btn-outline-success mark-sent-btn" data-id="${b.id}" data-sent="true" title="Click to unmark">
+                    <i class="bi bi-check-circle-fill"></i> Sent
+                  </button>
+                  ${b.whatsapp_invite_sent_at ? `<div class="small text-muted mt-1">${b.whatsapp_invite_sent_at}</div>` : ''}`
+                : `<button class="btn btn-sm btn-outline-warning mark-sent-btn" data-id="${b.id}" data-sent="false" title="Mark as sent">
+                    <i class="bi bi-clock"></i> Pending
+                  </button>`
+              }
+            </td>
+          </tr>
+        `;
+      }).join('');
+      
+      // Attach click handlers for mark sent buttons
+      document.querySelectorAll('.mark-sent-btn').forEach(btn => {
+        btn.addEventListener('click', handleMarkSent);
+      });
+    }
+  }
+  
+  // Escape HTML to prevent XSS
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  // Handle mark as sent
+  async function handleMarkSent(e) {
+    const btn = e.currentTarget;
+    const bookingId = btn.dataset.id;
+    const currentlySent = btn.dataset.sent === 'true';
+    const newStatus = !currentlySent;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    
+    try {
+      const response = await fetch(`{% url 'pg_whatsapp_mark_sent' 0 %}`.replace('/0/', `/${bookingId}/`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({ mark_sent: newStatus })
+      });
+      
+      const data = await response.json();
+      
+      if (data.ok) {
+        // Update local data
+        const booking = bookingsData.find(b => b.id == bookingId);
+        if (booking) {
+          booking.whatsapp_invite_sent = data.whatsapp_invite_sent;
+          booking.whatsapp_invite_sent_at = data.whatsapp_invite_sent_at;
+        }
+        
+        // Re-render table
+        renderTable();
+        
+        // Update stats via AJAX
+        updateStats();
+      } else {
+        alert(data.error || 'Failed to update status');
+        btn.disabled = false;
+        btn.innerHTML = currentlySent ? '<i class="bi bi-check-circle-fill"></i> Sent' : '<i class="bi bi-clock"></i> Pending';
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      alert('Network error. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = currentlySent ? '<i class="bi bi-check-circle-fill"></i> Sent' : '<i class="bi bi-clock"></i> Pending';
+    }
+  }
+  
+  // Update stats via AJAX
+  async function updateStats() {
+    try {
+      const response = await fetch('{% url "pg_whatsapp_stats" %}');
+      const data = await response.json();
+      
+      if (data.ok) {
+        document.getElementById('statTotal').textContent = data.total_active;
+        document.getElementById('statSent').textContent = data.sent_count;
+        document.getElementById('statPending').textContent = data.pending_count;
+      }
+    } catch (err) {
+      console.error('Failed to update stats:', err);
+    }
+  }
+  
+  // Event listeners for filters
+  filterStatus.addEventListener('change', renderTable);
+  filterBookingStatus.addEventListener('change', renderTable);
+  sortBy.addEventListener('change', renderTable);
+  searchInput.addEventListener('input', renderTable);
+  
+  // Initial render
+  renderTable();
+});
+</script>
+
+<style>
+  #bookingsTable th {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6c757d;
+    border-bottom: 2px solid #dee2e6;
+  }
+  #bookingsTable td {
+    padding: 0.85rem 0.5rem;
+    vertical-align: middle;
+  }
+  .mark-sent-btn {
+    min-width: 80px;
+  }
+  @media (max-width: 576px) {
+    #bookingsTable th, #bookingsTable td {
+      padding: 0.6rem 0.4rem;
+      font-size: 0.85rem;
+    }
+    .mark-sent-btn {
+      min-width: 60px;
+      font-size: 0.75rem;
+    }
+  }
+</style>
+{% endblock %}

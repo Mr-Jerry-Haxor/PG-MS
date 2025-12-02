@@ -6,7 +6,7 @@ from bookings.models import Room, RoomShareStatus
 class PGForm(forms.ModelForm):
     class Meta:
         model = PG
-        fields = ["name", "address", "phone", "referral_amount", "daywise_fee", "past_joining_date_allowed", "allow_custom_leave_date", "notice_period"]
+        fields = ["name", "address", "phone", "referral_amount", "daywise_fee", "past_joining_date_allowed", "allow_custom_leave_date", "notice_period", "whatsapp_invite_link", "whatsapp_invite_message"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "address": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
@@ -35,6 +35,15 @@ class PGForm(forms.ModelForm):
                 "min": "1",
                 "max": "90",
                 "placeholder": "Notice period in days",
+            }),
+            "whatsapp_invite_link": forms.URLInput(attrs={
+                "class": "form-control",
+                "placeholder": "https://chat.whatsapp.com/...",
+            }),
+            "whatsapp_invite_message": forms.Textarea(attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "Welcome to our PG! Please join our WhatsApp group for updates and communication.",
             }),
         }
 

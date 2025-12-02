@@ -60,6 +60,21 @@
       <label class="form-check-label">Allow tenants to select custom leaving date</label>
       <div class="form-text">If enabled, tenants can choose a custom leaving date when submitting a leave request. Disable to force tenants to contact the PG owner for custom dates.</div>
     </div>
+    
+    <hr class="my-4">
+    <h5 class="mb-3"><i class="bi bi-whatsapp text-success me-2"></i>WhatsApp Group Settings</h5>
+    
+    <div class="mb-3">
+      <label class="form-label">WhatsApp Group Invite Link</label>
+      {{ form.whatsapp_invite_link }}
+      <div class="form-text">Paste your WhatsApp group invite link here (e.g., https://chat.whatsapp.com/...).</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">WhatsApp Invite Message</label>
+      {{ form.whatsapp_invite_message }}
+      <div class="form-text">Custom message to send along with the group invite link. The link will be appended after this message.</div>
+    </div>
+    
     <button class="btn btn-primary" type="submit">Save</button>
   </div>
 </form>

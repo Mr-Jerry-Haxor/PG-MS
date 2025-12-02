@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 from datetime import date
+import json
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
@@ -5998,6 +5999,157 @@ def cancel_future_swap(request, swap_id):
     messages.success(request, f"Future swap cancelled successfully.")
     return redirect('pg_future_swaps')
 
+
+# =============================================
+# WhatsApp Group Management Views
+# =============================================
+
+@login_required
+def whatsapp_management(request):
+    """
+    WhatsApp Group Management page - shows all approved bookings with WhatsApp invite status.
+    Allows PG admin to send WhatsApp invites and mark them as sent.
+    """
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    
+    pg = _active_pg(request)
+    if not pg:
+        messages.error(request, "No PG found.")
+        return redirect('dashboard')
+    
+    # Get all approved bookings for this PG (both active and completed for filtering)
+    bookings = Booking.objects.filter(
+        pg=pg,
+        status__in=[Booking.APPROVED, Booking.COMPLETED]
+    ).select_related(
+        'user', 'room'
+    ).prefetch_related(
+        'application'
+    ).order_by('-joining_date')
+    
+    # Build booking data with WhatsApp info
+    booking_data = []
+    for b in bookings:
+        # Get WhatsApp number from application
+        whatsapp_number = ''
+        if hasattr(b, 'application') and b.application:
+            whatsapp_number = b.application.whatsapp_number or b.application.phone or ''
+        
+        # Determine if booking is active (approved and not left yet)
+        is_active = b.status == Booking.APPROVED and (not b.leaving_date or b.leaving_date >= timezone.now().date())
+        
+        booking_data.append({
+            'id': b.id,
+            'user_name': b.user.get_full_name() or b.user.email,
+            'user_email': b.user.email,
+            'room_no': b.room.room_no if b.room else '-',
+            'bed_no': b.share_no,
+            'whatsapp_number': whatsapp_number,
+            'whatsapp_invite_sent': b.whatsapp_invite_sent,
+            'whatsapp_invite_sent_at': b.whatsapp_invite_sent_at.strftime('%Y-%m-%d %H:%M') if b.whatsapp_invite_sent_at else None,
+            'joining_date': b.joining_date.strftime('%Y-%m-%d') if b.joining_date else '-',
+            'is_active': is_active,
+            'status': b.status,
+        })
+    
+    # Calculate stats
+    total_bookings = len([b for b in booking_data if b['is_active']])
+    sent_count = len([b for b in booking_data if b['is_active'] and b['whatsapp_invite_sent']])
+    pending_count = total_bookings - sent_count
+    
+    context = {
+        'pg': pg,
+        'pgs': list(_admin_pgs(request.user)),
+        'bookings_json': json.dumps(booking_data),
+        'whatsapp_invite_link': pg.whatsapp_invite_link or '',
+        'whatsapp_invite_message': pg.whatsapp_invite_message or '',
+        'total_bookings': total_bookings,
+        'sent_count': sent_count,
+        'pending_count': pending_count,
+    }
+    
+    return render(request, 'pgadmin/whatsapp_management.html', context)
+
+
+@login_required
+def whatsapp_mark_sent(request, booking_id):
+    """
+    AJAX endpoint to mark WhatsApp invite as sent for a booking.
+    """
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required.'}, status=403)
+    
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required.'}, status=405)
+    
+    pg = _active_pg(request)
+    if not pg:
+        return JsonResponse({'ok': False, 'error': 'No PG found.'}, status=400)
+    
+    try:
+        booking = Booking.objects.get(pk=booking_id, pg=pg)
+    except Booking.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Booking not found.'}, status=404)
+    
+    # Toggle or set the status
+    data = json.loads(request.body) if request.body else {}
+    mark_as_sent = data.get('mark_sent', True)
+    
+    booking.whatsapp_invite_sent = mark_as_sent
+    if mark_as_sent:
+        booking.whatsapp_invite_sent_at = timezone.now()
+    else:
+        booking.whatsapp_invite_sent_at = None
+    booking.save(update_fields=['whatsapp_invite_sent', 'whatsapp_invite_sent_at'])
+    
+    # Log the action
+    log(
+        request.user,
+        'whatsapp_invite_marked' if mark_as_sent else 'whatsapp_invite_unmarked',
+        'Booking',
+        booking.id,
+        f"WhatsApp invite {'marked as sent' if mark_as_sent else 'unmarked'} for {booking.user.get_full_name() or booking.user.email}"
+    )
+    
+    return JsonResponse({
+        'ok': True,
+        'whatsapp_invite_sent': booking.whatsapp_invite_sent,
+        'whatsapp_invite_sent_at': booking.whatsapp_invite_sent_at.strftime('%Y-%m-%d %H:%M') if booking.whatsapp_invite_sent_at else None,
+    })
+
+
+@login_required
+def whatsapp_stats(request):
+    """
+    AJAX endpoint to get updated WhatsApp stats for the current PG.
+    """
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'ok': False, 'error': 'PG Admin access required.'}, status=403)
+    
+    pg = _active_pg(request)
+    if not pg:
+        return JsonResponse({'ok': False, 'error': 'No PG found.'}, status=400)
+    
+    # Get active approved bookings
+    active_bookings = Booking.objects.filter(
+        pg=pg,
+        status=Booking.APPROVED
+    ).filter(
+        Q(leaving_date__isnull=True) | Q(leaving_date__gte=timezone.now().date())
+    )
+    
+    total_active = active_bookings.count()
+    sent_count = active_bookings.filter(whatsapp_invite_sent=True).count()
+    pending_count = total_active - sent_count
+    
+    return JsonResponse({
+        'ok': True,
+        'total_active': total_active,
+        'sent_count': sent_count,
+        'pending_count': pending_count,
+    })
 
 
 # execute_future_swap_manually removed - swaps now only execute automatically on scheduled date via sync_bed_statuses

@@ -69,6 +69,22 @@
       {% endif %}
       <div class="form-text">Allow tenants to choose their own leaving date when requesting to leave.</div>
     </div>
+    <div class="mb-3">
+      <label class="form-label">WhatsApp Group Invite Link</label>
+      {{ form.whatsapp_invite_link }}
+      {% if form.whatsapp_invite_link.errors %}
+        <div class="text-danger small">{{ form.whatsapp_invite_link.errors }}</div>
+      {% endif %}
+      <div class="form-text">Optional. Public invite link to the PG's WhatsApp group (e.g., https://chat.whatsapp.com/...).</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">WhatsApp Invite Message</label>
+      {{ form.whatsapp_invite_message }}
+      {% if form.whatsapp_invite_message.errors %}
+        <div class="text-danger small">{{ form.whatsapp_invite_message.errors }}</div>
+      {% endif %}
+      <div class="form-text">Optional. Message template used when sending invites. The system will prepend a greeting (e.g., "Hello &lt;name&gt;") when building the WhatsApp message.</div>
+    </div>
     <button class="btn btn-primary" type="submit">{% if pg %}Save{% else %}Create{% endif %}</button>
     <a href="{% url 'sa_pgs' %}" class="btn btn-outline-secondary">Cancel</a>
   </div>

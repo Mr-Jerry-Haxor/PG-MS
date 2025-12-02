@@ -20,6 +20,9 @@ class PG(TimeStampedModel):
 	notice_period = models.PositiveIntegerField(default=30, help_text="Notice period in days required before leaving.")
 	# Day-wise booking fee per day
 	daywise_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Fee per day for day-wise/short-term bookings.")
+	# WhatsApp group invite settings
+	whatsapp_invite_link = models.URLField(max_length=500, blank=True, null=True, help_text="WhatsApp group invite link for this PG.")
+	whatsapp_invite_message = models.TextField(blank=True, null=True, help_text="Custom message to send with the WhatsApp group invite link.")
 
 	def __str__(self):
 		return self.name
