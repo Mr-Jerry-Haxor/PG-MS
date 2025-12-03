@@ -747,6 +747,17 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Initialize
   initializeData();
+
+  // Default to "This month" filter when no date range selected
+  (function applyDefaultThisMonth() {
+    try {
+      const dateFromEl = document.getElementById('dateFrom');
+      const dateToEl = document.getElementById('dateTo');
+      if (dateFromEl && dateToEl && !dateFromEl.value && !dateToEl.value && thisMonthBtn) {
+        thisMonthBtn.click();
+      }
+    } catch(e) { console.error('Default month filter error', e); }
+  })();
 });
 </script>
 <!-- Delete Confirmation Modal -->
