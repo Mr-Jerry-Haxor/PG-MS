@@ -140,6 +140,13 @@
             <input type="date" id="dateTo" class="form-control form-control-sm">
           </div>
           <div class="col-md-2">
+            <label class="form-label small fw-semibold">Quick</label>
+            <div class="d-flex gap-1">
+              <button type="button" class="btn btn-sm btn-outline-primary" id="thisMonthBtn">This month</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="prevMonthBtn">Prev month</button>
+            </div>
+          </div>
+          <div class="col-md-2">
             <label class="form-label small fw-semibold">Mode</label>
             <div class="form-check">
               <input class="form-check-input mode-filter" type="checkbox" value="upi" id="modeUpi" checked>
@@ -687,6 +694,26 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('typeFilter').addEventListener('change', applyFiltersAndSort);
   document.querySelectorAll('.mode-filter').forEach(cb => {
     cb.addEventListener('change', applyFiltersAndSort);
+  });
+
+  // Quick month buttons
+  const thisMonthBtn = document.getElementById('thisMonthBtn');
+  const prevMonthBtn = document.getElementById('prevMonthBtn');
+  function pad(n){ return n < 10 ? '0'+n : n; }
+  function firstDayOfMonth(y, m){ return `${y}-${pad(m)}-01`; }
+  function lastDayOfMonth(y, m){ const d = new Date(y, m, 0).getDate(); return `${y}-${pad(m)}-${pad(d)}`; }
+  if (thisMonthBtn) thisMonthBtn.addEventListener('click', function(){
+    const now = new Date(); const y = now.getFullYear(); const m = now.getMonth()+1;
+    document.getElementById('dateFrom').value = firstDayOfMonth(y,m);
+    document.getElementById('dateTo').value = lastDayOfMonth(y,m);
+    applyFiltersAndSort();
+  });
+  if (prevMonthBtn) prevMonthBtn.addEventListener('click', function(){
+    const now = new Date(); now.setMonth(now.getMonth()-1);
+    const y = now.getFullYear(); const m = now.getMonth()+1;
+    document.getElementById('dateFrom').value = firstDayOfMonth(y,m);
+    document.getElementById('dateTo').value = lastDayOfMonth(y,m);
+    applyFiltersAndSort();
   });
   
   document.getElementById('pageSize').addEventListener('change', function() {

@@ -253,200 +253,689 @@
   
   <!-- PG Admin quick links -->
   <div class="col-12 mt-2">
-    <h2 class="h6 text-secondary">PG Admin quick links</h2>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_tenants' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-people-fill fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">My PG Tenants</div>
-          <div class="small text-secondary">Rooms and occupants</div>
-        </div>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h2 class="h6 text-secondary mb-0">PG Admin Quick Links</h2>
+      <!-- View Mode Toggle -->
+      <div class="btn-group btn-group-sm" role="group" id="viewModeToggle">
+        <button type="button" class="btn btn-outline-primary active" data-mode="card" title="Card View">
+          <i class="bi bi-grid-3x3-gap-fill me-1"></i>Cards
+        </button>
+        <button type="button" class="btn btn-outline-primary" data-mode="folder" title="Folder View">
+          <i class="bi bi-folder-fill me-1"></i>Folders
+        </button>
       </div>
-    </a>
+    </div>
   </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'finance_monthly' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-calendar3 fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Monthly Overview</div>
-          <div class="small text-secondary">Expected vs collected</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_resident_applications' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-people fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Applications</div>
-          <div class="small text-secondary">Resident applications</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_vehicle_search' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-car-front fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Vehicle Search</div>
-          <div class="small text-secondary">Find resident vehicles</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'daywise_bookings_list' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-calendar-day fs-3 text-info"></i>
-        <div>
-          <div class="fw-semibold">Day-wise Bookings</div>
-          <div class="small text-secondary">Short-term guest stays</div>
-        </div>
-      </div>
-    </a>
-  </div>
-    <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_whatsapp_management' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-whatsapp fs-3 text-success"></i>
-        <div>
-          <div class="fw-semibold">WhatsApp Groups</div>
-          <div class="small text-secondary">Manage group invites</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'monthly_adjustments_list' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-percent fs-3 text-success"></i>
-        <div>
-          <div class="fw-semibold">Discounts & Increments</div>
-          <div class="small text-secondary">Monthly fee adjustments</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_bookings_confirmed' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-hourglass-split fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Confirmed Bookings</div>
-          <div class="small text-secondary">All confirmed bookings</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_leaving_requests' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-box-arrow-left fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Leaving</div>
-          <div class="small text-secondary">Manage requests</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'expenditure_list' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-receipt fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Expenditure</div>
-          <div class="small text-secondary">Track expenses</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'payments_list' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-wallet2 fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Manage Payments</div>
-          <div class="small text-secondary">View and record payments</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_my' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-building-gear fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">My PG</div>
-          <div class="small text-secondary">Details & settings</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_rooms' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-door-open fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Rooms</div>
-          <div class="small text-secondary">Manage rooms</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'expenditure_new' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-plus-circle fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">New Expense</div>
-          <div class="small text-secondary">Record expense</div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'admin_complaints' %}?pg={{ pg.id }}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-chat-left-dots fs-3 text-warning"></i>
-        <div class="d-flex align-items-center justify-content-between flex-grow-1">
-          <div>
-            <div class="fw-semibold">Complaints</div>
-            <div class="small text-secondary">Manage issues</div>
+
+  <!-- CARD MODE VIEW -->
+  <div id="cardModeView" class="col-12">
+    <div class="row g-3">
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_tenants' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-people-fill fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">My PG Tenants</div>
+              <div class="small text-secondary">Rooms and occupants</div>
+            </div>
           </div>
-          {% if complaints_open > 0 %}
-            <span class="badge bg-danger rounded-pill">{{ complaints_open }}</span>
-          {% endif %}
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'finance_monthly' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-calendar3 fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Monthly Overview</div>
+              <div class="small text-secondary">Expected vs collected</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_resident_applications' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-people fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Applications</div>
+              <div class="small text-secondary">Resident applications</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_vehicle_search' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-car-front fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Vehicle Search</div>
+              <div class="small text-secondary">Find resident vehicles</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'daywise_bookings_list' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-calendar-day fs-3 text-info"></i>
+            <div>
+              <div class="fw-semibold">Day-wise Bookings</div>
+              <div class="small text-secondary">Short-term guest stays</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_whatsapp_management' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-whatsapp fs-3 text-success"></i>
+            <div>
+              <div class="fw-semibold">WhatsApp Groups</div>
+              <div class="small text-secondary">Manage group invites</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'monthly_adjustments_list' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-percent fs-3 text-success"></i>
+            <div>
+              <div class="fw-semibold">Discounts & Increments</div>
+              <div class="small text-secondary">Monthly fee adjustments</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_bookings_confirmed' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-hourglass-split fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Confirmed Bookings</div>
+              <div class="small text-secondary">All confirmed bookings</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_leaving_requests' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-box-arrow-left fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Leaving</div>
+              <div class="small text-secondary">Manage requests</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'expenditure_list' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-receipt fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Expenditure</div>
+              <div class="small text-secondary">Track expenses</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'payments_list' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-wallet2 fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Manage Payments</div>
+              <div class="small text-secondary">View and record payments</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_my' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-building-gear fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">My PG</div>
+              <div class="small text-secondary">Details & settings</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_rooms' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-door-open fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Rooms</div>
+              <div class="small text-secondary">Manage rooms</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'expenditure_new' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-plus-circle fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">New Expense</div>
+              <div class="small text-secondary">Record expense</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'admin_complaints' %}?pg={{ pg.id }}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-chat-left-dots fs-3 text-warning"></i>
+            <div class="d-flex align-items-center justify-content-between flex-grow-1">
+              <div>
+                <div class="fw-semibold">Complaints</div>
+                <div class="small text-secondary">Manage issues</div>
+              </div>
+              {% if complaints_open > 0 %}
+                <span class="badge bg-danger rounded-pill">{{ complaints_open }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_referrals' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-person-plus fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Referrals</div>
+              <div class="small text-secondary">Manage referrals</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_future_swaps' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-arrow-repeat fs-3 text-primary"></i>
+            <div>
+              <div class="fw-semibold">Future Swaps</div>
+              <div class="small text-secondary">Manage future swaps</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      {% if user.profile.is_website_admin %}
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'employee_list' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-person-badge fs-3 text-info"></i>
+            <div>
+              <div class="fw-semibold">Employees</div>
+              <div class="small text-secondary">Manage staff</div>
+            </div>
+          </div>
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- FOLDER MODE VIEW -->
+  <style>
+    .folder-accordion .accordion-item {
+      border: none;
+      border-radius: 1rem !important;
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .folder-accordion .accordion-button {
+      font-weight: 600;
+      padding: 1rem 1.25rem;
+      border-radius: 1rem !important;
+      transition: all 0.3s ease;
+    }
+    .folder-accordion .accordion-button:not(.collapsed) {
+      border-bottom-left-radius: 0 !important;
+      border-bottom-right-radius: 0 !important;
+    }
+    .folder-accordion .accordion-button::after {
+      transition: transform 0.3s ease;
+    }
+    .folder-accordion .accordion-body {
+      padding: 1rem;
+      background: #f8fafc;
+    }
+    .folder-accordion .folder-icon {
+      font-size: 1.5rem;
+      margin-right: 0.75rem;
+      transition: transform 0.3s ease;
+    }
+    .folder-accordion .accordion-button:not(.collapsed) .folder-icon {
+      transform: scale(1.1);
+    }
+    .folder-accordion .folder-badge {
+      font-size: 0.7rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 1rem;
+      margin-left: auto;
+      margin-right: 0.5rem;
+    }
+    /* Folder colors */
+    .folder-payments .accordion-button { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); color: #1e40af; }
+    .folder-payments .accordion-button:not(.collapsed) { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; }
+    .folder-payments .folder-icon { color: #2563eb; }
+    .folder-payments .accordion-button:not(.collapsed) .folder-icon { color: white; }
+    
+    .folder-expenses .accordion-button { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); color: #92400e; }
+    .folder-expenses .accordion-button:not(.collapsed) { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; }
+    .folder-expenses .folder-icon { color: #d97706; }
+    .folder-expenses .accordion-button:not(.collapsed) .folder-icon { color: white; }
+    
+    .folder-employees .accordion-button { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #065f46; }
+    .folder-employees .accordion-button:not(.collapsed) { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
+    .folder-employees .folder-icon { color: #059669; }
+    .folder-employees .accordion-button:not(.collapsed) .folder-icon { color: white; }
+    
+    .folder-more .accordion-button { background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); color: #3730a3; }
+    .folder-more .accordion-button:not(.collapsed) { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; }
+    .folder-more .folder-icon { color: #4f46e5; }
+    .folder-more .accordion-button:not(.collapsed) .folder-icon { color: white; }
+    
+    /* Folder card items */
+    .folder-card-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.875rem 1rem;
+      background: white;
+      border-radius: 0.75rem;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border: 1px solid #e2e8f0;
+    }
+    .folder-card-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      border-color: #cbd5e1;
+    }
+    .folder-card-item .item-icon {
+      font-size: 1.5rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.5rem;
+      flex-shrink: 0;
+    }
+    .folder-card-item .item-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .folder-card-item .item-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #1e293b;
+    }
+    .folder-card-item .item-desc {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+    .folder-card-item .item-arrow {
+      color: #94a3b8;
+      transition: transform 0.2s ease;
+    }
+    .folder-card-item:hover .item-arrow {
+      transform: translateX(4px);
+      color: #3b82f6;
+    }
+  </style>
+  
+  <div id="folderModeView" class="col-12" style="display: none;">
+    <div class="accordion folder-accordion" id="folderAccordion">
+      
+      <!-- Payments Folder -->
+      <div class="accordion-item folder-payments">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#folderPayments">
+            <i class="bi bi-folder-fill folder-icon"></i>
+            <span>Payments</span>
+            <span class="folder-badge bg-primary-subtle text-primary">2 items</span>
+          </button>
+        </h2>
+        <div id="folderPayments" class="accordion-collapse collapse" data-bs-parent="#folderAccordion">
+          <div class="accordion-body">
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <a href="{% url 'finance_monthly' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-calendar3"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Monthly Overview</div>
+                    <div class="item-desc">Expected vs collected</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <div class="col-12 col-md-6">
+                <a href="{% url 'payments_list' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-wallet2"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Manage Payments</div>
+                    <div class="item-desc">View and record payments</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_referrals' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-person-plus fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Referrals</div>
-          <div class="small text-secondary">Manage referrals</div>
+      
+      <!-- Expenses Folder -->
+      <div class="accordion-item folder-expenses">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#folderExpenses">
+            <i class="bi bi-folder-fill folder-icon"></i>
+            <span>Expenses</span>
+            <span class="folder-badge bg-warning-subtle text-warning">2 items</span>
+          </button>
+        </h2>
+        <div id="folderExpenses" class="accordion-collapse collapse" data-bs-parent="#folderAccordion">
+          <div class="accordion-body">
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <a href="{% url 'expenditure_list' %}" class="folder-card-item">
+                  <div class="item-icon bg-warning-subtle text-warning">
+                    <i class="bi bi-receipt"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Expenditure</div>
+                    <div class="item-desc">Track expenses</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <div class="col-12 col-md-6">
+                <a href="{% url 'expenditure_new' %}" class="folder-card-item">
+                  <div class="item-icon bg-warning-subtle text-warning">
+                    <i class="bi bi-plus-circle"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">New Expense</div>
+                    <div class="item-desc">Record expense</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </a>
-  </div>
-  <div class="col-6 col-md-4 col-lg-3">
-    <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'pg_future_swaps' %}">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-arrow-repeat fs-3 text-primary"></i>
-        <div>
-          <div class="fw-semibold">Future Swaps</div>
-          <div class="small text-secondary">Manage future swaps</div>
+      
+      <!-- Employees Folder (Website Admin Only) -->
+      {% if user.profile.is_website_admin %}
+      <div class="accordion-item folder-employees">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#folderEmployees">
+            <i class="bi bi-folder-fill folder-icon"></i>
+            <span>Employees</span>
+            <span class="folder-badge bg-success-subtle text-success">1 item</span>
+          </button>
+        </h2>
+        <div id="folderEmployees" class="accordion-collapse collapse" data-bs-parent="#folderAccordion">
+          <div class="accordion-body">
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <a href="{% url 'employee_list' %}" class="folder-card-item">
+                  <div class="item-icon bg-success-subtle text-success">
+                    <i class="bi bi-person-badge"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Employees</div>
+                    <div class="item-desc">Manage staff</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </a>
+      {% endif %}
+      
+      <!-- More Folder (All other items) -->
+      <div class="accordion-item folder-more">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#folderMore">
+            <i class="bi bi-folder-fill folder-icon"></i>
+            <span>More</span>
+            <span class="folder-badge bg-indigo-subtle text-indigo" style="background:#e0e7ff;color:#4f46e5;">14 items</span>
+          </button>
+        </h2>
+        <div id="folderMore" class="accordion-collapse collapse" data-bs-parent="#folderAccordion">
+          <div class="accordion-body">
+            <div class="row g-2">
+              <!-- My PG -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_my' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-building-gear"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">My PG</div>
+                    <div class="item-desc">Details & settings</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Manage Rooms -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_rooms' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-door-open"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Rooms</div>
+                    <div class="item-desc">Manage rooms</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- My PG Tenants -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_tenants' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-people-fill"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">My PG Tenants</div>
+                    <div class="item-desc">Rooms and occupants</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Applications -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_resident_applications' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-people"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Applications</div>
+                    <div class="item-desc">Resident applications</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Confirmed Bookings -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_bookings_confirmed' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-hourglass-split"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Confirmed Bookings</div>
+                    <div class="item-desc">All confirmed bookings</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Leaving -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_leaving_requests' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-box-arrow-left"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Leaving</div>
+                    <div class="item-desc">Manage requests</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Day-wise Bookings -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'daywise_bookings_list' %}" class="folder-card-item">
+                  <div class="item-icon bg-info-subtle text-info">
+                    <i class="bi bi-calendar-day"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Day-wise Bookings</div>
+                    <div class="item-desc">Short-term guest stays</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Discounts & Increments -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'monthly_adjustments_list' %}" class="folder-card-item">
+                  <div class="item-icon bg-success-subtle text-success">
+                    <i class="bi bi-percent"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Discounts & Increments</div>
+                    <div class="item-desc">Monthly fee adjustments</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Complaints -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'admin_complaints' %}?pg={{ pg.id }}" class="folder-card-item">
+                  <div class="item-icon bg-warning-subtle text-warning">
+                    <i class="bi bi-chat-left-dots"></i>
+                  </div>
+                  <div class="item-content d-flex align-items-center justify-content-between flex-grow-1">
+                    <div>
+                      <div class="item-title">Complaints</div>
+                      <div class="item-desc">Manage issues</div>
+                    </div>
+                    {% if complaints_open > 0 %}
+                      <span class="badge bg-danger rounded-pill ms-2">{{ complaints_open }}</span>
+                    {% endif %}
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Referrals -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_referrals' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-person-plus"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Referrals</div>
+                    <div class="item-desc">Manage referrals</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Future Swaps -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_future_swaps' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-arrow-repeat"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Future Swaps</div>
+                    <div class="item-desc">Manage future swaps</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- WhatsApp Groups -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_whatsapp_management' %}" class="folder-card-item">
+                  <div class="item-icon bg-success-subtle text-success">
+                    <i class="bi bi-whatsapp"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">WhatsApp Groups</div>
+                    <div class="item-desc">Manage group invites</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+              <!-- Vehicle Search -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'pg_vehicle_search' %}" class="folder-card-item">
+                  <div class="item-icon bg-primary-subtle text-primary">
+                    <i class="bi bi-car-front"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Vehicle Search</div>
+                    <div class="item-desc">Find resident vehicles</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+    </div>
   </div>
+
+  <!-- View Mode Toggle Script -->
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtns = document.querySelectorAll('#viewModeToggle button');
+    const cardView = document.getElementById('cardModeView');
+    const folderView = document.getElementById('folderModeView');
+    
+    // Load saved preference
+    const savedMode = localStorage.getItem('pgAdminViewMode') || 'card';
+    setViewMode(savedMode);
+    
+    toggleBtns.forEach(btn => {
+      btn.addEventListener('click', function() {
+        const mode = this.dataset.mode;
+        setViewMode(mode);
+        localStorage.setItem('pgAdminViewMode', mode);
+      });
+    });
+    
+    function setViewMode(mode) {
+      toggleBtns.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+      
+      if (mode === 'folder') {
+        cardView.style.display = 'none';
+        folderView.style.display = 'block';
+      } else {
+        cardView.style.display = 'block';
+        folderView.style.display = 'none';
+      }
+    }
+  });
+  </script>
 
   {% endif %}
 </div>
