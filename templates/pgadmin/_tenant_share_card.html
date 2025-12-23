@@ -76,7 +76,7 @@ Expects context variables:
               <button class="btn btn-sm btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#leaveModal{{ sd.booking.id }}">Leave PG</button>
               {# Show cancel button if there's a pending future swap, otherwise show Swap Room button #}
               {% if sd.pending_swap %}
-                <form method="post" action="{% url 'pg_cancel_future_swap' sd.pending_swap.id %}" class="d-inline" onsubmit="return confirm('Cancel this scheduled swap? This cannot be undone.');">
+                <form method="post" action="{% url 'pg_cancel_future_swap' sd.pending_swap.id %}" class="d-inline cancel-future-swap-form">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-sm btn-outline-danger">
                     <i class="bi bi-x-circle"></i> Cancel Future Swap (Room {{ sd.pending_swap.to_room.room_no }} Bed {{ sd.pending_swap.to_share_no }} on {{ sd.pending_swap.effective_date|date:"M d, Y" }})

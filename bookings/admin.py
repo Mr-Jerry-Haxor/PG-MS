@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Room, RoomShareStatus, Booking, ResidentApplication
+from .models import Room, RoomShareStatus, Booking, ResidentApplication , RoomSwap
 
 
 @admin.register(Room)
@@ -45,3 +45,67 @@ class ResidentApplicationAdmin(admin.ModelAdmin):
 		return qs.select_related('user', 'pg', 'room', 'booking')
 
 # Register your models here.
+
+from django.contrib import admin
+from .models import RoomSwap
+
+
+@admin.register(RoomSwap)
+class RoomSwapAdmin(admin.ModelAdmin):
+    list_display = (
+        "booking",
+        "from_room",
+        "from_share_no",
+        "to_room",
+        "to_share_no",
+        "effective_date",
+        "status",
+        "is_future_swap",
+        "requested_at",
+    )
+
+    list_filter = (
+        "status",
+        "is_future_swap",
+        "effective_date"
+    )
+
+    search_fields = (
+        "booking__user__username",
+        "booking__user__email",
+        "from_room__room_no",
+        "to_room__room_no",
+    )
+
+    readonly_fields = (
+        "requested_at",
+        "processed_at",
+        "processed_by",
+    )
+
+    ordering = ("-requested_at",)
+
+    fieldsets = (
+        ("Booking Details", {
+            "fields": ("booking",)
+        }),
+        ("Swap Details", {
+            "fields": (
+                ("from_room", "from_share_no"),
+                ("to_room", "to_share_no"),
+                "effective_date",
+                "is_future_swap",
+            )
+        }),
+        ("Status & Processing", {
+            "fields": (
+                "status",
+                "reason",
+                "processed_at",
+                "processed_by",
+            )
+        }),
+        ("Timestamps", {
+            "fields": ("requested_at",),
+        }),
+    )
