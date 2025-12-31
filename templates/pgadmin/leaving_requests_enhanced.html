@@ -136,7 +136,7 @@
     background-color: #f5f7fa;
   }
   
-  #paginationTop, #paginationBottom {
+  #paginationBottom {
     padding: 1rem;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     border-radius: 0.5rem;
@@ -177,7 +177,7 @@
   <div class="accordion filters-accordion mb-3" id="filtersAccordion">
     <div class="accordion-item border-0 shadow-sm">
       <h2 class="accordion-header">
-        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#filtersCollapse" aria-expanded="true">
+        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#filtersCollapse" aria-expanded="false">
           <i class="bi bi-funnel-fill me-2"></i>
           <span class="fw-bold">Filters</span>
           <span class="ms-2 badge bg-white text-dark" id="filterCount">
@@ -185,7 +185,7 @@
           </span>
         </button>
       </h2>
-      <div id="filtersCollapse" class="accordion-collapse collapse show">
+      <div id="filtersCollapse" class="accordion-collapse collapse">
         <div class="accordion-body">
           <div class="d-flex flex-wrap align-items-center gap-3">
             <!-- Status Filters -->
@@ -259,16 +259,6 @@
    
   </div>
   
-  <!-- Pagination Controls (Top) -->
-  <div class="d-flex justify-content-between align-items-center mb-3" id="paginationTop" style="display: none !important;">
-    <div class="text-muted small">
-      Showing <span id="pageStartTop">0</span>-<span id="pageEndTop">0</span> of <span id="totalFilteredTop">0</span> results
-    </div>
-    <nav aria-label="Page navigation">
-      <ul class="pagination pagination-sm mb-0" id="paginationListTop">
-      </ul>
-    </nav>
-  </div>
    <div class="mt-2 d-flex justify-content-end">
       <label class="small text-white me-2 align-self-center" style="color: #2d3748 !important;">Per page:</label>
       <select id="itemsPerPageSelect" class="form-select form-select-sm" style="width: auto;">
@@ -839,12 +829,23 @@ function showReContinue(bookingId) {
 }
 
 function showReContinueModal(bookingId, data) {
+  // Helper function to get icon based on conflict type
+  function getConflictIcon(type) {
+    switch(type) {
+      case 'current_occupant': return '<i class="bi bi-person-fill-x text-danger me-1"></i>';
+      case 'active_booking': return '<i class="bi bi-person-fill text-warning me-1"></i>';
+      case 'booking': return '<i class="bi bi-calendar-check text-info me-1"></i>';
+      case 'swap': return '<i class="bi bi-arrow-left-right text-primary me-1"></i>';
+      default: return '<i class="bi bi-exclamation-triangle text-warning me-1"></i>';
+    }
+  }
+  
   let modalHtml = `
     <div class="modal fade" id="reContinueModal" tabindex="-1">
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Re-Continue - Cancel Leave</h5>
+            <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise me-2"></i>Re-Continue - Cancel Leave</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
@@ -860,10 +861,10 @@ function showReContinueModal(bookingId, data) {
                   </label>
                 </div>
                 ${!data.same_room_available ? `
-                  <div class="alert alert-warning mt-2 small mb-0">
-                    <strong>Not available due to conflicts:</strong>
+                  <div class="alert alert-danger mt-2 small mb-0">
+                    <strong><i class="bi bi-exclamation-octagon me-1"></i>Not available due to conflicts:</strong>
                     <ul class="mb-0 mt-1">
-                      ${data.same_room_conflicts.map(c => `<li>${c.detail}</li>`).join('')}
+                      ${data.same_room_conflicts.map(c => `<li>${getConflictIcon(c.type)}${c.detail}</li>`).join('')}
                     </ul>
                   </div>
                 ` : '<div class="text-success small mt-1"><i class="bi bi-check-circle"></i> No conflicts - available</div>'}
@@ -885,7 +886,7 @@ function showReContinueModal(bookingId, data) {
                       <option value="">Select a room/bed...</option>
                       ${data.vacant_rooms.map(r => `<option value="${r.room_id}-${r.share_no}">Room ${r.room_no}, Bed ${r.share_no}</option>`).join('')}
                     </select>
-                  ` : '<div class="alert alert-warning small mb-0">No vacant rooms available</div>'}
+                  ` : '<div class="alert alert-warning small mb-0"><i class="bi bi-info-circle me-1"></i>No vacant rooms available</div>'}
                 </div>
               </div>
             </div>
@@ -1123,25 +1124,18 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   function updatePagination(totalMatched, totalPages, startIndex, endIndex) {
-    const paginationTop = document.getElementById('paginationTop');
     const paginationBottom = document.getElementById('paginationBottom');
     
     // Show/hide pagination based on whether we have multiple pages
     if (totalPages > 1) {
-      paginationTop.style.display = 'flex';
       paginationBottom.style.display = 'flex';
     } else {
-      paginationTop.style.display = 'none';
       paginationBottom.style.display = 'none';
     }
     
-    // Update page info (top and bottom)
+    // Update page info (bottom only)
     const pageStart = totalMatched > 0 ? startIndex + 1 : 0;
     const pageEnd = Math.min(endIndex, totalMatched);
-    
-    document.getElementById('pageStartTop').textContent = pageStart;
-    document.getElementById('pageEndTop').textContent = pageEnd;
-    document.getElementById('totalFilteredTop').textContent = totalMatched;
     
     document.getElementById('pageStartBottom').textContent = pageStart;
     document.getElementById('pageEndBottom').textContent = pageEnd;
@@ -1149,7 +1143,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Build pagination buttons
     const paginationHTML = buildPaginationHTML(totalPages);
-    document.getElementById('paginationListTop').innerHTML = paginationHTML;
     document.getElementById('paginationListBottom').innerHTML = paginationHTML;
     
     // Add click handlers to pagination buttons

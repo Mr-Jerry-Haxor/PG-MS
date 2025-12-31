@@ -241,3 +241,83 @@ class ComplaintComment(TimeStampedModel):
 	
 	def __str__(self):
 		return f"Comment on {self.complaint.title} by {self.user.get_full_name() or self.user.email}"
+
+
+class OldTenant(TimeStampedModel):
+	"""
+	Archive of tenant data from deleted bookings.
+	Stores key personal information before booking deletion for historical records.
+	"""
+	pg = models.ForeignKey(
+		PG, 
+		on_delete=models.CASCADE, 
+		related_name='old_tenants',
+		help_text='PG where the tenant resided'
+	)
+	
+	# Personal details
+	full_name = models.CharField(max_length=255, help_text='Full name of the tenant')
+	father_name = models.CharField(max_length=255, blank=True, help_text="Father's name")
+	mother_name = models.CharField(max_length=255, blank=True, help_text="Mother's name")
+	
+	# Contact details
+	email = models.EmailField(help_text='Email address')
+	phone = models.CharField(max_length=20, blank=True, help_text='Phone number')
+	whatsapp_number = models.CharField(max_length=20, blank=True, help_text='WhatsApp number')
+	
+	# Address
+	address = models.TextField(blank=True, help_text='Permanent address')
+	
+	# Stay details
+	room_no = models.CharField(max_length=20, blank=True, help_text='Room number during stay')
+	bed_no = models.PositiveSmallIntegerField(null=True, blank=True, help_text='Bed/share number during stay')
+	joining_date = models.DateField(null=True, blank=True, help_text='Date when tenant joined')
+	leaving_date = models.DateField(null=True, blank=True, help_text='Date when tenant left')
+	leaving_reason = models.TextField(blank=True, help_text='Reason for leaving')
+	
+	# Financial info
+	advance_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text='Advance amount paid')
+	advance_returned = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text='Advance amount returned')
+	
+	# Reference to original user (nullable - user might be deleted)
+	original_user = models.ForeignKey(
+		get_user_model(),
+		on_delete=models.SET_NULL,
+		null=True,
+		blank=True,
+		related_name='old_tenant_records',
+		help_text='Original user account (if still exists)'
+	)
+	
+	# Original booking ID for reference
+	original_booking_id = models.IntegerField(null=True, blank=True, help_text='Original booking ID before deletion')
+	
+	# Archive metadata
+	archived_at = models.DateTimeField(auto_now_add=True, help_text='When this record was archived')
+	archived_by = models.ForeignKey(
+		get_user_model(),
+		on_delete=models.SET_NULL,
+		null=True,
+		blank=True,
+		related_name='archived_tenants',
+		help_text='Admin who archived/deleted the booking'
+	)
+	
+	class Meta:
+		ordering = ['-archived_at']
+		indexes = [
+			models.Index(fields=['pg', 'archived_at']),
+			models.Index(fields=['joining_date']),
+			models.Index(fields=['leaving_date']),
+			models.Index(fields=['full_name']),
+		]
+	
+	def __str__(self):
+		return f"{self.full_name} - {self.pg.name} ({self.leaving_date})"
+	
+	@property
+	def stay_duration_days(self):
+		"""Calculate the duration of stay in days"""
+		if self.joining_date and self.leaving_date:
+			return (self.leaving_date - self.joining_date).days
+		return None

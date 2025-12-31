@@ -48,6 +48,9 @@ urlpatterns = [
     path('leave/<int:booking_id>/edit-advance-amount/', views.edit_advance_returned_amount, name='pg_edit_advance_amount'),
     # Re-continue feature
     path('leave/<int:booking_id>/re-continue/', views.re_continue_booking, name='pg_re_continue'),
+    # Old tenants archive
+    path('old-tenants/', views.old_tenants, name='pg_old_tenants'),
+    path('old-tenants/refresh/', views.refresh_old_tenants, name='pg_refresh_old_tenants'),
     # Future swap feature
     path('swap/create/<int:booking_id>/', views.create_future_swap, name='pg_create_future_swap'),
     path('swap/<int:swap_id>/approve/', views.approve_future_swap, name='pg_approve_future_swap'),

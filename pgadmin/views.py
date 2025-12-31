@@ -1549,7 +1549,78 @@ def _shrink_room_shares(room: Room, new_total: int) -> tuple[bool, dict | str]:
 
 
 def _cleanup_booking_after_leave(booking: Booking, actor=None, origin: str = 'manual') -> dict:
-    """Delete booking/application artifacts once a resident has left."""
+    """Delete booking/application artifacts once a resident has left.
+    
+    Before deletion, archives basic tenant info to OldTenant for PG admin reference.
+    Only creates an archive if the tenant doesn't already exist in OldTenant.
+    """
+    # ----- Archive tenant data to OldTenant before deletion -----
+    old_tenant_created = False
+    try:
+        from .models import OldTenant
+        
+        # Check if this booking already exists in OldTenant (avoid duplicates)
+        existing_archive = OldTenant.objects.filter(
+            pg=booking.pg,
+            original_booking_id=booking.id
+        ).exists()
+        
+        if not existing_archive:
+            app = getattr(booking, 'application', None)
+            
+            # Get name from application or user
+            full_name = ''
+            father_name = ''
+            mother_name = ''
+            email = ''
+            phone = ''
+            whatsapp_number = ''
+            address = ''
+            
+            if app:
+                full_name = app.name or ''
+                father_name = app.father_name or ''
+                mother_name = app.mother_name or ''
+                email = app.email or ''
+                phone = app.phone or ''
+                whatsapp_number = app.whatsapp_number or ''
+                address = app.address or ''
+            
+            # Fallback to user data if application data is missing
+            if not full_name and booking.user:
+                full_name = f"{booking.user.first_name or ''} {booking.user.last_name or ''}".strip() or booking.user.email.split('@')[0]
+            if not email and booking.user:
+                email = booking.user.email or ''
+            
+            # Only create OldTenant if we have at least a name
+            if full_name:
+                OldTenant.objects.create(
+                    pg=booking.pg,
+                    full_name=full_name,
+                    father_name=father_name,
+                    mother_name=mother_name,
+                    email=email,
+                    phone=phone,
+                    whatsapp_number=whatsapp_number,
+                    address=address,
+                    room_no=getattr(getattr(booking, 'room', None), 'room_no', ''),
+                    bed_no=str(booking.share_no) if booking.share_no else '',
+                    joining_date=booking.joining_date,
+                    leaving_date=booking.leaving_date,
+                    leaving_reason=booking.leaving_reason or '',
+                    advance_paid=booking.advance_paid or 0,
+                    advance_returned=booking.advance_returned_amount if booking.advance_returned else 0,
+                    original_user=booking.user,
+                    original_booking_id=booking.id,
+                    archived_by=actor,
+                )
+                old_tenant_created = True
+    except Exception as e:
+        # Don't fail the cleanup if archiving fails
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to archive tenant data: {e}")
+    
+    # ----- Original cleanup logic -----
     share = RoomShareStatus.objects.filter(room=booking.room, share_no=booking.share_no).first()
     share_updated = False
     if share:
@@ -1609,6 +1680,7 @@ def _cleanup_booking_after_leave(booking: Booking, actor=None, origin: str = 'ma
         'application_id': app_id,
         'user_id': user_id,
         'share_updated': share_updated,
+        'old_tenant_archived': old_tenant_created,
     }
     log(actor, 'leave_cleanup_deleted', 'Booking', booking_id, message=f"Leave cleanup ({origin}) for room {room_no} bed {share_no}", meta=meta)
 
@@ -1618,6 +1690,7 @@ def _cleanup_booking_after_leave(booking: Booking, actor=None, origin: str = 'ma
         'failed_files': len(failed_urls),
         'profile_updates': profile_updates,
         'files_attempted': len(drive_urls),
+        'old_tenant_archived': old_tenant_created,
     }
 
 
@@ -5227,6 +5300,253 @@ def leaving_requests(request):
 
 
 @login_required
+def refresh_old_tenants(request):
+    """Refresh OldTenant records by:
+    1. Finding APPROVED bookings with past leaving dates and marking them COMPLETED
+    2. Archiving all COMPLETED bookings not yet in OldTenant
+    """
+    from pgadmin.models import OldTenant
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    if not _require_pg_admin(request.user):
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    pg = _active_pg(request)
+    if not pg:
+        return JsonResponse({'error': 'No PG assigned'}, status=400)
+    
+    today = date.today()
+    stats = {
+        'bookings_marked_completed': 0,
+        'bookings_archived': 0,
+        'already_archived': 0,
+    }
+    
+    # Step 1: Mark APPROVED bookings with past leaving dates as COMPLETED
+    approved_past_leaving = Booking.objects.filter(
+        pg=pg,
+        status=Booking.APPROVED,
+        leaving_date__lt=today
+    ).select_related('room', 'user', 'application')
+    
+    for booking in approved_past_leaving:
+        booking.status = Booking.COMPLETED
+        booking.save(update_fields=['status'])
+        stats['bookings_marked_completed'] += 1
+    
+    # Step 2: Archive all COMPLETED bookings not yet in OldTenant
+    completed_bookings = Booking.objects.filter(
+        pg=pg,
+        status=Booking.COMPLETED
+    ).select_related('room', 'user', 'application')
+    
+    for booking in completed_bookings:
+        # Check if already archived (by original_booking_id)
+        existing = OldTenant.objects.filter(
+            pg=pg,
+            original_booking_id=booking.id
+        ).exists()
+        
+        if existing:
+            stats['already_archived'] += 1
+            continue
+        
+        # Archive the booking
+        app = getattr(booking, 'application', None)
+        
+        full_name = ''
+        father_name = ''
+        mother_name = ''
+        email = ''
+        phone = ''
+        whatsapp_number = ''
+        address = ''
+        
+        if app:
+            full_name = app.name or ''
+            father_name = app.father_name or ''
+            mother_name = app.mother_name or ''
+            email = app.email or ''
+            phone = app.phone or ''
+            whatsapp_number = app.whatsapp_number or ''
+            address = app.address or ''
+        
+        # Fallback to user data
+        if not full_name and booking.user:
+            full_name = f"{booking.user.first_name or ''} {booking.user.last_name or ''}".strip() or booking.user.email.split('@')[0]
+        if not email and booking.user:
+            email = booking.user.email or ''
+        
+        # Create OldTenant record
+        if full_name:
+            OldTenant.objects.create(
+                pg=pg,
+                full_name=full_name,
+                father_name=father_name,
+                mother_name=mother_name,
+                email=email,
+                phone=phone,
+                whatsapp_number=whatsapp_number,
+                address=address,
+                room_no=getattr(getattr(booking, 'room', None), 'room_no', ''),
+                bed_no=str(booking.share_no) if booking.share_no else '',
+                joining_date=booking.joining_date,
+                leaving_date=booking.leaving_date,
+                leaving_reason=booking.leaving_reason or '',
+                advance_paid=booking.advance_paid or 0,
+                advance_returned=booking.advance_returned_amount if booking.advance_returned else 0,
+                original_user=booking.user,
+                original_booking_id=booking.id,
+                archived_by=request.user,
+            )
+            stats['bookings_archived'] += 1
+    
+    return JsonResponse({
+        'success': True,
+        'message': f"Refresh complete. Marked {stats['bookings_marked_completed']} as completed, archived {stats['bookings_archived']} new records ({stats['already_archived']} already existed).",
+        'stats': stats
+    })
+
+
+@login_required
+def old_tenants(request):
+    """View archived old tenant records with statistics
+    
+    Shows all archived tenant data from deleted bookings with:
+    - Statistics on tenants joined vs left per month
+    - Filters and search functionality
+    - Sortable columns
+    """
+    from pgadmin.models import OldTenant
+    from django.db.models import Count
+    from django.db.models.functions import TruncMonth
+    from collections import defaultdict
+    import json
+    
+    if not _require_pg_admin(request.user):
+        messages.error(request, "You must be a PG Admin.")
+        return redirect('dashboard')
+    
+    pg = _active_pg(request)
+    if not pg:
+        messages.error(request, "No PG assigned.")
+        return redirect('dashboard')
+    
+    # Get all old tenants for this PG
+    old_tenant_records = OldTenant.objects.filter(pg=pg).order_by('-archived_at')
+    
+    # Calculate statistics for the last 12 months
+    today = date.today()
+    twelve_months_ago = today.replace(year=today.year - 1) if today.month == today.day == 1 else date(today.year - 1, today.month, 1)
+    
+    # Get monthly statistics from OldTenant records
+    # Tenants who left per month (based on leaving_date)
+    left_by_month = (
+        OldTenant.objects.filter(
+            pg=pg,
+            leaving_date__gte=twelve_months_ago
+        )
+        .annotate(month=TruncMonth('leaving_date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    
+    # Tenants who joined per month (based on joining_date from old tenants)
+    joined_from_old = (
+        OldTenant.objects.filter(
+            pg=pg,
+            joining_date__gte=twelve_months_ago
+        )
+        .annotate(month=TruncMonth('joining_date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    
+    # Also get current active tenants who joined in the last 12 months
+    joined_from_active = (
+        Booking.objects.filter(
+            room__pg=pg,
+            status__in=[Booking.APPROVED, Booking.COMPLETED],
+            joining_date__gte=twelve_months_ago
+        )
+        .annotate(month=TruncMonth('joining_date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    
+    # Build chart data - last 12 months
+    chart_months = []
+    chart_joined = []
+    chart_left = []
+    
+    # Create a dict for quick lookup
+    left_dict = {item['month']: item['count'] for item in left_by_month if item['month']}
+    joined_old_dict = {item['month']: item['count'] for item in joined_from_old if item['month']}
+    joined_active_dict = {item['month']: item['count'] for item in joined_from_active if item['month']}
+    
+    # Generate last 12 months
+    for i in range(11, -1, -1):
+        month_date = today.replace(day=1)
+        for _ in range(i):
+            # Go back one month
+            if month_date.month == 1:
+                month_date = month_date.replace(year=month_date.year - 1, month=12)
+            else:
+                month_date = month_date.replace(month=month_date.month - 1)
+        
+        month_key = month_date
+        chart_months.append(month_date.strftime('%b %Y'))
+        
+        # Combined joined count from old tenants and active bookings
+        joined_old = joined_old_dict.get(month_key, 0)
+        joined_active = joined_active_dict.get(month_key, 0)
+        # Avoid double counting - use max or combine intelligently
+        # Since old tenants' joining data might overlap with deleted bookings that were once active
+        chart_joined.append(joined_old + joined_active)
+        
+        chart_left.append(left_dict.get(month_key, 0))
+    
+    # Calculate summary statistics
+    total_old_tenants = old_tenant_records.count()
+    avg_stay_days = None
+    if total_old_tenants > 0:
+        stays = [ot.stay_duration_days for ot in old_tenant_records if ot.stay_duration_days is not None]
+        if stays:
+            avg_stay_days = sum(stays) // len(stays)
+    
+    # Get most common leaving reasons
+    leaving_reasons = old_tenant_records.exclude(leaving_reason='').values_list('leaving_reason', flat=True)
+    reason_counts = defaultdict(int)
+    for reason in leaving_reasons:
+        # Normalize and count common words/phrases
+        reason_lower = reason.lower().strip()
+        if reason_lower:
+            reason_counts[reason_lower] += 1
+    top_reasons = sorted(reason_counts.items(), key=lambda x: -x[1])[:5]
+    
+    context = {
+        'pg': pg,
+        'pgs': list(_admin_pgs(request.user)),
+        'old_tenants': old_tenant_records,
+        'total_old_tenants': total_old_tenants,
+        'avg_stay_days': avg_stay_days,
+        'top_reasons': top_reasons,
+        'chart_months': json.dumps(chart_months),
+        'chart_joined': json.dumps(chart_joined),
+        'chart_left': json.dumps(chart_left),
+        'total_joined_12m': sum(chart_joined),
+        'total_left_12m': sum(chart_left),
+    }
+    
+    return render(request, 'pgadmin/old_tenants.html', context)
+
+
+@login_required
 def confirm_leave(request, booking_id):
     """Confirm leave request"""
     if request.method != 'POST':
@@ -5592,6 +5912,14 @@ def re_continue_booking(request, booking_id):
     # This allows PG admins to bring back tenants who left but want to return
     
     if request.method == 'GET':
+        # First, sync bed statuses to ensure we have accurate data
+        from bookings.utils import sync_room_share_statuses
+        try:
+            sync_room_share_statuses(pg=booking.room.pg)
+        except Exception as e:
+            # Log error but continue - we'll still check for conflicts
+            pass
+        
         # Show options: same room or change room
         # Check for conflicts in same room
         same_room_conflicts = []
@@ -5599,7 +5927,55 @@ def re_continue_booking(request, booking_id):
         # Use today's date if leaving date has already passed, otherwise use leaving_confirmed_date
         reference_date = max(booking.leaving_confirmed_date, date.today())
         
-        # Check future bookings on this bed
+        # CRITICAL: Check if the bed is currently occupied by another user
+        # This handles the case where User A left and User B moved in
+        current_share_status = RoomShareStatus.objects.filter(
+            room=booking.room,
+            share_no=booking.share_no
+        ).first()
+        
+        if current_share_status and current_share_status.status == RoomShareStatus.OCCUPIED:
+            # Bed is occupied - check if it's occupied by a different user
+            current_occupant = Booking.objects.filter(
+                room=booking.room,
+                share_no=booking.share_no,
+                status=Booking.APPROVED,
+                joining_date__lte=date.today()
+            ).exclude(id=booking.id).exclude(
+                # Exclude bookings that have left (have confirmed leaving date in the past)
+                leaving_confirmed_date__lt=date.today()
+            ).select_related('user').first()
+            
+            if current_occupant:
+                same_room_conflicts.append({
+                    'type': 'current_occupant',
+                    'detail': f"Bed is currently occupied by {current_occupant.user.get_full_name()} (since {current_occupant.joining_date})"
+                })
+        
+        # Check for active APPROVED bookings on this bed (users who haven't left yet)
+        active_bookings = Booking.objects.filter(
+            room=booking.room,
+            share_no=booking.share_no,
+            status=Booking.APPROVED,
+        ).exclude(id=booking.id).exclude(
+            # Exclude bookings that have confirmed leaving date in the past
+            leaving_confirmed_date__lt=date.today()
+        ).select_related('user')
+        
+        for ab in active_bookings:
+            # Check if this booking represents a current/active occupancy
+            if ab.joining_date <= date.today():
+                conflict_already_added = any(
+                    c.get('type') == 'current_occupant' and ab.user.get_full_name() in c.get('detail', '')
+                    for c in same_room_conflicts
+                )
+                if not conflict_already_added:
+                    same_room_conflicts.append({
+                        'type': 'active_booking',
+                        'detail': f"Active booking for {ab.user.get_full_name()} (joined {ab.joining_date})"
+                    })
+        
+        # Check future bookings on this bed (PENDING or APPROVED with future joining date)
         future_bookings = Booking.objects.filter(
             room=booking.room,
             share_no=booking.share_no,
@@ -5669,10 +6045,40 @@ def re_continue_booking(request, booking_id):
     elif request.method == 'POST':
         option = request.POST.get('option')  # 'same' or 'change'
         
+        # First, sync bed statuses to ensure we have accurate data
+        from bookings.utils import sync_room_share_statuses
+        try:
+            sync_room_share_statuses(pg=booking.room.pg)
+        except Exception as e:
+            # Log error but continue
+            pass
+        
         # Use today's date if leaving date has already passed, otherwise use leaving_confirmed_date
         reference_date = max(booking.leaving_confirmed_date, date.today())
         
         if option == 'same':
+            # CRITICAL: First check if bed is currently occupied by another user
+            current_share_status = RoomShareStatus.objects.filter(
+                room=booking.room,
+                share_no=booking.share_no
+            ).first()
+            
+            if current_share_status and current_share_status.status == RoomShareStatus.OCCUPIED:
+                # Check if it's occupied by a different active user
+                current_occupant = Booking.objects.filter(
+                    room=booking.room,
+                    share_no=booking.share_no,
+                    status=Booking.APPROVED,
+                    joining_date__lte=date.today()
+                ).exclude(id=booking.id).exclude(
+                    leaving_confirmed_date__lt=date.today()
+                ).first()
+                
+                if current_occupant:
+                    return JsonResponse({
+                        'error': f'Bed is currently occupied by {current_occupant.user.get_full_name()}. Please select a different room.'
+                    }, status=400)
+            
             # Validate no conflicts (including both PENDING and APPROVED future swaps)
             conflicts_exist = (
                 Booking.objects.filter(
@@ -5722,6 +6128,16 @@ def re_continue_booking(request, booking_id):
                 title="Re-Continue Approved",
                 message=f"Your request to continue staying in Room {booking.room.room_no}, Bed {booking.share_no} has been approved."
             )
+            
+            # Remove from Old Tenants if exists (they're coming back)
+            try:
+                from .models import OldTenant
+                OldTenant.objects.filter(
+                    pg=booking.room.pg,
+                    original_booking_id=booking.id
+                ).delete()
+            except Exception:
+                pass  # Ignore errors - it's okay if record doesn't exist
             
             # Audit log
             log(
@@ -5782,6 +6198,16 @@ def re_continue_booking(request, booking_id):
             # Mark new share as occupied
             new_share.status = RoomShareStatus.OCCUPIED
             new_share.save(update_fields=['status'])
+            
+            # Remove from Old Tenants if exists (they're coming back)
+            try:
+                from .models import OldTenant
+                OldTenant.objects.filter(
+                    pg=booking.room.pg,
+                    original_booking_id=booking.id
+                ).delete()
+            except Exception:
+                pass  # Ignore errors - it's okay if record doesn't exist
             
             # Notify user
             Notification.objects.create(

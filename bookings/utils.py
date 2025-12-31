@@ -183,6 +183,8 @@ def _complete_past_bookings(pg, today, stats):
     
     This ensures old bookings don't keep showing up in sync calculations,
     but UNCONFIRMED leaving requests still show up in the leaving requests page.
+    
+    Also archives completed tenants to OldTenant table for PG admin reference.
     """
     # Query: APPROVED bookings with confirmed leaving AND leaving_date in the past
     if pg:
@@ -191,15 +193,17 @@ def _complete_past_bookings(pg, today, stats):
             status=Booking.APPROVED,
             leaving_confirmed_date__isnull=False,
             leaving_date__lt=today  # leaving_date is strictly in the past
-        )
+        ).select_related('room', 'user', 'application')
     else:
         confirmed_past_bookings = Booking.objects.filter(
             status=Booking.APPROVED,
             leaving_confirmed_date__isnull=False,
             leaving_date__lt=today
-        )
+        ).select_related('room', 'user', 'application')
     
     for booking in confirmed_past_bookings:
+        # Archive to OldTenant before marking as completed
+        _archive_to_old_tenant(booking)
         # Mark as completed
         booking.status = Booking.COMPLETED
         booking.save(update_fields=['status'])
@@ -212,12 +216,12 @@ def _complete_past_bookings(pg, today, stats):
             pg=pg,
             status=Booking.APPROVED,
             leaving_date=today
-        ).select_related('room')
+        ).select_related('room', 'user', 'application')
     else:
         leaving_today_bookings = Booking.objects.filter(
             status=Booking.APPROVED,
             leaving_date=today
-        ).select_related('room')
+        ).select_related('room', 'user', 'application')
     
     for booking in leaving_today_bookings:
         # Check if there's another APPROVED booking for the same bed
@@ -235,10 +239,83 @@ def _complete_past_bookings(pg, today, stats):
         ).exists()
         
         if other_booking_exists:
+            # Archive to OldTenant before marking as completed
+            _archive_to_old_tenant(booking)
             # Someone else has taken this bed - mark the leaving person as COMPLETED
             booking.status = Booking.COMPLETED
             booking.save(update_fields=['status'])
             stats['bookings_completed'] += 1
+
+
+def _archive_to_old_tenant(booking):
+    """
+    Archive booking data to OldTenant table.
+    Only creates a record if the booking doesn't already exist in OldTenant.
+    """
+    try:
+        from pgadmin.models import OldTenant
+        
+        # Check if this booking already exists in OldTenant (avoid duplicates)
+        existing_archive = OldTenant.objects.filter(
+            pg=booking.pg,
+            original_booking_id=booking.id
+        ).exists()
+        
+        if existing_archive:
+            return  # Already archived
+        
+        app = getattr(booking, 'application', None)
+        
+        # Get name from application or user
+        full_name = ''
+        father_name = ''
+        mother_name = ''
+        email = ''
+        phone = ''
+        whatsapp_number = ''
+        address = ''
+        
+        if app:
+            full_name = app.name or ''
+            father_name = app.father_name or ''
+            mother_name = app.mother_name or ''
+            email = app.email or ''
+            phone = app.phone or ''
+            whatsapp_number = app.whatsapp_number or ''
+            address = app.address or ''
+        
+        # Fallback to user data if application data is missing
+        if not full_name and booking.user:
+            full_name = f"{booking.user.first_name or ''} {booking.user.last_name or ''}".strip() or booking.user.email.split('@')[0]
+        if not email and booking.user:
+            email = booking.user.email or ''
+        
+        # Only create OldTenant if we have at least a name
+        if full_name:
+            OldTenant.objects.create(
+                pg=booking.pg,
+                full_name=full_name,
+                father_name=father_name,
+                mother_name=mother_name,
+                email=email,
+                phone=phone,
+                whatsapp_number=whatsapp_number,
+                address=address,
+                room_no=getattr(getattr(booking, 'room', None), 'room_no', ''),
+                bed_no=str(booking.share_no) if booking.share_no else '',
+                joining_date=booking.joining_date,
+                leaving_date=booking.leaving_date,
+                leaving_reason=booking.leaving_reason or '',
+                advance_paid=booking.advance_paid or 0,
+                advance_returned=booking.advance_returned_amount if booking.advance_returned else 0,
+                original_user=booking.user,
+                original_booking_id=booking.id,
+                archived_by=None,  # System-triggered, no specific user
+            )
+    except Exception as e:
+        # Don't fail the sync if archiving fails
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to archive tenant data: {e}")
 
 
 def _apply_future_swap_adjustments(pg, stats):
