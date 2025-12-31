@@ -277,11 +277,14 @@
           </td>
           <td class="text-truncate" style="max-width:200px">{{ i.notes|default:'—' }}</td>
           <td class="text-end">
-            {% if user.profile.is_website_admin %}
+            {% if can_edit_payments or can_delete_payments %}
             <div class="d-flex gap-1 justify-content-end">
+              {% if can_edit_payments %}
               <a href="{% url 'payments_edit' i.id %}" class="btn btn-sm btn-outline-primary" title="Edit payment">
                 <i class="bi bi-pencil"></i>
               </a>
+              {% endif %}
+              {% if can_delete_payments %}
               <button type="button" class="btn btn-sm btn-outline-danger"
                       data-bs-toggle="modal"
                       data-bs-target="#confirmDeleteModal"
@@ -293,10 +296,13 @@
                       title="Delete payment">
                 <i class="bi bi-trash"></i>
               </button>
+              {% endif %}
             </div>
+            {% if can_delete_payments %}
             <form method="post" action="{% url 'payments_delete' i.id %}" id="delete-form-{{ i.id }}" class="d-none">
               {% csrf_token %}
             </form>
+            {% endif %}
             {% endif %}
           </td>
         </tr>

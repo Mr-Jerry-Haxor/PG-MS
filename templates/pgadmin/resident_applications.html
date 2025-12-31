@@ -93,7 +93,12 @@
         {% endif %}
       </div>
       <div class="small">
-  <div class="fw-semibold">{% if b.application and b.application.name %}{{ b.application.name }}{% else %}{{ b.user.first_name }} {{ b.user.last_name }}{% endif %}</div>
+  <div class="fw-semibold d-flex align-items-center gap-1">
+    <a href="{% url 'booking_detail' b.id %}" class="text-info" title="View booking details and logs">
+      <i class="bi bi-info-circle"></i>
+    </a>
+    {% if b.application and b.application.name %}{{ b.application.name }}{% else %}{{ b.user.first_name }} {{ b.user.last_name }}{% endif %}
+  </div>
         <div class="text-secondary">{{ b.user.email }}</div>
         <div class="text-secondary">{{ b.user.profile.phone|default:"—" }}</div>
         {% if b.application and b.application.referred_by_booking %}
@@ -117,6 +122,11 @@
       <div class="app-actions">
         {% if b.application %}
           <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#appModal{{ b.id }}">View Application</button>
+          {% if can_edit_applications %}
+          <a href="{% url 'pg_admin_application_edit' b.application.id %}" class="btn btn-sm btn-outline-secondary" title="Edit Application">
+            <i class="bi bi-pencil"></i>
+          </a>
+          {% endif %}
           {% if b.application.status == 'submitted' or b.application.status == 'resubmitted' or b.application.status == 'refill_requested' or b.application.status == 'rejected' %}
             <form method="post" action="{% url 'pg_application_confirm' b.application.id %}" class="d-inline">{% csrf_token %}
               <button class="btn btn-sm btn-success" type="submit">Confirm</button>
@@ -315,11 +325,11 @@
             <div class="row g-2 align-items-end">
               <div class="col-md-6">
                 <label class="form-label small text-uppercase text-secondary">Referrer</label>
-                <select name="referred_by_booking" class="form-select form-select-sm">
+                <select name="referred_by_booking" class="form-select form-select-sm selectpicker" data-live-search="true" data-live-search-placeholder="Search by name, email, room..." title="No referral">
                   <option value="">No referral</option>
                   {% for ref in referral_options %}
                     {% if ref.id != b.id %}
-                      <option value="{{ ref.id }}" {% if b.application.referred_by_booking_id == ref.id %}selected{% endif %}>
+                      <option value="{{ ref.id }}" data-tokens="{{ ref.user.get_full_name|default:'' }} {{ ref.user.email }} room{{ ref.room.room_no }} {{ ref.room.room_no }} bed{{ ref.share_no }} {{ ref.share_no }}" {% if b.application.referred_by_booking_id == ref.id %}selected{% endif %}>
                         {{ ref.user.get_full_name|default:ref.user.email }} — Room {{ ref.room.room_no }} Bed {{ ref.share_no }}
                       </option>
                     {% endif %}

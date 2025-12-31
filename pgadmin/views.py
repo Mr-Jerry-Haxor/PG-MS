@@ -3115,6 +3115,7 @@ def bookings_pending(request):
             )
             .select_related('user', 'room')
             .order_by('user__first_name', 'user__email')
+            .distinct()
         )
     
     return render(request, 'pgadmin/bookings_pending.html', {
@@ -3136,6 +3137,7 @@ def bookings_confirmed(request):
         return redirect('dashboard')
     pg = _active_pg(request)
     confirmed = []
+    referral_options = []
     if pg:
         app_qs = ResidentApplication.objects.select_related(
             'referred_by_booking',
@@ -3150,11 +3152,25 @@ def bookings_confirmed(request):
             .annotate(has_application=Exists(ResidentApplication.objects.filter(booking_id=OuterRef('pk'))))
             .order_by('start_date', 'joining_date')
         )
+        
+        # Get active residents for referral selection
+        today = timezone.now().date()
+        referral_options = (
+            Booking.objects.filter(
+                status=Booking.APPROVED,
+                room__pg=pg
+            )
+            .filter(Q(leaving_date__isnull=True) | Q(leaving_date__gt=today))
+            .select_related('user', 'room', 'user__profile')
+            .order_by('user__first_name', 'user__last_name', 'room__room_no', 'share_no')
+            .distinct()
+        )
 
     return render(request, 'pgadmin/bookings_confirmed.html', {
         'pg': pg,
         'bookings': confirmed,
         'pgs': list(_admin_pgs(request.user)),
+        'referral_options': referral_options,
     })
 
 
@@ -3904,6 +3920,7 @@ def resident_applications(request):
             .filter(Q(leaving_date__isnull=True) | Q(leaving_date__gt=today))
             .select_related('user', 'room', 'user__profile')
             .order_by('user__first_name', 'user__last_name', 'room__room_no', 'share_no')
+            .distinct()
         )
     if bookings:
         # Submitted: applications with submitted/resubmitted/refill_requested statuses
@@ -3921,6 +3938,22 @@ def resident_applications(request):
     else:
         submitted_count = 0
         pending_count = 0
+    
+    # Check if PG admin has edit applications permission
+    can_edit_applications = False
+    try:
+        from pgadmin.models import PGAdminPermission
+        pg_admin_record = PGAdmin.objects.filter(user=request.user, pg=pg).first() if pg else None
+        if pg_admin_record:
+            perm = PGAdminPermission.objects.filter(pg_admin=pg_admin_record).first()
+            if perm:
+                can_edit_applications = perm.can_edit_applications
+        # Website admins and superusers always have permission
+        if getattr(request.user, 'is_superuser', False) or (hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False)):
+            can_edit_applications = True
+    except Exception:
+        pass
+    
     return render(
         request,
         'pgadmin/resident_applications.html',
@@ -3931,6 +3964,7 @@ def resident_applications(request):
             "submitted_count": submitted_count,
             "pending_count": pending_count,
             "referral_options": referral_options,
+            "can_edit_applications": can_edit_applications,
         },
     )
 
@@ -4064,6 +4098,155 @@ def application_refill_request(request, app_id):
     if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
         return JsonResponse({'ok': True, 'action': 'application_refill', 'application_id': app.id, 'status': app.status})
     return redirect('pg_resident_applications')
+
+
+@login_required
+@transaction.atomic
+def admin_application_edit(request, app_id):
+    """Allow PG admin with permission to edit tenant applications."""
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    
+    app = get_object_or_404(
+        ResidentApplication.objects.select_related('pg', 'booking', 'user', 'room'),
+        pk=app_id,
+    )
+    
+    if not _admin_pgs(request.user).filter(id=getattr(app, 'pg_id', None)).exists():
+        messages.error(request, "PG Admin access required for this PG.")
+        return redirect('dashboard')
+    
+    # Check edit applications permission
+    has_permission = False
+    if getattr(request.user, 'is_superuser', False) or (hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False)):
+        has_permission = True
+    else:
+        try:
+            from pgadmin.models import PGAdminPermission
+            pg_admin_record = PGAdmin.objects.filter(user=request.user, pg=app.pg).first()
+            if pg_admin_record:
+                perm = PGAdminPermission.objects.filter(pg_admin=pg_admin_record).first()
+                if perm and perm.can_edit_applications:
+                    has_permission = True
+        except Exception:
+            pass
+    
+    if not has_permission:
+        messages.error(request, "You don't have permission to edit applications.")
+        return redirect('pg_resident_applications')
+    
+    booking = app.booking
+    from bookings.application_forms import ResidentApplicationForm
+    
+    if request.method == 'POST':
+        form = ResidentApplicationForm(request.POST, request.FILES, instance=app)
+        
+        if form.is_valid():
+            # Track what fields changed for logging
+            old_values = {}
+            for field in form.changed_data:
+                old_values[field] = getattr(app, field, None)
+            
+            inst = form.save(commit=False)
+            
+            # Handle selfie upload
+            if 'selfie' in request.FILES:
+                from core.drive import drive_upload, extract_drive_file_id
+                selfie_file = request.FILES['selfie']
+                folder_id = getattr(app.pg, 'drive_folder_id', None) or 'root'
+                # Delete old selfie if exists
+                if app.selfie_url:
+                    old_file_id = extract_drive_file_id(app.selfie_url)
+                    if old_file_id:
+                        from core.drive import drive_delete
+                        drive_delete(old_file_id)
+                # Upload new selfie
+                try:
+                    new_file_id = drive_upload(selfie_file, folder=folder_id)
+                    if new_file_id:
+                        inst.selfie_url = f'https://drive.google.com/uc?id={new_file_id}'
+                except Exception as e:
+                    messages.warning(request, f"Selfie upload failed: {e}")
+            
+            # Handle aadhaar file upload
+            if 'aadhaar_pdf' in request.FILES:
+                from core.drive import drive_upload, extract_drive_file_id
+                aadhaar_file = request.FILES['aadhaar_pdf']
+                folder_id = getattr(app.pg, 'drive_folder_id', None) or 'root'
+                # Delete old file if exists
+                if app.aadhaar_file_url:
+                    old_file_id = extract_drive_file_id(app.aadhaar_file_url)
+                    if old_file_id:
+                        from core.drive import drive_delete
+                        drive_delete(old_file_id)
+                try:
+                    new_file_id = drive_upload(aadhaar_file, folder=folder_id)
+                    if new_file_id:
+                        inst.aadhaar_file_url = f'https://drive.google.com/uc?id={new_file_id}'
+                except Exception as e:
+                    messages.warning(request, f"Document upload failed: {e}")
+            
+            # Handle aadhaar file 2 upload
+            if 'aadhaar_pdf_2' in request.FILES:
+                from core.drive import drive_upload, extract_drive_file_id
+                aadhaar_file_2 = request.FILES['aadhaar_pdf_2']
+                folder_id = getattr(app.pg, 'drive_folder_id', None) or 'root'
+                if app.aadhaar_file_url_2:
+                    old_file_id = extract_drive_file_id(app.aadhaar_file_url_2)
+                    if old_file_id:
+                        from core.drive import drive_delete
+                        drive_delete(old_file_id)
+                try:
+                    new_file_id = drive_upload(aadhaar_file_2, folder=folder_id)
+                    if new_file_id:
+                        inst.aadhaar_file_url_2 = f'https://drive.google.com/uc?id={new_file_id}'
+                except Exception as e:
+                    messages.warning(request, f"Document 2 upload failed: {e}")
+            
+            inst.save()
+            
+            # Log the edit in AuditLog
+            from core.models import AuditLog
+            changed_fields = form.changed_data
+            if changed_fields:
+                change_summary = ", ".join(changed_fields)
+                AuditLog.objects.create(
+                    actor=request.user,
+                    action='application_edited_by_admin',
+                    target_type='ResidentApplication',
+                    target_id=app.id,
+                    message=f"Application edited by PG Admin. Changed fields: {change_summary}",
+                    meta={
+                        'changed_fields': changed_fields,
+                        'booking_id': booking.id,
+                        'tenant_email': app.user.email if app.user else None,
+                        'admin_email': request.user.email,
+                    }
+                )
+            
+            # Also log in ApplicationStatusHistory
+            from bookings.models import ApplicationStatusHistory
+            ApplicationStatusHistory.objects.create(
+                application=app,
+                status=app.status,
+                comment=f"Application edited by PG Admin ({request.user.email}). Changed: {', '.join(changed_fields) if changed_fields else 'No changes'}",
+                by_user=request.user
+            )
+            
+            messages.success(request, "Application updated successfully.")
+            return redirect('pg_resident_applications')
+        else:
+            messages.error(request, "Please correct the errors below.")
+    else:
+        form = ResidentApplicationForm(instance=app)
+    
+    return render(request, 'pgadmin/admin_application_edit.html', {
+        'form': form,
+        'app': app,
+        'booking': booking,
+        'pg': app.pg,
+    })
 
 
 @login_required

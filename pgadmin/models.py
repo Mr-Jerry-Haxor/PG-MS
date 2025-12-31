@@ -51,6 +51,38 @@ class PGAdmin(TimeStampedModel):
 		return f"{self.user} ({self.pg})"
 
 
+class PGAdminPermission(TimeStampedModel):
+	"""
+	Permissions model for PG Admins. Controls access to specific features.
+	All permissions default to False.
+	"""
+	pg_admin = models.OneToOneField(PGAdmin, on_delete=models.CASCADE, related_name='permissions')
+	
+	# Employee Management
+	can_view_employees = models.BooleanField(default=False, help_text='Can view employee details for their PG')
+	can_edit_employees = models.BooleanField(default=False, help_text='Can create, edit and delete employees for their PG')
+	
+	# Payment Management
+	can_delete_payments = models.BooleanField(default=False, help_text='Can delete payment entries')
+	can_edit_payments = models.BooleanField(default=False, help_text='Can edit payment entries')
+	
+	# Application Management
+	can_edit_applications = models.BooleanField(default=False, help_text='Can edit tenant applications for their PG')
+	
+	class Meta:
+		verbose_name = 'PG Admin Permission'
+		verbose_name_plural = 'PG Admin Permissions'
+	
+	def __str__(self):
+		return f"Permissions for {self.pg_admin}"
+	
+	@classmethod
+	def get_or_create_for_admin(cls, pg_admin):
+		"""Get or create permission record for a PG Admin"""
+		perm, created = cls.objects.get_or_create(pg_admin=pg_admin)
+		return perm
+
+
 class Complaint(TimeStampedModel):
 	"""
 	Model for tenant complaints. Only users with active bookings can create complaints.

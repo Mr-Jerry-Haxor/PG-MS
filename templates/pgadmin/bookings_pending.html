@@ -178,10 +178,9 @@
                   <div class="row g-2">
                     <div class="col-12">
                       <label class="form-label" for="referredBy{{ b.id }}">Referred By <span class="text-danger">*</span></label>
-                      <select class="form-select form-select-sm" id="referredBy{{ b.id }}" name="referred_by_booking_id">
-                        <option value="">-- Select Active Resident --</option>
+                      <select class="form-select form-select-sm selectpicker" id="referredBy{{ b.id }}" name="referred_by_booking_id" data-live-search="true" data-live-search-placeholder="Search by name, email, room..." title="-- Select Active Resident --">
                         {% for resident in active_residents %}
-                          <option value="{{ resident.id }}">
+                          <option value="{{ resident.id }}" data-tokens="{{ resident.user.get_full_name|default:'' }} {{ resident.user.email }} room{{ resident.room.room_no }} {{ resident.room.room_no }} bed{{ resident.share_no }} {{ resident.share_no }}">
                             {{ resident.user.get_full_name|default:resident.user.email }} - Room {{ resident.room.room_no }}/Bed {{ resident.share_no }}
                           </option>
                         {% endfor %}
@@ -317,6 +316,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (meta) {
           checkbox.dispatchEvent(new Event('change'));
         }
+      });
+      // Reset bootstrap-select dropdowns
+      modal.querySelectorAll('.selectpicker').forEach(function (select) {
+        $(select).selectpicker('val', '');
       });
     });
   });

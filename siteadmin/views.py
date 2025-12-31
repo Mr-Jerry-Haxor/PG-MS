@@ -4,11 +4,16 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.db import transaction
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+import json
 
-from pgadmin.models import PG, PGAdmin
-from bookings.models import Booking, ResidentApplication, ApplicationStatusHistory
+from pgadmin.models import PG, PGAdmin, PGAdminPermission
+from bookings.models import Booking, ResidentApplication, ApplicationStatusHistory, RoomShareStatus, RoomSwap, ReferralCredit
 from finance.models import Payment, Expenditure
 from pgadmin.forms import PGForm
+from core.drive import drive_delete, extract_drive_file_id
+from core.audit import log
 
 
 def _require_site_admin(user):
@@ -101,14 +106,26 @@ def pg_manage_admins(request, pg_id):
         else:
             user_id = request.POST.get('user_id')
             user = get_object_or_404(User, pk=user_id)
-            PGAdmin.objects.get_or_create(user=user, pg=pg)
+            pg_admin, created = PGAdmin.objects.get_or_create(user=user, pg=pg)
+            # Create default permissions for new admin
+            if created:
+                PGAdminPermission.get_or_create_for_admin(pg_admin)
             # update profile flag
             if hasattr(user, 'profile'):
                 user.profile.is_pg_admin = True
                 user.profile.save(update_fields=['is_pg_admin'])
             messages.success(request, "PG Admin assigned.")
             return redirect('sa_pg_admins', pg_id=pg.id)
-    admins = pg.admins.select_related('user').all()
+    
+    # Get admins with their permissions
+    admins = pg.admins.select_related('user', 'permissions').all()
+    # Ensure all admins have permission records
+    for admin in admins:
+        if not hasattr(admin, 'permissions') or admin.permissions is None:
+            PGAdminPermission.get_or_create_for_admin(admin)
+    # Refresh the queryset to get updated permissions
+    admins = pg.admins.select_related('user', 'permissions').all()
+    
     return render(request, 'siteadmin/pg_manage_admins.html', {"pg": pg, "admins": admins, "users": users})
 
 
@@ -231,3 +248,225 @@ def bulk_refill_applications(request):
     if pg_id:
         return redirect(f"{request.path.replace('/bulk-refill/', '/')}?pg={pg_id}")
     return redirect('siteadmin_applications')
+
+
+@login_required
+def pg_delete(request, pg_id):
+    """Delete a PG and all associated data with double confirmation."""
+    if not _require_site_admin(request.user):
+        messages.error(request, "Website Admin access required.")
+        return redirect('dashboard')
+    
+    pg = get_object_or_404(PG, pk=pg_id)
+    
+    if request.method == 'GET':
+        # Show confirmation page
+        # Gather stats about what will be deleted
+        from bookings.models import Room
+        from pgadmin.models import Complaint, ComplaintComment
+        from employee.models import Employee, EmployeeLedger
+        from finance.models import MonthlyAdjustment, ResidentRate
+        
+        stats = {
+            'rooms': Room.objects.filter(pg=pg).count(),
+            'bookings': Booking.objects.filter(room__pg=pg).count(),
+            'applications': ResidentApplication.objects.filter(pg=pg).count(),
+            'payments': Payment.objects.filter(pg=pg).count(),
+            'expenditures': Expenditure.objects.filter(pg=pg).count(),
+            'admins': PGAdmin.objects.filter(pg=pg).count(),
+            'complaints': Complaint.objects.filter(pg=pg).count(),
+            'employees': Employee.objects.filter(pg=pg).count(),
+            'room_statuses': RoomShareStatus.objects.filter(room__pg=pg).count(),
+            'room_swaps': RoomSwap.objects.filter(Q(from_room__pg=pg) | Q(to_room__pg=pg)).count(),
+            'referral_credits': ReferralCredit.objects.filter(pg=pg).count(),
+        }
+        
+        return render(request, 'siteadmin/pg_delete_confirm.html', {
+            'pg': pg,
+            'stats': stats,
+        })
+    
+    elif request.method == 'POST':
+        # Process deletion
+        confirmation_name = request.POST.get('confirmation_name', '').strip()
+        
+        if confirmation_name != pg.name:
+            messages.error(request, "PG name does not match. Deletion cancelled.")
+            return redirect('sa_pg_delete', pg_id=pg.id)
+        
+        try:
+            with transaction.atomic():
+                deleted_stats = _delete_pg_and_all_data(pg, request.user)
+                messages.success(request, f"PG '{pg.name}' and all associated data have been deleted successfully. "
+                               f"Deleted: {deleted_stats['bookings']} bookings, {deleted_stats['applications']} applications, "
+                               f"{deleted_stats['payments']} payments, {deleted_stats['drive_files']} drive files.")
+                return redirect('sa_pgs')
+        except Exception as e:
+            messages.error(request, f"Error deleting PG: {str(e)}")
+            return redirect('sa_pg_delete', pg_id=pg.id)
+    
+    return redirect('sa_pgs')
+
+
+def _delete_pg_and_all_data(pg, user):
+    """Delete a PG and all its associated data including drive files."""
+    from bookings.models import Room
+    from pgadmin.models import Complaint, ComplaintComment
+    from employee.models import Employee, EmployeeLedger
+    from finance.models import MonthlyAdjustment, ResidentRate
+    
+    stats = {
+        'bookings': 0,
+        'applications': 0,
+        'payments': 0,
+        'drive_files': 0,
+        'rooms': 0,
+        'expenditures': 0,
+    }
+    
+    # 1. Delete drive files from applications (photos and documents)
+    applications = ResidentApplication.objects.filter(pg=pg)
+    for app in applications:
+        # Delete selfie
+        if app.selfie_url:
+            file_id = extract_drive_file_id(app.selfie_url)
+            if file_id and drive_delete(file_id):
+                stats['drive_files'] += 1
+        
+        # Delete aadhaar file
+        if app.aadhaar_file_url:
+            file_id = extract_drive_file_id(app.aadhaar_file_url)
+            if file_id and drive_delete(file_id):
+                stats['drive_files'] += 1
+        
+        # Delete aadhaar file 2 (if exists)
+        if app.aadhaar_file_url_2:
+            file_id = extract_drive_file_id(app.aadhaar_file_url_2)
+            if file_id and drive_delete(file_id):
+                stats['drive_files'] += 1
+    
+    stats['applications'] = applications.count()
+    
+    # 2. Delete bookings (this will cascade to applications via OneToOne)
+    rooms = Room.objects.filter(pg=pg)
+    bookings = Booking.objects.filter(room__in=rooms)
+    stats['bookings'] = bookings.count()
+    
+    # 3. Delete payments
+    payments = Payment.objects.filter(pg=pg)
+    stats['payments'] = payments.count()
+    payments.delete()
+    
+    # 4. Delete expenditures
+    expenditures = Expenditure.objects.filter(pg=pg)
+    stats['expenditures'] = expenditures.count()
+    expenditures.delete()
+    
+    # 5. Delete employee ledger entries and employees
+    employees = Employee.objects.filter(pg=pg)
+    for emp in employees:
+        EmployeeLedger.objects.filter(employee=emp).delete()
+    employees.delete()
+    
+    # 6. Delete complaints and comments
+    complaints = Complaint.objects.filter(pg=pg)
+    for comp in complaints:
+        ComplaintComment.objects.filter(complaint=comp).delete()
+    complaints.delete()
+    
+    # 7. Delete referral credits
+    ReferralCredit.objects.filter(pg=pg).delete()
+    
+    # 8. Delete monthly adjustments
+    MonthlyAdjustment.objects.filter(pg=pg).delete()
+    
+    # 9. Delete resident rates
+    ResidentRate.objects.filter(pg=pg).delete()
+    
+    # 10. Delete room share statuses
+    RoomShareStatus.objects.filter(room__in=rooms).delete()
+    
+    # 11. Delete room swaps
+    RoomSwap.objects.filter(Q(from_room__in=rooms) | Q(to_room__in=rooms)).delete()
+    
+    # 12. Delete bookings (cascade will handle applications)
+    bookings.delete()
+    
+    # 13. Delete rooms
+    stats['rooms'] = rooms.count()
+    rooms.delete()
+    
+    # 14. Delete PG admins (this will cascade permission records)
+    PGAdmin.objects.filter(pg=pg).delete()
+    
+    # 15. Log the deletion
+    pg_name = pg.name
+    pg_id = pg.id
+    
+    # 16. Finally delete the PG itself
+    pg.delete()
+    
+    # Log the action
+    try:
+        log(user, 'pg_deleted', 'PG', pg_id, details={'name': pg_name, 'stats': stats})
+    except Exception:
+        pass
+    
+    return stats
+
+
+@login_required
+def pg_admin_permissions(request, pg_id, admin_id):
+    """Manage permissions for a specific PG admin."""
+    if not _require_site_admin(request.user):
+        messages.error(request, "Website Admin access required.")
+        return redirect('dashboard')
+    
+    pg = get_object_or_404(PG, pk=pg_id)
+    pg_admin = get_object_or_404(PGAdmin, pk=admin_id, pg=pg)
+    
+    # Get or create permissions
+    permissions = PGAdminPermission.get_or_create_for_admin(pg_admin)
+    
+    if request.method == 'POST':
+        # Update permissions from form
+        permissions.can_view_employees = request.POST.get('can_view_employees') == 'on'
+        permissions.can_delete_payments = request.POST.get('can_delete_payments') == 'on'
+        permissions.can_edit_payments = request.POST.get('can_edit_payments') == 'on'
+        permissions.save()
+        
+        messages.success(request, f"Permissions updated for {pg_admin.user.email}.")
+        return redirect('sa_pg_admins', pg_id=pg.id)
+    
+    return render(request, 'siteadmin/pg_admin_permissions.html', {
+        'pg': pg,
+        'pg_admin': pg_admin,
+        'permissions': permissions,
+    })
+
+
+@login_required
+@require_POST
+def pg_admin_permissions_api(request, admin_id):
+    """API endpoint to update a single permission via AJAX."""
+    if not _require_site_admin(request.user):
+        return JsonResponse({'error': 'Website Admin access required.'}, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        permission_name = data.get('permission')
+        value = data.get('value', False)
+        
+        pg_admin = get_object_or_404(PGAdmin, pk=admin_id)
+        permissions = PGAdminPermission.get_or_create_for_admin(pg_admin)
+        
+        valid_permissions = ['can_view_employees', 'can_edit_employees', 'can_delete_payments', 'can_edit_payments', 'can_edit_applications']
+        if permission_name not in valid_permissions:
+            return JsonResponse({'error': 'Invalid permission name.'}, status=400)
+        
+        setattr(permissions, permission_name, bool(value))
+        permissions.save()
+        
+        return JsonResponse({'success': True, 'permission': permission_name, 'value': value})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

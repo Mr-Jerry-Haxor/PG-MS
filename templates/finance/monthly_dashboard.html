@@ -77,12 +77,32 @@
     <div>
       <label class="form-label small">Filter</label>
       <select name="only" class="form-select form-select-sm" onchange="this.form.submit()">
-        <option value="" {% if not request.GET.only %}selected{% endif %}>All</option>
+        <option value="" {% if not request.GET.only or request.GET.only == 'old_dues' %}selected{% endif %}>All</option>
         <option value="paid" {% if request.GET.only == 'paid' %}selected{% endif %}>Paid</option>
         <option value="unpaid" {% if request.GET.only == 'unpaid' %}selected{% endif %}>Unpaid</option>
         <option value="partial" {% if request.GET.only == 'partial' %}selected{% endif %}>Partial</option>
-          <option value="upcoming" {% if request.GET.only == 'upcoming' %}selected{% endif %}>No Due</option>
+        <option value="upcoming" {% if request.GET.only == 'upcoming' %}selected{% endif %}>No Due</option>
       </select>
+    </div>
+    <div>
+      <label class="form-label small d-block">&nbsp;</label>
+      <button type="submit" name="only" value="{% if request.GET.only == 'old_dues' %}{% else %}old_dues{% endif %}" 
+              class="btn btn-sm {% if request.GET.only == 'old_dues' %}btn-danger{% else %}btn-outline-danger{% endif %}"
+              title="Show tenants with dues remaining from the previous month">
+        <i class="bi bi-exclamation-triangle me-1"></i>Old Month Dues
+        {% if request.GET.only == 'old_dues' %}<i class="bi bi-x-circle ms-1"></i>{% endif %}
+      </button>
+    </div>
+    <div>
+      <label class="form-label small">Date Range (Payment Due)</label>
+      <div class="d-flex gap-2 align-items-center">
+        <input type="date" name="start_date" id="startDate" class="form-control form-control-sm" style="width:140px" value="{{ request.GET.start_date|default:'' }}" placeholder="Start">
+        <span class="text-secondary">to</span>
+        <input type="date" name="end_date" id="endDate" class="form-control form-control-sm" style="width:140px" value="{{ request.GET.end_date|default:'' }}" placeholder="End">
+        {% if request.GET.start_date or request.GET.end_date %}
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="clearDateRange" title="Clear date range">×</button>
+        {% endif %}
+      </div>
     </div>
     <!-- Sort controls removed: column headers are clickable for sorting -->
     <button class="btn btn-primary btn-sm" type="submit">Apply</button>
@@ -125,6 +145,13 @@
             <td class="text-end nowrap fw-semibold text-info">₹ <span id="summaryAdvance">{{ summary.total_advance|default:"0.00" }}</span></td>
             <td class="text-end pe-3"><span class="badge bg-info-subtle text-info" id="summaryAdvanceCount">0</span></td>
           </tr>
+          {% if filter_only == 'old_dues' %}
+          <tr class="table-light">
+            <td class="ps-3"><span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle me-1"></i>{{ summary.prev_month_label }} Dues</span></td>
+            <td class="text-end nowrap fw-semibold text-danger">₹ <span id="summaryOldDues">{{ summary.total_prev_month_pending|default:"0.00" }}</span></td>
+            <td class="text-end pe-3"><span class="badge bg-danger-subtle text-danger" id="summaryOldDuesCount">{{ rows|length }}</span></td>
+          </tr>
+          {% endif %}
         </tbody>
       </table>
     </div>
@@ -190,6 +217,12 @@
               {% endif %}
               {% if r.referral_future %}
                 <div class="small text-secondary">Upcoming referral credit: {% for credit in r.referral_future %}-₹ {{ credit.amount|floatformat:2 }} {% if credit.scheduled_month %}({{ credit.scheduled_month|date:"M Y" }}){% else %}(unscheduled){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}</div>
+              {% endif %}
+              {% if r.prev_month_pending %}
+                <div class="small text-danger fw-semibold mt-1">
+                  <i class="bi bi-exclamation-triangle me-1"></i>{{ r.prev_month_label }} dues: ₹ {{ r.prev_month_pending|floatformat:2 }}
+                  <span class="text-muted fw-normal">(Expected: ₹{{ r.prev_month_expected|floatformat:2 }}, Collected: ₹{{ r.prev_month_collected|floatformat:2 }})</span>
+                </div>
               {% endif %}
               {% if r.segments and r.segments|length > 1 %}
                 <button class="btn btn-link btn-sm p-0" type="button" data-bs-toggle="collapse" data-bs-target="#stays-{{ r.user.id }}" aria-expanded="false" aria-controls="stays-{{ r.user.id }}">
@@ -275,7 +308,13 @@
                   <a class="btn btn-sm btn-outline-primary" href="tel:{{ r.whatsapp_phone }}" title="Call {{ r.user.first_name }}">
                     <i class="bi bi-telephone-fill"></i>
                   </a>
-                  <a class="btn btn-sm btn-outline-success" target="_blank" href="https://wa.me/{{ r.whatsapp_phone }}?text={{ 'Hello%20this%20is%20a%20rent%20reminder' }}" title="WhatsApp {{ r.user.first_name }}">
+                  <a class="btn btn-sm btn-outline-success whatsapp-reminder-btn" target="_blank" 
+                     data-phone="{{ r.whatsapp_phone }}"
+                     data-name="{{ r.user.first_name }}"
+                     data-room="{{ r.room_no }}"
+                     data-pending="{{ r.pending }}"
+                     title="WhatsApp {{ r.user.first_name }}"
+                     href="#">
                     <i class="bi bi-whatsapp"></i>
                   </a>
                 {% endif %}
@@ -1455,6 +1494,43 @@
           .finally(function(){ setSubmittingState(false); });
       });
     }
+
+    // WhatsApp reminder button click handler - builds URL with custom message
+    document.querySelectorAll('.whatsapp-reminder-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var phone = this.dataset.phone || '';
+        var name = this.dataset.name || '';
+        var room = this.dataset.room || '';
+        var pending = parseFloat(this.dataset.pending || '0').toFixed(2);
+        
+        // Build the message
+        var message = 'Hello ' + name + ',\n';
+        message += 'Room Number: ' + room + '\n';
+        message += 'Amount Due: ₹' + pending + '\n\n';
+        message += 'This is a rent reminder. Please pay the rent as soon as possible.\n';
+        message += 'Thank you.';
+        
+        // Build WhatsApp URL
+        var url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(message);
+        window.open(url, '_blank');
+      });
+    });
+
+    // Clear date range button handler
+    var clearDateRangeBtn = document.getElementById('clearDateRange');
+    if (clearDateRangeBtn) {
+      clearDateRangeBtn.addEventListener('click', function() {
+        document.getElementById('startDate').value = '';
+        document.getElementById('endDate').value = '';
+        // Submit the form to apply the cleared filter
+        var form = this.closest('form');
+        if (form) form.submit();
+      });
+    }
+
+    // Normalize phone links on page load (removes 91 prefix from tel: links)
+    normalizePhoneLinks();
   });
 </script>
 <!-- Toast container -->

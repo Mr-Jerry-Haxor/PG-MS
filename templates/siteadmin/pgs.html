@@ -36,6 +36,9 @@
             <div class="d-inline-flex gap-1">
               <a href="{% url 'sa_pg_edit' pg.id %}" class="btn btn-sm btn-outline-primary">Manage Details</a>
               <a href="{% url 'sa_pg_admins' pg.id %}" class="btn btn-sm btn-outline-secondary">Manage Admins</a>
+              <a href="{% url 'sa_pg_delete' pg.id %}" class="btn btn-sm btn-outline-danger" title="Delete PG">
+                <i class="bi bi-trash3"></i>
+              </a>
             </div>
           </td>
         </tr>

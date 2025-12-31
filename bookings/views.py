@@ -1543,7 +1543,16 @@ def booking_detail(request, booking_id):
         messages.error(request, "You do not have permission to view this booking.")
         return redirect('dashboard')
     from core.models import AuditLog
-    events = AuditLog.objects.filter(target_type='Booking', target_id=booking.id).order_by('created_at')
+    from django.db.models import Q
+    # Get logs for both the booking and its application (if any)
+    app_id = getattr(getattr(booking, 'application', None), 'id', None)
+    if app_id:
+        events = AuditLog.objects.filter(
+            Q(target_type='Booking', target_id=booking.id) |
+            Q(target_type='ResidentApplication', target_id=app_id)
+        ).order_by('created_at')
+    else:
+        events = AuditLog.objects.filter(target_type='Booking', target_id=booking.id).order_by('created_at')
     return render(request, 'bookings/booking_detail.html', {"booking": booking, "events": events})
 
 

@@ -47,6 +47,50 @@ def _require_pg_admin(user):
     return hasattr(user, 'profile') and getattr(user.profile, 'is_pg_admin', False) and getattr(user.profile, 'status', 'active') == 'active'
 
 
+def _is_website_admin(user):
+    """Check if user is a website admin or superuser."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    return hasattr(user, 'profile') and getattr(user.profile, 'is_website_admin', False)
+
+
+def _has_payment_permission(user, permission_name, pg=None):
+    """Check if user has a specific payment permission (can_delete_payments or can_edit_payments).
+    
+    Args:
+        user: The user to check
+        permission_name: 'can_delete_payments' or 'can_edit_payments'
+        pg: Optional PG to check permission for
+    
+    Returns:
+        bool: True if user has permission
+    """
+    # Website admins always have all permissions
+    if _is_website_admin(user):
+        return True
+    
+    # Check PG admin permissions
+    try:
+        from pgadmin.models import PGAdmin, PGAdminPermission
+        pg_admins = PGAdmin.objects.filter(user=user).select_related('permissions')
+        
+        for pg_admin in pg_admins:
+            # If specific PG requested, only check that PG's admin record
+            if pg and pg_admin.pg_id != pg.id:
+                continue
+            
+            try:
+                if hasattr(pg_admin, 'permissions') and pg_admin.permissions:
+                    if getattr(pg_admin.permissions, permission_name, False):
+                        return True
+            except PGAdminPermission.DoesNotExist:
+                continue
+    except Exception:
+        pass
+    
+    return False
+
+
 def _admin_pgs(user):
     """PGs visible/manageable by the current user.
     - Superusers and website admins see all PGs
@@ -257,7 +301,19 @@ def payments_list(request):
         'year': year or '',
         'month': month or '',
     }
-    return render(request, 'finance/payments_list.html', {"pg": pg, "items": items, "pgs": list(_admin_pgs(request.user)), "filters": filters})
+    
+    # Check permissions for edit/delete buttons
+    can_edit_payments = _has_payment_permission(request.user, 'can_edit_payments', pg)
+    can_delete_payments = _has_payment_permission(request.user, 'can_delete_payments', pg)
+    
+    return render(request, 'finance/payments_list.html', {
+        "pg": pg, 
+        "items": items, 
+        "pgs": list(_admin_pgs(request.user)), 
+        "filters": filters,
+        "can_edit_payments": can_edit_payments,
+        "can_delete_payments": can_delete_payments,
+    })
 
 
 @login_required
@@ -266,18 +322,18 @@ def payments_edit(request, pk=None):
         messages.error(request, "PG Admin access required.")
         return redirect('dashboard')
     
-    # Restrict edit to website admins only
-    if pk and not (getattr(request.user, 'is_superuser', False) or 
-                    (hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False))):
-        messages.error(request, 'Only website administrators can edit payments.')
-        return redirect('payments_list')
-    
     req_pg = request.GET.get('pg')
     if req_pg and not _is_authorized_pg(request.user, req_pg):
         messages.error(request, "You do not have access to the requested PG.")
         return redirect('payments_list')
     pg = _active_pg(request)
     instance = get_object_or_404(Payment, pk=pk, pg=pg) if pk else None
+    
+    # Check edit permission for existing payments (new payments don't need special permission)
+    if pk and not _has_payment_permission(request.user, 'can_edit_payments', pg):
+        messages.error(request, 'You do not have permission to edit payments.')
+        return redirect('payments_list')
+    
     # Build queryset of users for this PG with an approved, active booking (not yet left)
     user_qs = []
     room_map = {}
@@ -331,17 +387,19 @@ def payments_edit(request, pk=None):
 def payments_delete(request, pk: int):
     """Delete a payment entry. POST only.
     - Requires PG admin privileges and access to the payment's PG.
-    - Restricted to website administrators only.
+    - Restricted to users with can_delete_payments permission.
     - After deletion, redirect back to payments list for that PG.
     """
     if not _require_pg_admin(request.user):
         messages.error(request, "PG Admin access required.")
         return redirect('dashboard')
     
-    # Restrict delete to website admins only
-    if not (getattr(request.user, 'is_superuser', False) or 
-            (hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False))):
-        messages.error(request, 'Only website administrators can delete payments.')
+    # Fetch payment first to check permission for specific PG
+    payment = get_object_or_404(Payment, pk=pk)
+    
+    # Check delete permission (website admins or users with can_delete_payments)
+    if not _has_payment_permission(request.user, 'can_delete_payments', payment.pg):
+        messages.error(request, 'You do not have permission to delete payments.')
         return redirect('payments_list')
     
     # Only allow POST to delete
@@ -350,8 +408,7 @@ def payments_delete(request, pk: int):
         return redirect('payments_list')
     # Determine active PG for context and authorization
     pg = _active_pg(request)
-    # Fetch payment and ensure it belongs to an authorized PG
-    payment = get_object_or_404(Payment, pk=pk)
+    # Ensure payment belongs to an authorized PG
     if not _is_authorized_pg(request.user, payment.pg_id):
         messages.error(request, "You do not have access to this PG.")
         return redirect('payments_list')
@@ -1773,6 +1830,83 @@ def monthly_dashboard(request):
     only = request.GET.get('only')
     if only in ('paid', 'unpaid', 'partial', 'upcoming'):
         rows = [r for r in rows if r['status'] == only]
+    
+    # Old Month Dues filter: show tenants who had dues remaining from the previous month
+    elif only == 'old_dues':
+        # Calculate previous month range
+        pm_first, pm_last, pm_days = _month_range(prev_year, prev_month)
+        old_dues_user_ids = set()
+        
+        for row in rows:
+            u = row['user']
+            # Get previous month's expected rent for this user
+            pm_expected = 0.0
+            pm_collected = 0.0
+            
+            # Find bookings that overlapped with previous month
+            prev_bks = (
+                Booking.objects.filter(
+                    user=u,
+                    status__in=[Booking.APPROVED, Booking.COMPLETED],
+                    room__pg=pg,
+                )
+                .select_related('room')
+            )
+            
+            for b in prev_bks:
+                start = b.joining_date or b.start_date or b.created_at.date()
+                end = b.leaving_date
+                ov = _overlap_days(start, end, pm_first, pm_last)
+                if ov > 0:
+                    exp_part = _expected_rent_for_user_pg_month(u, pg, b, pm_first, pm_last)
+                    pm_expected += exp_part
+            
+            # Get collected for previous month
+            pm_collected = _collected_for_user_pg_month(u, pg, pm_first, pm_last)
+            
+            # Calculate pending dues from previous month
+            pm_pending = round(pm_expected - pm_collected, 2)
+            
+            # Add to old dues list if they had pending dues > 0
+            if pm_pending > 0:
+                old_dues_user_ids.add(u.id)
+                # Store previous month dues info in the row for display
+                row['prev_month_expected'] = round(pm_expected, 2)
+                row['prev_month_collected'] = round(pm_collected, 2)
+                row['prev_month_pending'] = pm_pending
+                row['prev_month_label'] = f"{calendar.month_abbr[prev_month]} {prev_year}"
+        
+        # Filter to only show users with old month dues
+        rows = [r for r in rows if r['user'].id in old_dues_user_ids]
+
+    # Date range filter (filters by payment_due_date)
+    start_date_str = request.GET.get('start_date', '').strip()
+    end_date_str = request.GET.get('end_date', '').strip()
+    if start_date_str or end_date_str:
+        from datetime import datetime as dt
+        start_filter = None
+        end_filter = None
+        if start_date_str:
+            try:
+                start_filter = dt.strptime(start_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        if end_date_str:
+            try:
+                end_filter = dt.strptime(end_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        if start_filter or end_filter:
+            def _in_date_range(r):
+                pd = r.get('payment_due_date')
+                if pd is None:
+                    return False  # Exclude rows without payment due date
+                if start_filter and pd < start_filter:
+                    return False
+                if end_filter and pd > end_filter:
+                    return False
+                return True
+            rows = [r for r in rows if _in_date_range(r)]
 
     # Apply sorting
     import re
@@ -1831,6 +1965,10 @@ def monthly_dashboard(request):
         'collected': round(sum((r.get('collected') or 0.0) for r in rows), 2),
         'pending': round(sum((r.get('pending') or 0.0) for r in rows), 2),
     }
+    
+    # Add old dues total if filtered by old_dues
+    if only == 'old_dues':
+        footer_totals['prev_month_pending'] = round(sum((r.get('prev_month_pending') or 0.0) for r in rows), 2)
 
     # Calculate today's collection (all payments made today - both fee and advance)
     today_payments = Payment.objects.filter(
@@ -1848,6 +1986,7 @@ def monthly_dashboard(request):
         'total_collected': footer_totals.get('collected', 0.0),
         'total_pending': footer_totals.get('pending', 0.0),
         'total_advance': footer_totals.get('advance', total_advance_all),
+        'total_prev_month_pending': footer_totals.get('prev_month_pending', 0.0),
         'today_collection': round(float(today_collection_total), 2),
         'today_collection_count': today_collection_count,
         'counts': {
@@ -1859,7 +1998,8 @@ def monthly_dashboard(request):
         'nav': {
             'prev_year': prev_year, 'prev_month': prev_month,
             'next_year': next_year, 'next_month': next_month,
-        }
+        },
+        'prev_month_label': f"{calendar.month_abbr[prev_month]} {prev_year}",
     }
 
     return render(request, 'finance/monthly_dashboard.html', {
@@ -1872,6 +2012,7 @@ def monthly_dashboard(request):
         'm_first': m_first,
         'current_sort': sort_key,
         'current_dir': sort_dir,
+        'filter_only': only,
     })
 
 

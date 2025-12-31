@@ -1,0 +1,314 @@
+{% extends 'base.html' %}
+{% block title %}Edit Application • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .app-section{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:1rem;margin-bottom:1rem;box-shadow:0 2px 4px -2px rgba(0,0,0,.05);}
+  .app-section h2{font-size:1rem;margin:0 0 .75rem;font-weight:600;color:#334155;display:flex;align-items:center;gap:.5rem;}
+  @media(min-width:768px){.grid-two{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem;}}
+  @media(min-width:992px){.grid-three{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;}}
+  .doc-preview{max-width:200px;border-radius:8px;border:1px solid #e2e8f0;}
+  .info-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.75rem 1rem;}
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h1 class="h4 mb-1">Edit Application</h1>
+    <div class="small text-secondary">
+      <span class="badge bg-primary-subtle text-primary">{{ pg.name }}</span>
+      <span class="mx-1">•</span>
+      Room {{ booking.room.room_no }} • Bed {{ booking.share_no }}
+      <span class="mx-1">•</span>
+      <strong>{{ app.name|default:app.user.get_full_name }}</strong>
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'booking_detail' booking.id %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-info-circle me-1"></i>View Booking Details
+    </a>
+    <a href="{% url 'pg_resident_applications' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Back to Applications
+    </a>
+  </div>
+</div>
+
+<!-- Warning Banner -->
+<div class="alert alert-warning py-2 small mb-3">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  <strong>Admin Edit Mode:</strong> Changes made here will be logged and attributed to your account. All modifications are recorded in the booking's audit log.
+</div>
+
+<!-- Current Info Card -->
+<div class="info-card mb-3">
+  <div class="row g-3">
+    <div class="col-md-3">
+      <div class="small text-muted">Tenant</div>
+      <div class="fw-semibold">{{ app.user.email }}</div>
+    </div>
+    <div class="col-md-3">
+      <div class="small text-muted">Application Status</div>
+      <div>
+        {% if app.status == 'confirmed' %}
+          <span class="badge bg-success">Confirmed</span>
+        {% elif app.status == 'submitted' or app.status == 'resubmitted' %}
+          <span class="badge bg-primary">Submitted</span>
+        {% elif app.status == 'pending' %}
+          <span class="badge bg-warning text-dark">Pending</span>
+        {% elif app.status == 'rejected' %}
+          <span class="badge bg-danger">Rejected</span>
+        {% elif app.status == 'refill_requested' %}
+          <span class="badge bg-info">Re-Fill Requested</span>
+        {% else %}
+          <span class="badge bg-secondary">{{ app.status }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="small text-muted">Joining Date</div>
+      <div class="fw-semibold">{{ booking.joining_date|date:"M d, Y"|default:"—" }}</div>
+    </div>
+    <div class="col-md-3">
+      <div class="small text-muted">Payment Date</div>
+      <div class="fw-semibold">{{ booking.payment_date|date:"M d, Y"|default:"—" }}</div>
+    </div>
+  </div>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="w-100">
+  {% csrf_token %}
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger py-2 small">{{ form.non_field_errors }}</div>
+  {% endif %}
+  
+  <!-- Personal Details -->
+  <div class="app-section">
+    <h2><i class="bi bi-person text-primary"></i> Personal Details</h2>
+    <div class="grid-three">
+      <div class="mb-2">
+        <label class="form-label">Name</label>
+        {{ form.name }}
+        {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Date of Birth</label>
+        {{ form.dob }}
+        {% if form.dob.errors %}<div class="text-danger small">{{ form.dob.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Age</label>
+        {{ form.age }}
+        {% if form.age.errors %}<div class="text-danger small">{{ form.age.errors|striptags }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="grid-two">
+      <div class="mb-2">
+        <label class="form-label">Phone</label>
+        {{ form.phone }}
+        {% if form.phone.errors %}<div class="text-danger small">{{ form.phone.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">WhatsApp Number</label>
+        {{ form.whatsapp_number }}
+        {% if form.whatsapp_number.errors %}<div class="text-danger small">{{ form.whatsapp_number.errors|striptags }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="mb-2">
+      <label class="form-label">Email</label>
+      {{ form.email }}
+      {% if form.email.errors %}<div class="text-danger small">{{ form.email.errors|striptags }}</div>{% endif %}
+    </div>
+  </div>
+  
+  <!-- Parents / Guardians -->
+  <div class="app-section">
+    <h2><i class="bi bi-people text-success"></i> Parents / Guardians</h2>
+    <div class="grid-two">
+      <div class="mb-2">
+        <label class="form-label">Father's Name</label>
+        {{ form.father_name }}
+        {% if form.father_name.errors %}<div class="text-danger small">{{ form.father_name.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Father's Phone</label>
+        {{ form.father_phone }}
+        {% if form.father_phone.errors %}<div class="text-danger small">{{ form.father_phone.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Mother's Name</label>
+        {{ form.mother_name }}
+        {% if form.mother_name.errors %}<div class="text-danger small">{{ form.mother_name.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Mother's Phone</label>
+        {{ form.mother_phone }}
+        {% if form.mother_phone.errors %}<div class="text-danger small">{{ form.mother_phone.errors|striptags }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="mb-2">
+      <label class="form-label">Address</label>
+      {{ form.address }}
+      {% if form.address.errors %}<div class="text-danger small">{{ form.address.errors|striptags }}</div>{% endif %}
+    </div>
+  </div>
+  
+  <!-- Stay Details -->
+  <div class="app-section">
+    <h2><i class="bi bi-calendar text-info"></i> Stay Details</h2>
+    <div class="grid-three">
+      <div class="mb-2">
+        <label class="form-label">Date of Admission</label>
+        {{ form.date_of_admission }}
+        {% if form.date_of_admission.errors %}<div class="text-danger small">{{ form.date_of_admission.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Food Preference</label>
+        {{ form.food_pref }}
+        {% if form.food_pref.errors %}<div class="text-danger small">{{ form.food_pref.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Marital Status</label>
+        {{ form.marital_status }}
+        {% if form.marital_status.errors %}<div class="text-danger small">{{ form.marital_status.errors|striptags }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  
+  <!-- Occupation -->
+  <div class="app-section">
+    <h2><i class="bi bi-briefcase text-warning"></i> Occupation</h2>
+    <div class="grid-three">
+      <div class="mb-2">
+        <label class="form-label">Education</label>
+        {{ form.education }}
+        {% if form.education.errors %}<div class="text-danger small">{{ form.education.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Occupation</label>
+        {{ form.occupation }}
+        {% if form.occupation.errors %}<div class="text-danger small">{{ form.occupation.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Organization Name</label>
+        {{ form.org_name }}
+        {% if form.org_name.errors %}<div class="text-danger small">{{ form.org_name.errors|striptags }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="mb-2">
+      <label class="form-label">Organization Address</label>
+      {{ form.org_address }}
+      {% if form.org_address.errors %}<div class="text-danger small">{{ form.org_address.errors|striptags }}</div>{% endif %}
+    </div>
+  </div>
+  
+  <!-- ID & Vehicle -->
+  <div class="app-section">
+    <h2><i class="bi bi-card-text text-danger"></i> ID & Vehicle</h2>
+    <div class="mb-2">
+      <label class="form-label">Aadhaar Number</label>
+      {{ form.aadhaar_number }}
+      {% if form.aadhaar_number.errors %}<div class="text-danger small">{{ form.aadhaar_number.errors|striptags }}</div>{% endif %}
+    </div>
+    <div class="grid-three mt-2">
+      <div class="mb-2">
+        <div class="form-check">
+          {{ form.has_vehicle }}
+          <label class="form-check-label" for="{{ form.has_vehicle.id_for_label }}">Has Vehicle</label>
+        </div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Vehicle Number</label>
+        {{ form.vehicle_number }}
+        {% if form.vehicle_number.errors %}<div class="text-danger small">{{ form.vehicle_number.errors|striptags }}</div>{% endif %}
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Vehicle Model</label>
+        {{ form.vehicle_model }}
+        {% if form.vehicle_model.errors %}<div class="text-danger small">{{ form.vehicle_model.errors|striptags }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  
+  <!-- Documents Section -->
+  <div class="app-section">
+    <h2><i class="bi bi-file-earmark text-secondary"></i> Documents</h2>
+    
+    <!-- Current Selfie -->
+    {% if app.selfie_url %}
+    <div class="mb-3">
+      <label class="form-label">Current Selfie</label>
+      <div>
+        <a href="{{ app.selfie_url }}" target="_blank">
+          <img src="{{ app.selfie_url }}" alt="Current Selfie" class="doc-preview">
+        </a>
+      </div>
+    </div>
+    {% endif %}
+    <div class="mb-3">
+      <label class="form-label">Upload New Selfie (optional)</label>
+      <input type="file" name="selfie" class="form-control" accept="image/*">
+      <small class="text-muted">Leave empty to keep current selfie</small>
+    </div>
+    
+    <!-- Current Aadhaar Document 1 -->
+    {% if app.aadhaar_file_url %}
+    <div class="mb-3">
+      <label class="form-label">Current Aadhaar Document 1</label>
+      <div>
+        <a href="{{ app.aadhaar_file_url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-file-earmark-text me-1"></i>View Document
+        </a>
+      </div>
+    </div>
+    {% endif %}
+    <div class="mb-3">
+      <label class="form-label">Upload New Aadhaar Document 1 (optional)</label>
+      {{ form.aadhaar_pdf }}
+      <small class="text-muted">PDF or image. Leave empty to keep current document.</small>
+    </div>
+    
+    <!-- Current Aadhaar Document 2 -->
+    {% if app.aadhaar_file_url_2 %}
+    <div class="mb-3">
+      <label class="form-label">Current Aadhaar Document 2</label>
+      <div>
+        <a href="{{ app.aadhaar_file_url_2 }}" target="_blank" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-file-earmark-text me-1"></i>View Document 2
+        </a>
+      </div>
+    </div>
+    {% endif %}
+    <div class="mb-3">
+      <label class="form-label">Upload New Aadhaar Document 2 (optional)</label>
+      {{ form.aadhaar_pdf_2 }}
+      <small class="text-muted">Image only (back side). Leave empty to keep current.</small>
+    </div>
+  </div>
+  
+  <!-- Submit -->
+  <div class="d-flex gap-2 justify-content-end mt-3">
+    <a href="{% url 'pg_resident_applications' %}" class="btn btn-outline-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-check-lg me-1"></i>Save Changes
+    </button>
+  </div>
+</form>
+
+{% endblock %}
+
+{% block body_extra %}
+{{ block.super }}
+<script>
+  // Auto-calculate age from DOB
+  document.getElementById('{{ form.dob.id_for_label }}')?.addEventListener('change', function() {
+    const dob = new Date(this.value);
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+    if (age > 0 && age < 150) {
+      document.getElementById('{{ form.age.id_for_label }}').value = age;
+    }
+  });
+</script>
+{% endblock %}

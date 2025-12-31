@@ -58,6 +58,7 @@ urlpatterns = [
     path('applications/<int:app_id>/refill/', views.application_refill_request, name='pg_application_refill'),
     path('applications/<int:app_id>/referral/', views.application_update_referral, name='pg_application_referral'),
     path('applications/<int:app_id>/pdf/', views.application_pdf, name='pg_application_pdf'),
+    path('applications/<int:app_id>/admin-edit/', views.admin_application_edit, name='pg_admin_application_edit'),
     path('referrals/', views.pg_referrals, name='pg_referrals'),
     
     # Bed status sync

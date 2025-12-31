@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import PG, PGAdmin, Complaint, ComplaintComment
+from .models import PG, PGAdmin, PGAdminPermission, Complaint, ComplaintComment
 
 
 @admin.register(PG)
@@ -26,10 +26,24 @@ class PGAdminAdmin(admin.ModelAdmin):
 	)
 
 
+class PGAdminPermissionInline(admin.StackedInline):
+	model = PGAdminPermission
+	can_delete = False
+	verbose_name_plural = 'Permissions'
+
+
 @admin.register(PGAdmin)
 class PGAdminProfileAdmin(admin.ModelAdmin):
 	list_display = ("user", "pg", "created_at")
 	search_fields = ("user__email", "pg__name")
+	inlines = [PGAdminPermissionInline]
+
+
+@admin.register(PGAdminPermission)
+class PGAdminPermissionAdmin(admin.ModelAdmin):
+	list_display = ("pg_admin", "can_view_employees", "can_delete_payments", "can_edit_payments")
+	list_filter = ("can_view_employees", "can_delete_payments", "can_edit_payments")
+	search_fields = ("pg_admin__user__email", "pg_admin__pg__name")
 
 
 @admin.register(Complaint)

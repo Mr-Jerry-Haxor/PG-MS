@@ -1,13 +1,46 @@
 {% extends 'base.html' %}
 {% block title %}Assign PG Admins • PG-MS{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<style>
+  /* Mobile responsive styles */
+  @media (max-width: 576px) {
+    .page-header { flex-direction: column; align-items: flex-start !important; gap: 0.5rem; }
+    .page-header h1 { font-size: 1.1rem; }
+    .assign-form .row { flex-direction: column; }
+    .assign-form .col-md-6, .assign-form .col-md-auto { width: 100%; }
+    .assign-form .col-md-auto { margin-top: 0.5rem; }
+    .assign-form button { width: 100%; }
+    .btn-group-sm { flex-direction: column; width: 100%; }
+    .btn-group-sm .btn, .btn-group-sm form { width: 100%; }
+    .btn-group-sm form .btn { border-radius: 0.25rem !important; margin-top: 0.25rem; }
+    .btn-group-sm > .btn:first-child { border-radius: 0.25rem !important; }
+    /* Modal responsiveness */
+    .modal-body .card { margin-bottom: 0.75rem !important; }
+    .modal-body .card-body { padding: 0.75rem; }
+    .form-check-label small { font-size: 0.7rem; }
+    /* Permission legend responsiveness */
+    .perm-legend-row .col-6 { padding-right: 0.5rem; }
+    .perm-legend-row .d-flex { font-size: 0.85rem; }
+    .perm-legend-row p { font-size: 0.7rem !important; }
+  }
+  @media (max-width: 768px) {
+    .card-header h6 { font-size: 0.9rem; }
+  }
+  /* Ensure table horizontal scroll */
+  .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-responsive table { min-width: 600px; }
+  /* Permission badges wrap nicely */
+  .perm-badges { min-width: 150px; }
+  .perm-badges .badge { margin-bottom: 2px; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 page-header">
   <h1 class="h4 mb-0">Assign PG Admins — {{ pg.name }}</h1>
   <a href="{% url 'sa_pgs' %}" class="btn btn-outline-secondary btn-sm">Back</a>
-  </div>
+</div>
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-body">
-    <form method="post">
+    <form method="post" class="assign-form">
       {% csrf_token %}
       <div class="row g-2 align-items-end">
         <div class="col-md-6">
@@ -29,40 +62,391 @@
     </form>
   </div>
 </div>
-<div class="card border-0 shadow-sm">
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-light d-flex justify-content-between align-items-center">
+    <h6 class="mb-0"><i class="bi bi-people-fill me-2"></i>Assigned Admins</h6>
+    <span class="badge bg-primary">{{ admins|length }} admin{{ admins|length|pluralize }}</span>
+  </div>
   <div class="table-responsive">
     <table class="table align-middle mb-0">
-      <thead><tr><th>Admin</th><th>Since</th><th></th></tr></thead>
+      <thead>
+        <tr>
+          <th>Admin</th>
+          <th>Since</th>
+          <th class="text-center">Permissions</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
       <tbody>
       {% for a in admins %}
-        <tr>
-          <td>{{ a.user.email }}</td>
-          <td>{{ a.created_at }}</td>
+        <tr data-admin-id="{{ a.id }}">
+          <td>
+            <div>{{ a.user.email }}</div>
+            {% if a.user.first_name or a.user.last_name %}
+              <small class="text-muted">{{ a.user.first_name }} {{ a.user.last_name }}</small>
+            {% endif %}
+          </td>
+          <td>{{ a.created_at|date:"M d, Y" }}</td>
+          <td class="text-center">
+            <div class="d-flex flex-wrap gap-1 justify-content-center perm-badges">
+              {% if a.permissions.can_view_employees or a.permissions.can_edit_employees %}
+                <span class="badge bg-primary-subtle text-primary" title="Employees Access">
+                  <i class="bi bi-person-badge me-1"></i>{% if a.permissions.can_edit_employees %}Edit{% else %}View{% endif %}
+                </span>
+              {% endif %}
+              {% if a.permissions.can_edit_payments %}
+                <span class="badge bg-success-subtle text-success" title="Edit Payments">
+                  <i class="bi bi-pencil me-1"></i>Edit Pay
+                </span>
+              {% endif %}
+              {% if a.permissions.can_delete_payments %}
+                <span class="badge bg-danger-subtle text-danger" title="Delete Payments">
+                  <i class="bi bi-trash me-1"></i>Del Pay
+                </span>
+              {% endif %}
+              {% if a.permissions.can_edit_applications %}
+                <span class="badge bg-info-subtle text-info" title="Edit Applications">
+                  <i class="bi bi-file-earmark-text me-1"></i>Edit Apps
+                </span>
+              {% endif %}
+              {% if not a.permissions.can_view_employees and not a.permissions.can_edit_employees and not a.permissions.can_edit_payments and not a.permissions.can_delete_payments and not a.permissions.can_edit_applications %}
+                <span class="text-muted small">Default</span>
+              {% endif %}
+            </div>
+          </td>
           <td class="text-end">
-            <form method="post" class="d-inline">
-              {% csrf_token %}
-              <input type="hidden" name="action" value="remove" />
-              <input type="hidden" name="remove_user_id" value="{{ a.user.id }}" />
-              <button class="btn btn-sm btn-outline-danger" type="submit" onclick="return confirm('Remove this PG Admin?');">Remove</button>
-            </form>
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-outline-primary edit-permissions-btn"
+                      data-bs-toggle="modal"
+                      data-bs-target="#permissionsModal"
+                      data-admin-id="{{ a.id }}"
+                      data-admin-email="{{ a.user.email }}"
+                      data-admin-name="{{ a.user.first_name }} {{ a.user.last_name }}"
+                      data-perm-view-employees="{{ a.permissions.can_view_employees|yesno:'true,false' }}"
+                      data-perm-edit-employees="{{ a.permissions.can_edit_employees|yesno:'true,false' }}"
+                      data-perm-edit-payments="{{ a.permissions.can_edit_payments|yesno:'true,false' }}"
+                      data-perm-delete-payments="{{ a.permissions.can_delete_payments|yesno:'true,false' }}"
+                      data-perm-edit-applications="{{ a.permissions.can_edit_applications|yesno:'true,false' }}">
+                <i class="bi bi-shield-lock me-1"></i>Edit Permissions
+              </button>
+              <form method="post" class="d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="remove" />
+                <input type="hidden" name="remove_user_id" value="{{ a.user.id }}" />
+                <button class="btn btn-outline-danger" type="submit" onclick="return confirm('Remove this PG Admin?');">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </form>
+            </div>
           </td>
         </tr>
       {% empty %}
-        <tr><td colspan="3" class="text-secondary">No admins yet.</td></tr>
+        <tr><td colspan="4" class="text-secondary text-center py-4">No admins assigned yet.</td></tr>
       {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Permission Legend Card -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-light">
+    <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Permission Details</h6>
+  </div>
+  <div class="card-body">
+    <div class="row perm-legend-row">
+      <div class="col-6 col-md-4 col-lg mb-3">
+        <div class="d-flex align-items-start">
+          <i class="bi bi-eye text-info me-2 mt-1"></i>
+          <div>
+            <strong class="small">View Employees</strong>
+            <p class="small text-muted mb-0">View employee details and ledger (read-only).</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg mb-3">
+        <div class="d-flex align-items-start">
+          <i class="bi bi-person-badge text-primary me-2 mt-1"></i>
+          <div>
+            <strong class="small">Edit Employees</strong>
+            <p class="small text-muted mb-0">Full control: create, edit, delete employees.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg mb-3">
+        <div class="d-flex align-items-start">
+          <i class="bi bi-pencil text-success me-2 mt-1"></i>
+          <div>
+            <strong class="small">Edit Payments</strong>
+            <p class="small text-muted mb-0">Edit existing payment entries.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg mb-3">
+        <div class="d-flex align-items-start">
+          <i class="bi bi-trash3 text-danger me-2 mt-1"></i>
+          <div>
+            <strong class="small">Delete Payments</strong>
+            <p class="small text-muted mb-0">Delete payment entries from the system.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg mb-3">
+        <div class="d-flex align-items-start">
+          <i class="bi bi-file-earmark-text text-info me-2 mt-1"></i>
+          <div>
+            <strong class="small">Edit Applications</strong>
+            <p class="small text-muted mb-0">Edit tenant application details.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Permissions Modal -->
+<div class="modal fade" id="permissionsModal" tabindex="-1" aria-labelledby="permissionsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="permissionsModalLabel">
+          <i class="bi bi-shield-lock me-2"></i>Edit Permissions
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <div class="d-flex align-items-center mb-2">
+            <div class="avatar bg-primary-subtle text-primary rounded-circle me-2" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;">
+              <i class="bi bi-person"></i>
+            </div>
+            <div>
+              <div class="fw-semibold" id="modalAdminName"></div>
+              <small class="text-muted" id="modalAdminEmail"></small>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="modalAdminId" value="">
+        
+        <!-- Employee Permissions -->
+        <div class="card mb-3">
+          <div class="card-header bg-light py-2">
+            <h6 class="mb-0"><i class="bi bi-person-badge text-primary me-2"></i>Employee Management</h6>
+          </div>
+          <div class="card-body">
+            <div class="form-check form-switch mb-2">
+              <input class="form-check-input modal-permission-toggle" type="checkbox" id="permViewEmployees" data-permission="can_view_employees">
+              <label class="form-check-label" for="permViewEmployees">
+                <i class="bi bi-eye text-info me-1"></i>View Employees
+                <small class="text-muted d-block">Can view employee details and ledger (read-only)</small>
+              </label>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input modal-permission-toggle" type="checkbox" id="permEditEmployees" data-permission="can_edit_employees">
+              <label class="form-check-label" for="permEditEmployees">
+                <i class="bi bi-pencil-square text-primary me-1"></i>Edit Employees
+                <small class="text-muted d-block">Full control: create, edit, and delete employees</small>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Payment Permissions -->
+        <div class="card mb-3">
+          <div class="card-header bg-light py-2">
+            <h6 class="mb-0"><i class="bi bi-credit-card text-success me-2"></i>Payment Management</h6>
+          </div>
+          <div class="card-body">
+            <div class="form-check form-switch mb-2">
+              <input class="form-check-input modal-permission-toggle" type="checkbox" id="permEditPayments" data-permission="can_edit_payments">
+              <label class="form-check-label" for="permEditPayments">
+                <i class="bi bi-pencil text-success me-1"></i>Edit Payments
+                <small class="text-muted d-block">Can edit existing payment entries</small>
+              </label>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input modal-permission-toggle" type="checkbox" id="permDeletePayments" data-permission="can_delete_payments">
+              <label class="form-check-label" for="permDeletePayments">
+                <i class="bi bi-trash text-danger me-1"></i>Delete Payments
+                <small class="text-muted d-block">Can delete payment entries</small>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Application Permissions -->
+        <div class="card">
+          <div class="card-header bg-light py-2">
+            <h6 class="mb-0"><i class="bi bi-file-earmark-text text-info me-2"></i>Application Management</h6>
+          </div>
+          <div class="card-body">
+            <div class="form-check form-switch">
+              <input class="form-check-input modal-permission-toggle" type="checkbox" id="permEditApplications" data-permission="can_edit_applications">
+              <label class="form-check-label" for="permEditApplications">
+                <i class="bi bi-pencil-square text-info me-1"></i>Edit Tenant Applications
+                <small class="text-muted d-block">Can edit tenant application details and view booking info</small>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Save Status -->
+        <div id="saveStatus" class="text-center mt-3 d-none">
+          <span class="text-success"><i class="bi bi-check-circle me-1"></i>Changes saved automatically</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}
 {% block body_extra %}
 {{ block.super }}
 <script>
+  // Permission modal handler
+  var permissionsModal = document.getElementById('permissionsModal');
+  var currentAdminId = null;
+  
+  permissionsModal.addEventListener('show.bs.modal', function(event) {
+    var button = event.relatedTarget;
+    currentAdminId = button.getAttribute('data-admin-id');
+    var adminEmail = button.getAttribute('data-admin-email');
+    var adminName = button.getAttribute('data-admin-name').trim();
+    
+    document.getElementById('modalAdminId').value = currentAdminId;
+    document.getElementById('modalAdminName').textContent = adminName || adminEmail;
+    document.getElementById('modalAdminEmail').textContent = adminEmail;
+    
+    // Set toggle states
+    document.getElementById('permViewEmployees').checked = button.getAttribute('data-perm-view-employees') === 'true';
+    document.getElementById('permEditEmployees').checked = button.getAttribute('data-perm-edit-employees') === 'true';
+    document.getElementById('permEditPayments').checked = button.getAttribute('data-perm-edit-payments') === 'true';
+    document.getElementById('permDeletePayments').checked = button.getAttribute('data-perm-delete-payments') === 'true';
+    document.getElementById('permEditApplications').checked = button.getAttribute('data-perm-edit-applications') === 'true';
+    
+    // Hide save status
+    document.getElementById('saveStatus').classList.add('d-none');
+  });
+  
+  // Permission toggle handler with AJAX
+  document.querySelectorAll('.modal-permission-toggle').forEach(function(toggle) {
+    toggle.addEventListener('change', function() {
+      var adminId = document.getElementById('modalAdminId').value;
+      var permission = this.dataset.permission;
+      var value = this.checked;
+      var toggleElement = this;
+      var saveStatus = document.getElementById('saveStatus');
+      
+      // Show loading state
+      toggleElement.disabled = true;
+      saveStatus.classList.add('d-none');
+      
+      fetch('{% url "sa_pg_admin_permissions_api" 0 %}'.replace('/0/', '/' + adminId + '/'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+          permission: permission,
+          value: value
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        toggleElement.disabled = false;
+        if (data.success) {
+          // Show success message
+          saveStatus.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Saved</span>';
+          saveStatus.classList.remove('d-none');
+          
+          // Update the button data attributes for next modal open
+          var btn = document.querySelector('.edit-permissions-btn[data-admin-id="' + adminId + '"]');
+          if (btn) {
+            btn.setAttribute('data-perm-' + permission.replace('can_', '').replace('_', '-'), value ? 'true' : 'false');
+          }
+          
+          // Update the badges in the table row
+          updateAdminBadges(adminId);
+          
+          setTimeout(function() {
+            saveStatus.classList.add('d-none');
+          }, 2000);
+        } else {
+          // Revert on error
+          toggleElement.checked = !value;
+          saveStatus.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>' + (data.error || 'Failed to save') + '</span>';
+          saveStatus.classList.remove('d-none');
+        }
+      })
+      .catch(error => {
+        toggleElement.disabled = false;
+        toggleElement.checked = !value;
+        saveStatus.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Network error</span>';
+        saveStatus.classList.remove('d-none');
+      });
+    });
+  });
+  
+  // Update badges in the table after permission change
+  function updateAdminBadges(adminId) {
+    var btn = document.querySelector('.edit-permissions-btn[data-admin-id="' + adminId + '"]');
+    if (!btn) return;
+    
+    var viewEmp = btn.getAttribute('data-perm-view-employees') === 'true';
+    var editEmp = btn.getAttribute('data-perm-edit-employees') === 'true';
+    var editPay = btn.getAttribute('data-perm-edit-payments') === 'true';
+    var delPay = btn.getAttribute('data-perm-delete-payments') === 'true';
+    var editApps = btn.getAttribute('data-perm-edit-applications') === 'true';
+    
+    // Also update from current modal state
+    viewEmp = document.getElementById('permViewEmployees').checked;
+    editEmp = document.getElementById('permEditEmployees').checked;
+    editPay = document.getElementById('permEditPayments').checked;
+    delPay = document.getElementById('permDeletePayments').checked;
+    editApps = document.getElementById('permEditApplications').checked;
+    
+    // Update button data attributes
+    btn.setAttribute('data-perm-view-employees', viewEmp ? 'true' : 'false');
+    btn.setAttribute('data-perm-edit-employees', editEmp ? 'true' : 'false');
+    btn.setAttribute('data-perm-edit-payments', editPay ? 'true' : 'false');
+    btn.setAttribute('data-perm-delete-payments', delPay ? 'true' : 'false');
+    btn.setAttribute('data-perm-edit-applications', editApps ? 'true' : 'false');
+    
+    var row = document.querySelector('tr[data-admin-id="' + adminId + '"]');
+    if (!row) return;
+    
+    var badgeCell = row.querySelector('td:nth-child(3) .d-flex');
+    if (!badgeCell) return;
+    
+    var badges = [];
+    if (viewEmp || editEmp) {
+      badges.push('<span class="badge bg-primary-subtle text-primary" title="Employees Access"><i class="bi bi-person-badge me-1"></i>' + (editEmp ? 'Edit' : 'View') + '</span>');
+    }
+    if (editPay) {
+      badges.push('<span class="badge bg-success-subtle text-success" title="Edit Payments"><i class="bi bi-pencil me-1"></i>Edit Pay</span>');
+    }
+    if (delPay) {
+      badges.push('<span class="badge bg-danger-subtle text-danger" title="Delete Payments"><i class="bi bi-trash me-1"></i>Del Pay</span>');
+    }
+    if (editApps) {
+      badges.push('<span class="badge bg-info-subtle text-info" title="Edit Applications"><i class="bi bi-file-earmark-text me-1"></i>Edit Apps</span>');
+    }
+    
+    if (badges.length === 0) {
+      badges.push('<span class="text-muted small">Default</span>');
+    }
+    
+    badgeCell.innerHTML = badges.join('');
+  }
+
+  // User search functionality
   (function(){
     const search = document.getElementById('userSearch');
     const select = document.getElementById('userSelect');
     if (!search || !select) return;
-    // Build a cache of options to re-render for reliable filtering
     const cache = Array.from(select.options).map(o => ({
       value: o.value,
       text: o.text,
@@ -79,7 +463,6 @@
         opt.textContent = item.text;
         select.appendChild(opt);
       });
-      // preserve selection if still present
       if (list.some(i => i.value === current)) select.value = current;
     }
     search.addEventListener('input', function(){

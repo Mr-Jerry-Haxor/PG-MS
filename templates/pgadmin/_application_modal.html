@@ -129,12 +129,12 @@
           <div class="row g-2 align-items-end">
             <div class="col-md-6">
               <label class="form-label small text-uppercase text-secondary">Referrer</label>
-              <select name="referred_by_booking" class="form-select form-select-sm">
+              <select name="referred_by_booking" class="form-select form-select-sm selectpicker" data-live-search="true" data-live-search-placeholder="Search by name, email, room..." title="No referral">
                 <option value="">No referral</option>
                 {% if referral_options %}
                   {% for ref in referral_options %}
                     {% if ref.id != booking.id %}
-                      <option value="{{ ref.id }}" {% if booking.application.referred_by_booking_id == ref.id %}selected{% endif %}>
+                      <option value="{{ ref.id }}" data-tokens="{{ ref.user.get_full_name|default:'' }} {{ ref.user.email }} room{{ ref.room.room_no }} {{ ref.room.room_no }} bed{{ ref.share_no }} {{ ref.share_no }}" {% if booking.application.referred_by_booking_id == ref.id %}selected{% endif %}>
                         {{ ref.user.get_full_name|default:ref.user.email }} — Room {{ ref.room.room_no }} Bed {{ ref.share_no }}
                       </option>
                     {% endif %}

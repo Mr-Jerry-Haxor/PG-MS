@@ -169,6 +169,10 @@ def dashboard(request):
 	ctx["today"] = _date.today()
 	today = _date.today()
 	
+	# Initialize employee permission flags (will be overridden if PG admin)
+	ctx["can_view_employees"] = False
+	ctx["can_edit_employees"] = False
+	
 	# Always show user's bookings on dashboard (approved/pending/completed)
 	approved_qs = (
 		Booking.objects.filter(user=request.user, status=Booking.APPROVED)
@@ -354,6 +358,29 @@ def dashboard(request):
 			"leaving_shares": leaving,
 			"total_shares": total,
 		})
+	
+	# Check if user (PG admin) has employee access permission
+	# This runs for ANY user who is actually a PG Admin (via PGAdmin records)
+	# regardless of whether profile.is_pg_admin flag is set
+	try:
+		from pgadmin.models import PGAdmin, PGAdminPermission
+		can_view = False
+		can_edit = False
+		
+		# Check if user has permission on ANY of their PGs
+		all_pg_admins = PGAdmin.objects.filter(user=request.user)
+		for pa in all_pg_admins:
+			perm = PGAdminPermission.objects.filter(pg_admin=pa).first()
+			if perm and (perm.can_view_employees or perm.can_edit_employees):
+				can_view = True
+				if perm.can_edit_employees:
+					can_edit = True
+				break
+		
+		ctx["can_view_employees"] = can_view
+		ctx["can_edit_employees"] = can_edit
+	except Exception:
+		pass  # Keep default False values set earlier
 
 	# Include user's referrals so dashboard can show a compact view for referrers
 	if request.user.is_authenticated:
