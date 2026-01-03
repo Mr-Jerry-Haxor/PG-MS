@@ -29,8 +29,18 @@ def _active_pg(request):
     from pgadmin.models import PG
     pgs = _admin_pgs(request.user)
     
-    # Check for PG selection in query params
+    # Check for PG selection in query params or POST data
     pg_id = request.GET.get('pg') or request.POST.get('pg')
+    
+    # Also check in JSON body for AJAX requests
+    if not pg_id and request.content_type == 'application/json':
+        try:
+            import json
+            data = json.loads(request.body)
+            pg_id = data.get('pg')
+        except (json.JSONDecodeError, ValueError):
+            pass
+    
     if pg_id:
         try:
             pg = pgs.get(id=pg_id)

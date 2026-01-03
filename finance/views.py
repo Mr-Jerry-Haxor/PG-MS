@@ -1767,6 +1767,8 @@ def monthly_dashboard(request):
         payment_anchor = primary_seg.get('payment_anchor') if primary_seg else None
         payment_due_day = payment_anchor.day if payment_anchor else None
         primary_booking_id = primary_seg.get('booking_id') if primary_seg else None
+        # Calculate billing period (from/to dates) for WhatsApp message
+        billing_from, billing_to = _billing_period_from_payment_date(payment_due) if payment_due else (None, None)
         # Exclude tenants who left on or before the payment due date for this month.
         # Example: payment due 10th, leaving on 9th or 10th => do not show in overview/export for this month.
         if latest_end and payment_due and payment_due >= latest_end:
@@ -1795,6 +1797,7 @@ def monthly_dashboard(request):
             'payment_due_day': payment_due_day,
             'payment_anchor_iso': payment_anchor.isoformat() if payment_anchor else '',
             'payment_date_iso': payment_due.isoformat() if payment_due else '',
+            'billing_to': billing_to,
             'primary_booking_id': primary_booking_id,
             'referral_adjustment': redeemed_total,
             'referral_pending_total': pending_current_total,
@@ -1835,13 +1838,17 @@ def monthly_dashboard(request):
     elif only == 'old_dues':
         # Calculate previous month range
         pm_first, pm_last, pm_days = _month_range(prev_year, prev_month)
+        pm_month_label = f"{calendar.month_abbr[prev_month]} {prev_year}"
         old_dues_user_ids = set()
+        old_dues_data = {}  # Store computed data per user
         
         for row in rows:
             u = row['user']
             # Get previous month's expected rent for this user
             pm_expected = 0.0
             pm_collected = 0.0
+            pm_payment_due = None  # Track the previous month's payment due date
+            pm_segment_details = []  # Track segment details for breakdown
             
             # Find bookings that overlapped with previous month
             prev_bks = (
@@ -1853,13 +1860,45 @@ def monthly_dashboard(request):
                 .select_related('room')
             )
             
+            primary_pm_booking = None
+            max_overlap = 0
+            pm_segs = []
             for b in prev_bks:
                 start = b.joining_date or b.start_date or b.created_at.date()
                 end = b.leaving_date
                 ov = _overlap_days(start, end, pm_first, pm_last)
                 if ov > 0:
-                    exp_part = _expected_rent_for_user_pg_month(u, pg, b, pm_first, pm_last)
+                    detail_entries = []
+                    exp_part = _expected_rent_for_user_pg_month(u, pg, b, pm_first, pm_last, details=detail_entries)
                     pm_expected += exp_part
+                    pm_segment_details.extend(detail_entries)
+                    # Get base rate info
+                    rr = ResidentRate.objects.filter(user=u, pg=pg, active=True).first()
+                    if rr:
+                        base_monthly = float(rr.amount)
+                        base_source = 'Custom rate'
+                    else:
+                        share_type = str(getattr(getattr(b, 'room', None), 'total_shares', '') or '')
+                        fees = Fees.objects.filter(pg=pg, share_type=share_type).first()
+                        base_monthly = float(getattr(fees, 'monthly_fee', 0) or 0)
+                        base_source = f"{share_type}-Sharing fee" if share_type else 'Default fee'
+                    pm_segs.append({
+                        'room_no': getattr(b.room, 'room_no', '—'),
+                        'start': start,
+                        'end': end,
+                        'stayed': ov,
+                        'base': base_monthly,
+                        'source': base_source,
+                        'expected': exp_part,
+                    })
+                    # Track the primary booking (longest overlap) for payment due date
+                    if ov > max_overlap:
+                        max_overlap = ov
+                        primary_pm_booking = b
+            
+            # Calculate previous month's payment due date from primary booking
+            if primary_pm_booking:
+                pm_payment_due = _payment_due_for_month(primary_pm_booking, pm_first, pm_days)
             
             # Get collected for previous month
             pm_collected = _collected_for_user_pg_month(u, pg, pm_first, pm_last)
@@ -1867,17 +1906,82 @@ def monthly_dashboard(request):
             # Calculate pending dues from previous month
             pm_pending = round(pm_expected - pm_collected, 2)
             
+            # Build expected breakdown HTML for previous month
+            pm_breakdown_parts = [
+                format_html('<div class="text-danger fw-semibold mb-1"><i class="bi bi-exclamation-triangle me-1"></i>{} Dues</div>', pm_month_label),
+                format_html('<div><strong>Expected:</strong> ₹{}</div>', f"{pm_expected:.2f}"),
+                format_html('<div><strong>Collected:</strong> ₹{}</div>', f"{pm_collected:.2f}"),
+                format_html('<div><strong>Pending:</strong> ₹{}</div>', f"{pm_pending:.2f}"),
+            ]
+            if pm_payment_due:
+                pm_breakdown_parts.append(
+                    format_html('<div class="small text-secondary">Payment due date: {}</div>', pm_payment_due.strftime('%Y-%m-%d'))
+                )
+            if pm_segs:
+                pm_breakdown_parts.append(format_html('<div class="fw-semibold mt-2">Stay segments in {} ({})</div>', pm_month_label, len(pm_segs)))
+                seg_lines = []
+                for seg in pm_segs:
+                    seg_lines.append(format_html(
+                        '<li>Room {} — {} to {} · Base ₹{} ({}) · {} days · Expected ₹{}</li>',
+                        seg['room_no'],
+                        seg['start'].strftime('%d %b') if seg['start'] else '—',
+                        seg['end'].strftime('%d %b') if seg['end'] else '—',
+                        f"{seg['base']:.2f}",
+                        seg['source'],
+                        seg['stayed'],
+                        f"{seg['expected']:.2f}",
+                    ))
+                pm_breakdown_parts.append(format_html('<ul class="list-unstyled mb-0">{}</ul>', format_html_join('', '{}', ((l,) for l in seg_lines))))
+            pm_expected_breakdown_html = format_html_join('', '{}', ((p,) for p in pm_breakdown_parts))
+            
             # Add to old dues list if they had pending dues > 0
             if pm_pending > 0:
                 old_dues_user_ids.add(u.id)
-                # Store previous month dues info in the row for display
-                row['prev_month_expected'] = round(pm_expected, 2)
-                row['prev_month_collected'] = round(pm_collected, 2)
-                row['prev_month_pending'] = pm_pending
-                row['prev_month_label'] = f"{calendar.month_abbr[prev_month]} {prev_year}"
+                # Calculate billing period from payment due date
+                pm_billing_from, pm_billing_to = _billing_period_from_payment_date(pm_payment_due) if pm_payment_due else (None, None)
+                old_dues_data[u.id] = {
+                    'prev_month_expected': round(pm_expected, 2),
+                    'prev_month_collected': round(pm_collected, 2),
+                    'prev_month_pending': pm_pending,
+                    'prev_month_label': pm_month_label,
+                    'prev_month_payment_due': pm_payment_due,
+                    'prev_month_first': pm_first,
+                    'prev_month_last': pm_last,
+                    'prev_month_breakdown_html': pm_expected_breakdown_html,
+                    'prev_month_billing_from': pm_billing_from,
+                    'prev_month_billing_to': pm_billing_to,
+                }
         
-        # Filter to only show users with old month dues
-        rows = [r for r in rows if r['user'].id in old_dues_user_ids]
+        # Filter to only show users with old month dues and update their display data
+        filtered_rows = []
+        for r in rows:
+            if r['user'].id in old_dues_user_ids:
+                data = old_dues_data[r['user'].id]
+                # Store previous month dues info in the row for display
+                r['prev_month_expected'] = data['prev_month_expected']
+                r['prev_month_collected'] = data['prev_month_collected']
+                r['prev_month_pending'] = data['prev_month_pending']
+                r['prev_month_label'] = data['prev_month_label']
+                # Override the payment date to show previous month's due date
+                r['prev_month_payment_due'] = data['prev_month_payment_due']
+                r['prev_month_payment_due_iso'] = data['prev_month_payment_due'].isoformat() if data['prev_month_payment_due'] else ''
+                # Override status to "unpaid" since they have outstanding old dues
+                r['status'] = 'unpaid'
+                r['status_label'] = 'Unpaid'
+                r['status_css'] = 'status-unpaid'
+                # Store previous month range for billing period calculation
+                r['prev_month_first'] = data['prev_month_first']
+                r['prev_month_last'] = data['prev_month_last']
+                # Store breakdown HTML for the info button
+                r['prev_month_breakdown_html'] = data['prev_month_breakdown_html']
+                r['prev_month_breakdown_id'] = f"pm-breakdown-{r['user'].id}"
+                # Store billing period for WhatsApp message
+                r['prev_month_billing_from'] = data['prev_month_billing_from']
+                r['prev_month_billing_to'] = data['prev_month_billing_to']
+                r['prev_month_billing_from_iso'] = data['prev_month_billing_from'].isoformat() if data['prev_month_billing_from'] else ''
+                r['prev_month_billing_to_iso'] = data['prev_month_billing_to'].isoformat() if data['prev_month_billing_to'] else ''
+                filtered_rows.append(r)
+        rows = filtered_rows
 
     # Date range filter (filters by payment_due_date)
     start_date_str = request.GET.get('start_date', '').strip()
@@ -1981,6 +2085,7 @@ def monthly_dashboard(request):
 
     summary = {
         'year': year, 'month': month,
+        'month_label': f"{calendar.month_name[month]} {year}",
         # Use footer_totals (post-filter) so summary numbers match the table
         'total_expected': footer_totals.get('expected', 0.0),
         'total_collected': footer_totals.get('collected', 0.0),
@@ -3727,6 +3832,18 @@ def monthly_quick_payment(request):
     except Exception:
         m = pay_date.month
     m_first, m_last, m_days = _month_range(y, m)
+    
+    # Check if we're in old_dues filter mode - if so, compute previous month metrics
+    only_filter = (only or '').strip().lower()
+    is_old_dues = (only_filter == 'old_dues')
+    
+    # Calculate previous month range for old_dues
+    if m == 1:
+        prev_year_calc, prev_month_calc = y - 1, 12
+    else:
+        prev_year_calc, prev_month_calc = y, m - 1
+    pm_first, pm_last, pm_days = _month_range(prev_year_calc, prev_month_calc)
+    pm_month_label = f"{calendar.month_abbr[prev_month_calc]} {prev_year_calc}"
 
     # Expected across overlapping bookings in the month
     expected_total = 0.0
@@ -3747,6 +3864,37 @@ def monthly_quick_payment(request):
     collected_total = float(round(_collected_for_user_pg_month(u, pg, m_first, m_last), 2))
     pending_total = float(round(max(0.0, expected_total - collected_total), 2))
     new_status, new_status_label, new_status_css = _resolve_status(expected_total, collected_total, m_first, primary_due, timezone.now().date())
+    
+    # If old_dues mode, compute previous month metrics for this user
+    pm_expected_total = 0.0
+    pm_collected_total = 0.0
+    pm_pending_total = 0.0
+    pm_status = 'unpaid'
+    pm_status_label = 'Unpaid'
+    pm_status_css = 'status-unpaid'
+    if is_old_dues:
+        pm_primary_due = None
+        pm_primary_overlap = -1
+        for b in user_bookings:
+            s = b.joining_date or b.start_date or b.created_at.date()
+            e = b.leaving_date
+            overlap = _overlap_days(s, e, pm_first, pm_last)
+            if overlap > 0:
+                pm_expected_total += _expected_rent_for_user_pg_month(u, pg, b, pm_first, pm_last)
+                pm_due_candidate = _payment_due_for_month(b, pm_first, pm_days)
+                if pm_due_candidate and overlap > pm_primary_overlap:
+                    pm_primary_due = pm_due_candidate
+                    pm_primary_overlap = overlap
+        pm_expected_total = float(round(pm_expected_total, 2))
+        pm_collected_total = float(round(_collected_for_user_pg_month(u, pg, pm_first, pm_last), 2))
+        pm_pending_total = float(round(max(0.0, pm_expected_total - pm_collected_total), 2))
+        # For old dues, status should reflect whether they've now paid the old dues
+        if pm_pending_total <= 1.0:  # tolerance for rounding
+            pm_status, pm_status_label, pm_status_css = 'paid', 'Paid', 'status-paid'
+        elif pm_collected_total > 0:
+            pm_status, pm_status_label, pm_status_css = 'partial', 'Partial', 'status-partial'
+        else:
+            pm_status, pm_status_label, pm_status_css = 'unpaid', 'Unpaid', 'status-unpaid'
 
     # Recompute overall summary totals for the selected PG and month (respecting filter 'only' if provided)
     # Build resident rows data similar to monthly_dashboard but only gathering totals
@@ -3794,24 +3942,45 @@ def monthly_quick_payment(request):
 
     # AJAX response
     if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
-        return JsonResponse({
+        response_data = {
             'ok': True,
             'message': f'Payment of ₹{amount:.2f} added for {u.email}.',
             'user_id': u.id,
-            'expected': f"{expected_total:.2f}",
-            'collected': f"{collected_total:.2f}",
-            'pending': f"{pending_total:.2f}",
-            'collected_display': f"{collected_total:.2f}",
-            'pending_display': f"{pending_total:.2f}",
-            'status': new_status,
-            'status_label': new_status_label,
-            'status_css': new_status_css,
+            'is_old_dues': is_old_dues,
             # Overall cards
             'sum_expected': f"{totals_expected:.2f}",
             'sum_collected': f"{totals_collected:.2f}",
             'sum_pending': f"{totals_pending:.2f}",
             'sum_advance': f"{totals_advance:.2f}",
-        })
+        }
+        
+        if is_old_dues:
+            # Return previous month metrics for old_dues mode
+            response_data.update({
+                'expected': f"{pm_expected_total:.2f}",
+                'collected': f"{pm_collected_total:.2f}",
+                'pending': f"{pm_pending_total:.2f}",
+                'collected_display': f"{pm_collected_total:.2f}",
+                'pending_display': f"{pm_pending_total:.2f}",
+                'status': pm_status,
+                'status_label': pm_status_label,
+                'status_css': pm_status_css,
+                'month_label': pm_month_label,
+            })
+        else:
+            # Return current month metrics
+            response_data.update({
+                'expected': f"{expected_total:.2f}",
+                'collected': f"{collected_total:.2f}",
+                'pending': f"{pending_total:.2f}",
+                'collected_display': f"{collected_total:.2f}",
+                'pending_display': f"{pending_total:.2f}",
+                'status': new_status,
+                'status_label': new_status_label,
+                'status_css': new_status_css,
+            })
+        
+        return JsonResponse(response_data)
 
     # Non-AJAX: flash and redirect back with context
     messages.success(request, f'Payment of ₹{amount:.2f} added for {u.email}.')

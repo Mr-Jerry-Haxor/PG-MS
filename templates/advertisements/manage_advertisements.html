@@ -509,6 +509,9 @@ let cropper = null;
 let cropperModal = null;
 let textModal = null;
 
+// Get current PG ID from the page
+const CURRENT_PG_ID = {{ pg.id }};
+
 // CSRF Token
 function getCsrfToken() {
   return document.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -705,6 +708,7 @@ function uploadCroppedImage() {
   formData.append('image_data', imageData);
   formData.append('title', title);
   formData.append('description', description);
+  formData.append('pg', CURRENT_PG_ID);  // Add PG context
   
   fetch("{% url 'advertisements:upload_image' %}", {
     method: 'POST',
@@ -747,11 +751,15 @@ function uploadCroppedImage() {
 function deleteImage(imageId) {
   if (!confirm('Are you sure you want to delete this image?')) return;
   
+  const formData = new FormData();
+  formData.append('pg', CURRENT_PG_ID);  // Add PG context
+  
   fetch(`{% url 'advertisements:delete_image' 0 %}`.replace('0', imageId), {
     method: 'POST',
     headers: {
       'X-CSRFToken': getCsrfToken()
-    }
+    },
+    body: formData
   })
   .then(response => response.json())
   .then(data => {
@@ -769,11 +777,15 @@ function deleteImage(imageId) {
 }
 
 function toggleImage(imageId) {
+  const formData = new FormData();
+  formData.append('pg', CURRENT_PG_ID);  // Add PG context
+  
   fetch(`{% url 'advertisements:toggle_image' 0 %}`.replace('0', imageId), {
     method: 'POST',
     headers: {
       'X-CSRFToken': getCsrfToken()
-    }
+    },
+    body: formData
   })
   .then(response => response.json())
   .then(data => {
@@ -808,7 +820,7 @@ function saveImageOrder() {
       'X-CSRFToken': getCsrfToken(),
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ order: order })
+    body: JSON.stringify({ order: order, pg: CURRENT_PG_ID })  // Add PG context
   })
   .then(response => response.json())
   .then(data => {
@@ -840,6 +852,7 @@ function updateImageCount() {
 function updateSettings(setting, value) {
   const formData = new FormData();
   formData.append(setting, value);
+  formData.append('pg', CURRENT_PG_ID);  // Add PG context
   
   fetch("{% url 'advertisements:update_settings' %}", {
     method: 'POST',
@@ -921,6 +934,7 @@ function saveText() {
   formData.append('text', text);
   formData.append('text_color', textColor);
   formData.append('background_color', bgColor);
+  formData.append('pg', CURRENT_PG_ID);  // Add PG context
   
   fetch("{% url 'advertisements:save_text' %}", {
     method: 'POST',
@@ -946,11 +960,15 @@ function saveText() {
 function deleteText(textId) {
   if (!confirm('Are you sure you want to delete this text?')) return;
   
+  const formData = new FormData();
+  formData.append('pg', CURRENT_PG_ID);  // Add PG context
+  
   fetch(`{% url 'advertisements:delete_text' 0 %}`.replace('0', textId), {
     method: 'POST',
     headers: {
       'X-CSRFToken': getCsrfToken()
-    }
+    },
+    body: formData
   })
   .then(response => response.json())
   .then(data => {
@@ -967,11 +985,15 @@ function deleteText(textId) {
 }
 
 function toggleText(textId) {
+  const formData = new FormData();
+  formData.append('pg', CURRENT_PG_ID);  // Add PG context
+  
   fetch(`{% url 'advertisements:toggle_text' 0 %}`.replace('0', textId), {
     method: 'POST',
     headers: {
       'X-CSRFToken': getCsrfToken()
-    }
+    },
+    body: formData
   })
   .then(response => response.json())
   .then(data => {

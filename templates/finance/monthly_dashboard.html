@@ -233,7 +233,11 @@
             <td class="col-room">{{ r.room_no }}</td>
             <td>{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% else %}—{% endif %}</td>
             <td class="col-payment-date">
-              {% if r.payment_due_date %}
+              {% if filter_only == 'old_dues' and r.prev_month_payment_due %}
+                {# Show previous month's payment date for old dues #}
+                <span class="payment-date-display text-danger">{{ r.prev_month_payment_due|date:'Y-m-d' }}</span>
+                <span class="badge bg-danger-subtle text-danger ms-1" style="font-size:0.65rem;">{{ r.prev_month_label }}</span>
+              {% elif r.payment_due_date %}
                 <span class="payment-date-display">{{ r.payment_due_date|date:'Y-m-d' }}</span>
               {% elif r.payment_anchor %}
                 <span class="payment-date-display">{{ r.payment_anchor|date:'Y-m-d' }}</span>
@@ -271,35 +275,68 @@
               {% endif %}
             </td>
             <td>
-              <span class="nowrap expected-breakdown d-inline-flex align-items-center" role="button" tabindex="0"
-                    data-bs-toggle="popover"
-                    data-breakdown-target="{{ r.expected_breakdown_id }}"
-                    data-breakdown-title="Expected breakdown"
-                    data-expected-summary="{{ r.expected_tip|escape }}"
-                    title="{{ r.expected_tip|escape }}"
-                    aria-label="Expected breakdown for {{ r.user.first_name }} {{ r.user.last_name }}">
-                <span class="badge bg-light text-primary border border-primary me-1" style="border-radius:50%;padding:.12rem .4rem;font-size:.7rem;line-height:1">i</span>
-                ₹ {{ r.expected }}
-              </span>
-              {% if r.segments and r.segments|length > 1 %}
-                <span class="badge bg-secondary ms-1">{{ r.segments|length }}</span>
+              {% if filter_only == 'old_dues' and r.prev_month_expected %}
+                {# Old month dues: show previous month breakdown with info button #}
+                <span class="nowrap expected-breakdown d-inline-flex align-items-center text-danger" role="button" tabindex="0"
+                      data-bs-toggle="popover"
+                      data-breakdown-target="{{ r.prev_month_breakdown_id }}"
+                      data-breakdown-title="{{ r.prev_month_label }} Expected breakdown"
+                      title="{{ r.prev_month_label }} Expected: ₹{{ r.prev_month_expected|floatformat:2 }}"
+                      aria-label="{{ r.prev_month_label }} Expected breakdown for {{ r.user.first_name }} {{ r.user.last_name }}">
+                  <span class="badge bg-danger-subtle text-danger border border-danger me-1" style="border-radius:50%;padding:.12rem .4rem;font-size:.7rem;line-height:1">i</span>
+                  ₹ {{ r.prev_month_expected|floatformat:2 }}
+                </span>
+                <div class="small text-danger">{{ r.prev_month_label }}</div>
+                <div id="{{ r.prev_month_breakdown_id }}" class="d-none">
+                  {{ r.prev_month_breakdown_html }}
+                </div>
+              {% else %}
+                <span class="nowrap expected-breakdown d-inline-flex align-items-center" role="button" tabindex="0"
+                      data-bs-toggle="popover"
+                      data-breakdown-target="{{ r.expected_breakdown_id }}"
+                      data-breakdown-title="Expected breakdown"
+                      data-expected-summary="{{ r.expected_tip|escape }}"
+                      title="{{ r.expected_tip|escape }}"
+                      aria-label="Expected breakdown for {{ r.user.first_name }} {{ r.user.last_name }}">
+                  <span class="badge bg-light text-primary border border-primary me-1" style="border-radius:50%;padding:.12rem .4rem;font-size:.7rem;line-height:1">i</span>
+                  ₹ {{ r.expected }}
+                </span>
+                {% if r.segments and r.segments|length > 1 %}
+                  <span class="badge bg-secondary ms-1">{{ r.segments|length }}</span>
+                {% endif %}
+                <div id="{{ r.expected_breakdown_id }}" class="d-none">
+                  {{ r.expected_breakdown_html }}
+                </div>
               {% endif %}
-              <div id="{{ r.expected_breakdown_id }}" class="d-none">
-                {{ r.expected_breakdown_html }}
-              </div>
             </td>
-            <td class="nowrap td-collected">₹ {{ r.collected }}</td>
-            <td class="nowrap td-pending">₹ {{ r.pending }}</td>
+            <td class="nowrap td-collected">
+              {% if filter_only == 'old_dues' and r.prev_month_collected is not None %}
+                <span class="text-danger">₹ {{ r.prev_month_collected|floatformat:2 }}</span>
+                <div class="small text-danger">{{ r.prev_month_label }}</div>
+              {% else %}
+                ₹ {{ r.collected }}
+              {% endif %}
+            </td>
+            <td class="nowrap td-pending">
+              {% if filter_only == 'old_dues' and r.prev_month_pending %}
+                <span class="text-danger fw-semibold">₹ {{ r.prev_month_pending|floatformat:2 }}</span>
+                <div class="small text-danger">{{ r.prev_month_label }}</div>
+              {% else %}
+                ₹ {{ r.pending }}
+              {% endif %}
+            </td>
             <td>
               <span class="chip {{ r.status_css }} quick-pay-chip"
                 data-status="{{ r.status }}"
                 data-status-label="{{ r.status_label }}"
                 data-user-id="{{ r.user.id }}" data-user-name="{{ r.user.first_name }} {{ r.user.last_name }}"
-                data-user-email="{{ r.user.email }}" data-expected="{{ r.expected }}"
-                data-collected="{{ r.collected }}" data-pending="{{ r.pending }}"
+                data-user-email="{{ r.user.email }}" data-expected="{% if filter_only == 'old_dues' %}{{ r.prev_month_pending }}{% else %}{{ r.expected }}{% endif %}"
+                data-collected="{{ r.collected }}" data-pending="{% if filter_only == 'old_dues' %}{{ r.prev_month_pending }}{% else %}{{ r.pending }}{% endif %}"
                 data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
                 data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}"
-                data-due-date="{% if r.payment_date_iso %}{{ r.payment_date_iso }}{% elif r.payment_anchor_iso %}{{ r.payment_anchor_iso }}{% endif %}">{{ r.status_label }}</span>
+                data-due-date="{% if filter_only == 'old_dues' and r.prev_month_payment_due_iso %}{{ r.prev_month_payment_due_iso }}{% elif r.payment_date_iso %}{{ r.payment_date_iso }}{% elif r.payment_anchor_iso %}{{ r.payment_anchor_iso }}{% endif %}"
+                data-is-old-dues="{% if filter_only == 'old_dues' %}true{% else %}false{% endif %}"
+                data-old-dues-label="{% if filter_only == 'old_dues' %}{{ r.prev_month_label }}{% endif %}">{{ r.status_label }}</span>
             </td>
             <td>
               <div class="d-flex flex-wrap gap-1">
@@ -312,7 +349,12 @@
                      data-phone="{{ r.whatsapp_phone }}"
                      data-name="{{ r.user.first_name }}"
                      data-room="{{ r.room_no }}"
-                     data-pending="{{ r.pending }}"
+                     data-pending="{% if filter_only == 'old_dues' %}{{ r.prev_month_pending|floatformat:2 }}{% else %}{{ r.pending }}{% endif %}"
+                     data-payment-date="{% if filter_only == 'old_dues' and r.prev_month_payment_due %}{{ r.prev_month_payment_due|date:'d M Y' }}{% elif r.payment_due_date %}{{ r.payment_due_date|date:'d M Y' }}{% elif r.payment_anchor %}{{ r.payment_anchor|date:'d M Y' }}{% endif %}"
+                     data-month-name="{% if filter_only == 'old_dues' %}{{ r.prev_month_label }}{% else %}{{ summary.month_label }}{% endif %}"
+                     data-is-old-dues="{% if filter_only == 'old_dues' %}true{% else %}false{% endif %}"
+                     data-billing-from="{% if filter_only == 'old_dues' and r.prev_month_billing_from %}{{ r.prev_month_billing_from|date:'d M Y' }}{% elif r.payment_due_date %}{{ r.payment_due_date|date:'d M Y' }}{% elif r.payment_anchor %}{{ r.payment_anchor|date:'d M Y' }}{% endif %}"
+                     data-billing-to="{% if filter_only == 'old_dues' and r.prev_month_billing_to %}{{ r.prev_month_billing_to|date:'d M Y' }}{% elif r.billing_to %}{{ r.billing_to|date:'d M Y' }}{% endif %}"
                      title="WhatsApp {{ r.user.first_name }}"
                      href="#">
                     <i class="bi bi-whatsapp"></i>
@@ -1447,8 +1489,22 @@
             if (row) {
               var colEl = row.querySelector('.td-collected');
               var penEl = row.querySelector('.td-pending');
-              if (colEl) colEl.textContent = '₹ ' + (res.collected_display || res.collected);
-              if (penEl) penEl.textContent = '₹ ' + (res.pending_display || res.pending);
+              
+              // For old_dues mode, maintain the red styling and month label
+              if (res.is_old_dues && res.month_label) {
+                if (colEl) {
+                  colEl.innerHTML = '<span class="text-danger">₹ ' + (res.collected_display || res.collected) + '</span>' +
+                                   '<div class="small text-danger">' + res.month_label + '</div>';
+                }
+                if (penEl) {
+                  penEl.innerHTML = '<span class="text-danger fw-semibold">₹ ' + (res.pending_display || res.pending) + '</span>' +
+                                   '<div class="small text-danger">' + res.month_label + '</div>';
+                }
+              } else {
+                if (colEl) colEl.textContent = '₹ ' + (res.collected_display || res.collected);
+                if (penEl) penEl.textContent = '₹ ' + (res.pending_display || res.pending);
+              }
+              
               // Update status chip and row status
               row.dataset.status = res.status;
               var chip = row.querySelector('.quick-pay-chip');
@@ -1503,12 +1559,30 @@
         var name = this.dataset.name || '';
         var room = this.dataset.room || '';
         var pending = parseFloat(this.dataset.pending || '0').toFixed(2);
+        var paymentDate = this.dataset.paymentDate || '';
+        var monthName = this.dataset.monthName || '';
+        var isOldDues = this.dataset.isOldDues === 'true';
+        var billingFrom = this.dataset.billingFrom || '';
+        var billingTo = this.dataset.billingTo || '';
         
         // Build the message
         var message = 'Hello ' + name + ',\n';
         message += 'Room Number: ' + room + '\n';
-        message += 'Amount Due: ₹' + pending + '\n\n';
-        message += 'This is a rent reminder. Please pay the rent as soon as possible.\n';
+        message += 'Amount Due: ₹' + pending + '\n';
+        if (paymentDate) {
+          message += 'Payment Date: ' + paymentDate + '\n';
+        }
+        message += '\n';
+        
+        // Build reminder text based on filter - always include from/to dates when available
+        if (billingFrom && billingTo) {
+          message += 'This is a rent reminder for the month of ' + monthName + ' (' + billingFrom + ' to ' + billingTo + ').\n';
+        } else if (monthName) {
+          message += 'This is a rent reminder for the month of ' + monthName + '.\n';
+        } else {
+          message += 'This is a rent reminder.\n';
+        }
+        message += 'Please pay the rent as soon as possible.\n';
         message += 'Thank you.';
         
         // Build WhatsApp URL
