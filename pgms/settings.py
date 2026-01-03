@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'finance',
     'siteadmin',
     'employee',
+    'advertisements',
 ]
 
 MIDDLEWARE = [

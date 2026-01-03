@@ -58,6 +58,9 @@ python manage.py migrate
 
 # Collect static files
 python manage.py collectstatic --noinput
+
+# Create media directory if it doesn't exist
+mkdir -p media/advertisements
 ```
 
 ---
@@ -200,6 +203,10 @@ sudo systemctl restart nginx
 Ensure Nginx can traverse and read the directories:
 
 ```bash
+# Create media directory structure if needed
+mkdir -p /root/PGMS/PG-MS/media/advertisements
+
+# Set ownership (ubuntu user and www-data group)
 sudo chown -R ubuntu:www-data /root/PGMS/PG-MS/staticfiles /root/PGMS/PG-MS/media
 
 # Directories need execute permission
@@ -212,6 +219,14 @@ sudo find /root/PGMS/PG-MS/media -type f -exec chmod 644 {} \;
 
 # Parent dirs must also be traversable
 sudo chmod 755 /root /root/PGMS /root/PGMS/PG-MS
+```
+
+**Important**: Whenever new advertisement images are uploaded, run these commands again to ensure proper permissions:
+
+```bash
+sudo find /root/PGMS/PG-MS/media -type d -exec chmod 755 {} \;
+sudo find /root/PGMS/PG-MS/media -type f -exec chmod 644 {} \;
+sudo chown -R ubuntu:www-data /root/PGMS/PG-MS/media
 ```
 
 Reload Nginx after changes:
@@ -262,6 +277,11 @@ python manage.py migrate
 
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
+
+echo "Fixing media file permissions..."
+sudo find /root/PGMS/PG-MS/media -type d -exec chmod 755 {} \; 2>/dev/null || true
+sudo find /root/PGMS/PG-MS/media -type f -exec chmod 644 {} \; 2>/dev/null || true
+sudo chown -R ubuntu:www-data /root/PGMS/PG-MS/media 2>/dev/null || true
 
 echo "Restarting Gunicorn..."
 sudo systemctl restart gunicorn

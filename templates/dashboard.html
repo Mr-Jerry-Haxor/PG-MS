@@ -486,6 +486,17 @@
         </a>
       </div>
       {% endif %}
+      <div class="col-6 col-md-4 col-lg-3">
+        <a class="card shadow-sm border-0 text-decoration-none" href="{% url 'advertisements:manage' %}">
+          <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-megaphone fs-3 text-success"></i>
+            <div>
+              <div class="fw-semibold">Advertisements</div>
+              <div class="small text-secondary">Carousel & Text</div>
+            </div>
+          </div>
+        </a>
+      </div>
     </div>
   </div>
 
@@ -725,7 +736,7 @@
           <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#folderMore">
             <i class="bi bi-folder-fill folder-icon"></i>
             <span>My PG</span>
-            <span class="folder-badge bg-indigo-subtle text-indigo" style="background:#e0e7ff;color:#4f46e5;">14 items</span>
+            <span class="folder-badge bg-indigo-subtle text-indigo" style="background:#e0e7ff;color:#4f46e5;">15 items</span>
           </button>
         </h2>
         <div id="folderMore" class="accordion-collapse collapse" data-bs-parent="#folderAccordion">
@@ -918,6 +929,19 @@
                   <i class="bi bi-chevron-right item-arrow"></i>
                 </a>
               </div>
+              <!-- Advertisements -->
+              <div class="col-12 col-md-6 col-lg-4">
+                <a href="{% url 'advertisements:manage' %}" class="folder-card-item">
+                  <div class="item-icon bg-success-subtle text-success">
+                    <i class="bi bi-megaphone"></i>
+                  </div>
+                  <div class="item-content">
+                    <div class="item-title">Advertisements</div>
+                    <div class="item-desc">Carousel & Text</div>
+                  </div>
+                  <i class="bi bi-chevron-right item-arrow"></i>
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -976,6 +1000,157 @@
       </li>
     {% endfor %}
   </ul>
+</div>
+{% endif %}
+
+{# PG Advertisements Section - Carousel and Scrolling Text #}
+{% if carousel_images or ad_texts %}
+<div class="mt-4 mb-4">
+  {# Image Carousel #}
+  {% if carousel_images %}
+  <style>
+    .pg-carousel {
+      border-radius: 0.75rem;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      margin-bottom: 1rem;
+    }
+    .pg-carousel .carousel-item img {
+      width: 100%;
+      height: 280px;
+      object-fit: cover;
+    }
+    @media (max-width: 768px) {
+      .pg-carousel .carousel-item img {
+        height: 180px;
+      }
+    }
+    .pg-carousel .carousel-caption {
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 1.5rem 1rem 1rem;
+    }
+    .pg-carousel .carousel-indicators {
+      margin-bottom: 0.5rem;
+    }
+    .pg-carousel .carousel-indicators button {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      opacity: 0.5;
+    }
+    .pg-carousel .carousel-indicators button.active {
+      opacity: 1;
+    }
+  </style>
+  <div id="pgCarousel" class="carousel slide pg-carousel" data-bs-ride="carousel" data-bs-interval="{{ ad_settings.carousel_interval|default:5000 }}">
+    <div class="carousel-indicators">
+      {% for img in carousel_images %}
+      <button type="button" data-bs-target="#pgCarousel" data-bs-slide-to="{{ forloop.counter0 }}" {% if forloop.first %}class="active" aria-current="true"{% endif %} aria-label="Slide {{ forloop.counter }}"></button>
+      {% endfor %}
+    </div>
+    <div class="carousel-inner">
+      {% for img in carousel_images %}
+      <div class="carousel-item {% if forloop.first %}active{% endif %}">
+        <img src="{{ img.image.url }}" class="d-block w-100" alt="{{ img.title|default:'PG Advertisement' }}">
+        {% if img.title or img.description %}
+        <div class="carousel-caption d-none d-md-block">
+          {% if img.title %}<h5 class="mb-1">{{ img.title }}</h5>{% endif %}
+          {% if img.description %}<p class="small mb-0">{{ img.description }}</p>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% if carousel_images|length > 1 %}
+    <button class="carousel-control-prev" type="button" data-bs-target="#pgCarousel" data-bs-slide="prev">
+      <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+      <span class="visually-hidden">Previous</span>
+    </button>
+    <button class="carousel-control-next" type="button" data-bs-target="#pgCarousel" data-bs-slide="next">
+      <span class="carousel-control-next-icon" aria-hidden="true"></span>
+      <span class="visually-hidden">Next</span>
+    </button>
+    {% endif %}
+  </div>
+  {% endif %}
+  
+  {# Scrolling Text Marquee #}
+  {% if ad_texts %}
+  <style>
+    :root {
+      --marquee-speed: {{ ad_settings.text_scroll_speed|default:30 }}s;
+      --marquee-bg: {{ ad_texts.0.background_color|default:'#1e3a5f' }};
+    }
+    .pg-marquee-container {
+      overflow: hidden;
+      white-space: nowrap;
+      border-radius: 0.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      position: relative;
+      background: var(--marquee-bg);
+    }
+    .pg-marquee {
+      display: inline-block;
+      padding-left: 100%;
+      animation: marquee var(--marquee-speed) linear infinite;
+      animation-delay: 0s;
+    }
+    .pg-marquee:hover {
+      animation-play-state: paused;
+    }
+    .pg-marquee-item {
+      display: inline-block;
+      padding: 0.75rem 2rem;
+      font-weight: 500;
+    }
+    .pg-star-separator {
+      display: inline-block;
+      padding: 0 0.5rem;
+      color: #fbbf24;
+    }
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-100%); }
+    }
+    @media (max-width: 768px) {
+      .pg-marquee-item {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+      }
+    }
+  </style>
+  <div class="pg-marquee-container">
+    <div class="pg-marquee">
+      {% for text in ad_texts %}
+      <span class="pg-marquee-item" data-text-color="{{ text.text_color|default:"#ffffff" }}" data-bg-color="{{ text.background_color|default:"#1e3a5f" }}">
+        <i class="bi bi-megaphone me-2"></i>{{ text.text }}
+      </span>
+      {% if not forloop.last %}<span class="pg-star-separator">★</span>{% endif %}
+      {% endfor %}
+      {# Duplicate texts for continuous scrolling effect #}
+      {% for text in ad_texts %}
+      <span class="pg-marquee-item" data-text-color="{{ text.text_color|default:"#ffffff" }}" data-bg-color="{{ text.background_color|default:"#1e3a5f" }}">
+        <i class="bi bi-megaphone me-2"></i>{{ text.text }}
+      </span>
+      {% if not forloop.last %}<span class="pg-star-separator">★</span>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Apply marquee text colors from data attributes
+      document.querySelectorAll('.pg-marquee-item[data-text-color]').forEach(item => {
+        const textColor = item.getAttribute('data-text-color');
+        const bgColor = item.getAttribute('data-bg-color');
+        if (textColor) item.style.color = textColor;
+        if (bgColor) item.style.backgroundColor = bgColor;
+      });
+    });
+  </script>
+  {% endif %}
 </div>
 {% endif %}
 

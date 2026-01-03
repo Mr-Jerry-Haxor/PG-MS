@@ -162,6 +162,46 @@ def dashboard(request):
 	# Evaluate to list so we can safely mark them as read while still rendering these items
 	notes = list(notes_qs)
 	ctx = {"notifications": notes}
+	
+	# Load advertisements for regular PG users (non-admin)
+	# Get the user's current PG from their active booking
+	try:
+		from advertisements.models import AdvertisementSettings, AdvertisementImage, AdvertisementText
+		user_pg = None
+		# Get user's active booking to determine their PG
+		active_booking = Booking.objects.filter(
+			user=request.user,
+			status=Booking.APPROVED
+		).filter(
+			Q(leaving_date__isnull=True) | Q(leaving_date__gte=_date.today())
+		).select_related('room__pg').first()
+		
+		if active_booking:
+			user_pg = active_booking.room.pg
+		
+		if user_pg:
+			# Get advertisement settings
+			ad_settings = AdvertisementSettings.objects.filter(pg=user_pg).first()
+			if ad_settings:
+				ctx['ad_settings'] = ad_settings
+				# Get active carousel images
+				if ad_settings.carousel_enabled:
+					carousel_images = AdvertisementImage.objects.filter(
+						pg=user_pg, is_active=True
+					).order_by('order')
+					ctx['carousel_images'] = list(carousel_images)
+				# Get active scrolling texts
+				if ad_settings.text_enabled:
+					ad_texts = AdvertisementText.objects.filter(
+						pg=user_pg, is_active=True
+					).order_by('order')
+					ctx['ad_texts'] = list(ad_texts)
+	except ImportError:
+		# advertisements app not installed yet
+		pass
+	except Exception as e:
+		logger.warning(f"Error loading advertisements: {e}")
+	
 	# Mark only these displayed notifications as read so the unread badge updates immediately
 	if notes:
 		Notification.objects.filter(id__in=[n.id for n in notes], user=request.user, is_read=False).update(is_read=True)
