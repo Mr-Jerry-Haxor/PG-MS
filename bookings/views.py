@@ -580,17 +580,27 @@ def handle_booknow_booking(request, pg, has_active, context):
             for er in errs:
                 errors.append(f"{fld}: {er}")
 
-    # Validate payment day selection
+    # Validate payment day selection (shown as "Final Joining Date" in UI)
+    # Now receives a full date (YYYY-MM-DD) instead of just day number
     payment_day_raw = request.POST.get('payment_day', '')
+    payment_date_selected = None
     if not payment_day_raw:
-        errors.append('Payment day is required.')
+        errors.append('Final joining date is required. Please select a joining date first.')
     else:
         try:
-            payment_day = int(payment_day_raw)
-            if payment_day < 1 or payment_day > 31:
-                errors.append('Payment day must be between 1 and 31.')
+            # Parse the date string
+            payment_date_selected = parse_date(payment_day_raw)
+            if not payment_date_selected:
+                errors.append('Invalid final joining date format.')
+            else:
+                # Validate it's within 31 days from joining date
+                if joining_date:
+                    from datetime import timedelta
+                    days_diff = (payment_date_selected - joining_date).days
+                    if days_diff < 0 or days_diff > 31:
+                        errors.append('Final joining date must be within 31 days from the joining date.')
         except (ValueError, TypeError):
-            errors.append('Invalid payment day.')
+            errors.append('Invalid final joining date.')
 
     # Validate declaration checkbox
     decl_agreed = request.POST.get('decl_agreed')
@@ -619,32 +629,8 @@ def handle_booknow_booking(request, pg, has_active, context):
     # All validations passed; create booking and application inside a transaction
     try:
         with transaction.atomic():
-            # Calculate payment_date from joining_date + selected payment day
-            # Rule: if payment_day < joining_day -> payment falls in NEXT month
-            #       else -> payment falls in same month
-            # Cap to last day of target month when needed
-            payment_day_raw = request.POST.get('payment_day', '')
-            payment_date_calculated = joining_date  # Default to joining_date
-            if payment_day_raw:
-                try:
-                    payment_day = int(payment_day_raw)
-                    if 1 <= payment_day <= 31:
-                        from calendar import monthrange
-                        y = joining_date.year
-                        m = joining_date.month
-                        # If payment day is less than joining day, schedule in next month
-                        if payment_day < joining_date.day:
-                            m += 1
-                            if m > 12:
-                                m = 1
-                                y += 1
-                        # Now pick actual day capped to month's max
-                        max_day = monthrange(y, m)[1]
-                        actual_day = min(payment_day, max_day)
-                        from datetime import date as _date
-                        payment_date_calculated = _date(y, m, actual_day)
-                except (ValueError, TypeError):
-                    pass  # Fall back to joining_date
+            # Use the selected payment date (final joining date)
+            payment_date_calculated = payment_date_selected if payment_date_selected else joining_date
 
             booking_obj = Booking.objects.create(
                 user=request.user,
@@ -879,17 +865,27 @@ def handle_booknow_booking(request, pg, has_active, context):
             for er in errs:
                 errors.append(f"{fld}: {er}")
 
-    # Validate payment day selection
+    # Validate payment day selection (shown as "Final Joining Date" in UI)
+    # Now receives a full date (YYYY-MM-DD) instead of just day number
     payment_day_raw = request.POST.get('payment_day', '')
+    payment_date_selected = None
     if not payment_day_raw:
-        errors.append('Payment day is required.')
+        errors.append('Final joining date is required. Please select a joining date first.')
     else:
         try:
-            payment_day = int(payment_day_raw)
-            if payment_day < 1 or payment_day > 31:
-                errors.append('Payment day must be between 1 and 31.')
+            # Parse the date string
+            payment_date_selected = parse_date(payment_day_raw)
+            if not payment_date_selected:
+                errors.append('Invalid final joining date format.')
+            else:
+                # Validate it's within 31 days from joining date
+                if joining_date:
+                    from datetime import timedelta
+                    days_diff = (payment_date_selected - joining_date).days
+                    if days_diff < 0 or days_diff > 31:
+                        errors.append('Final joining date must be within 31 days from the joining date.')
         except (ValueError, TypeError):
-            errors.append('Invalid payment day.')
+            errors.append('Invalid final joining date.')
 
     # Validate declaration checkbox
     decl_agreed = request.POST.get('decl_agreed')
@@ -918,32 +914,8 @@ def handle_booknow_booking(request, pg, has_active, context):
     # All validations passed; create booking and application inside a transaction
     try:
         with transaction.atomic():
-            # Calculate payment_date from joining_date + selected payment day
-            # Rule: if payment_day < joining_day -> payment falls in NEXT month
-            #       else -> payment falls in same month
-            # Cap to last day of target month when needed
-            payment_day_raw = request.POST.get('payment_day', '')
-            payment_date_calculated = joining_date  # Default to joining_date
-            if payment_day_raw:
-                try:
-                    payment_day = int(payment_day_raw)
-                    if 1 <= payment_day <= 31:
-                        from calendar import monthrange
-                        y = joining_date.year
-                        m = joining_date.month
-                        # If payment day is less than joining day, schedule in next month
-                        if payment_day < joining_date.day:
-                            m += 1
-                            if m > 12:
-                                m = 1
-                                y += 1
-                        # Now pick actual day capped to month's max
-                        max_day = monthrange(y, m)[1]
-                        actual_day = min(payment_day, max_day)
-                        from datetime import date as _date
-                        payment_date_calculated = _date(y, m, actual_day)
-                except (ValueError, TypeError):
-                    pass  # Fall back to joining_date
+            # Use the selected payment date (final joining date)
+            payment_date_calculated = payment_date_selected if payment_date_selected else joining_date
 
             booking_obj = Booking.objects.create(
                 user=request.user,
@@ -1573,16 +1545,26 @@ def application_fill(request, booking_id):
         decl_agreed = request.POST.get('decl_agreed')
         
         if not payment_day_raw:
-            messages.error(request, "Payment day is required.")
+            messages.error(request, "Final joining date is required. Please select admission date first.")
             return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
         
         try:
-            payment_day = int(payment_day_raw)
-            if payment_day < 1 or payment_day > 31:
-                messages.error(request, "Payment day must be between 1 and 31.")
+            # Parse the date string (YYYY-MM-DD format)
+            payment_date_selected = parse_date(payment_day_raw)
+            if not payment_date_selected:
+                messages.error(request, "Invalid final joining date format.")
                 return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+            
+            # Validate it's within 31 days from admission date
+            if form.cleaned_data and form.cleaned_data.get('date_of_admission'):
+                admission_date = form.cleaned_data['date_of_admission']
+                from datetime import timedelta
+                days_diff = (payment_date_selected - admission_date).days
+                if days_diff < 0 or days_diff > 31:
+                    messages.error(request, "Final joining date must be within 31 days from the admission date.")
+                    return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
         except (ValueError, TypeError):
-            messages.error(request, "Invalid payment day.")
+            messages.error(request, "Invalid final joining date.")
             return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
         
         if decl_agreed != 'on':

@@ -289,16 +289,18 @@
     {% endif %}
   </div>
   <div class="app-section">
-    <h2>Payment Date</h2>
+    <h2>Final Joining Date <span class="fw-normal text-muted small">(This is the date from which the monthly PG fee is calculated)</span></h2>
     <div class="mb-2">
-      <label class="form-label">Preferred Monthly Payment Date (Day of Month)</label>
-      <select name="payment_day" id="payment_day" class="form-select" required>
-        <option value="">Select a day…</option>
-        {% for i in "x"|rjust:"31" %}
-          <option value="{{ forloop.counter }}"{% if payment_day == forloop.counter %} selected{% endif %}>{{ forloop.counter }}{% if forloop.counter == 1 %}st{% elif forloop.counter == 2 %}nd{% elif forloop.counter == 3 %}rd{% else %}th{% endif %} of the month</option>
-        {% endfor %}
-      </select>
-      <div class="form-text">This is the date each month when you will pay the PG's monthly fee.</div>
+      <div class="d-flex align-items-center gap-2">
+        <input type="date" name="payment_day" id="payment_day" class="form-control" readonly style="max-width: 280px;" required value="{% if payment_day %}{{ payment_day }}{% endif %}">
+        <div class="form-check mb-0">
+          <input class="form-check-input" type="checkbox" id="enableEditPaymentDate" style="cursor: pointer;">
+          <label class="form-check-label small text-muted" for="enableEditPaymentDate" style="cursor: pointer;">
+            Enable editing
+          </label>
+        </div>
+      </div>
+      <div class="form-text">Defaults to admission date. Check the box to customize.</div>
     </div>
   </div>
   <div class="app-section declarations">
@@ -1341,6 +1343,94 @@
       }
     });
   }
+
+  // Final Joining Date auto-fill from admission date with optional editing
+  (function(){
+    // In application_fill, the joining date is the "date_of_admission" field
+    const joiningDateInput = document.getElementById('id_date_of_admission');
+    const paymentDayInput = document.getElementById('payment_day');
+    const enableEditCheckbox = document.getElementById('enableEditPaymentDate');
+    
+    if (!joiningDateInput || !paymentDayInput || !enableEditCheckbox) return;
+    
+    // Helper to format date as YYYY-MM-DD
+    function formatDateYMD(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    
+    // Helper to add days to a date
+    function addDays(dateStr, days) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      d.setDate(d.getDate() + days);
+      return formatDateYMD(d.toISOString());
+    }
+    
+    // Update payment date based on joining date
+    function updatePaymentDate() {
+      const joiningVal = joiningDateInput.value;
+      if (!joiningVal) {
+        paymentDayInput.value = '';
+        paymentDayInput.removeAttribute('min');
+        paymentDayInput.removeAttribute('max');
+        return;
+      }
+      
+      // Set min and max for calendar (31 days from joining date)
+      paymentDayInput.setAttribute('min', joiningVal);
+      paymentDayInput.setAttribute('max', addDays(joiningVal, 31));
+      
+      // If editing is not enabled and field is empty, auto-fill with joining date
+      if (!enableEditCheckbox.checked && !paymentDayInput.value) {
+        paymentDayInput.value = joiningVal;
+      }
+      
+      // If current value is outside the new range, reset to joining date
+      if (paymentDayInput.value) {
+        const currentVal = new Date(paymentDayInput.value);
+        const minVal = new Date(joiningVal);
+        const maxVal = new Date(addDays(joiningVal, 31));
+        if (currentVal < minVal || currentVal > maxVal) {
+          paymentDayInput.value = joiningVal;
+        }
+      }
+    }
+    
+    // Toggle edit mode
+    function toggleEditMode() {
+      if (enableEditCheckbox.checked) {
+        paymentDayInput.removeAttribute('readonly');
+      } else {
+        paymentDayInput.setAttribute('readonly', 'readonly');
+        // Reset to joining date when disabling edit
+        if (joiningDateInput.value) {
+          paymentDayInput.value = joiningDateInput.value;
+        }
+      }
+    }
+    
+    // Listen for joining date changes
+    joiningDateInput.addEventListener('change', updatePaymentDate);
+    joiningDateInput.addEventListener('input', updatePaymentDate);
+    
+    // Listen for edit checkbox changes
+    enableEditCheckbox.addEventListener('change', toggleEditMode);
+    
+    // Initialize
+    if (joiningDateInput.value) {
+      updatePaymentDate();
+    }
+    
+    // Ensure readonly on load
+    toggleEditMode();
+  })();
 
   // Preview logic removed per request
   }); // DOMContentLoaded end
