@@ -114,8 +114,15 @@
         {{ form.date_of_admission.label_tag }}
         {% if booking.status == 'approved' %}
           <!-- Lock the joining date for approved bookings -->
-          <input type="text" class="form-control" value="{{ form.date_of_admission.value|date:'Y-m-d' }}" readonly disabled style="background-color: #e9ecef;">
-          <input type="hidden" name="date_of_admission" value="{{ form.date_of_admission.value|date:'Y-m-d' }}">
+          {% if app and app.date_of_admission %}
+            <input type="text" class="form-control" value="{{ app.date_of_admission|date:'Y-m-d' }}" readonly disabled style="background-color: #e9ecef;">
+            <input type="hidden" name="date_of_admission" value="{{ app.date_of_admission|date:'Y-m-d' }}">
+          {% elif booking.joining_date %}
+            <input type="text" class="form-control" value="{{ booking.joining_date|date:'Y-m-d' }}" readonly disabled style="background-color: #e9ecef;">
+            <input type="hidden" name="date_of_admission" value="{{ booking.joining_date|date:'Y-m-d' }}">
+          {% else %}
+            {{ form.date_of_admission }}
+          {% endif %}
           <small class="text-muted mt-1 d-block">
             <i class="bi bi-lock"></i> Joining date is locked (booking already approved)
           </small>

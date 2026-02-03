@@ -1562,9 +1562,19 @@ def application_fill(request, booking_id):
     if request.method == 'POST':
         form = ResidentApplicationForm(request.POST, request.FILES, instance=app)
         
-        # Validate payment day and declaration checkbox
-        payment_day_raw = request.POST.get('payment_day', '')
+        # Validate declaration checkbox first
         decl_agreed = request.POST.get('decl_agreed')
+        if decl_agreed != 'on':
+            messages.error(request, "You must agree to the declaration.")
+            return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+        
+        # Validate form first to get cleaned_data
+        if not form.is_valid():
+            messages.error(request, "Please correct the errors in the form.")
+            return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+        
+        # Now validate payment day after form is valid
+        payment_day_raw = request.POST.get('payment_day', '')
         
         if not payment_day_raw:
             messages.error(request, "Final joining date is required. Please select admission date first.")
@@ -1578,8 +1588,8 @@ def application_fill(request, booking_id):
                 return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
             
             # Validate it's within 31 days from admission date
-            if form.cleaned_data and form.cleaned_data.get('date_of_admission'):
-                admission_date = form.cleaned_data['date_of_admission']
+            admission_date = form.cleaned_data.get('date_of_admission')
+            if admission_date:
                 from datetime import timedelta
                 days_diff = (payment_date_selected - admission_date).days
                 if days_diff < 0 or days_diff > 31:
@@ -1589,63 +1599,63 @@ def application_fill(request, booking_id):
             messages.error(request, "Invalid final joining date.")
             return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
         
-        if decl_agreed != 'on':
-            messages.error(request, "You must agree to the declaration.")
+        # File validation - allow refill without re-uploading files
+        selfie_file = request.FILES.get('selfie')
+        aadhaar_file_1 = form.cleaned_data.get('aadhaar_pdf')
+        
+        # Enforce selfie mandatory only if it doesn't exist already
+        if not selfie_file and not (app and app.selfie_url):
+            messages.error(request, "Selfie is required. Capture or upload a clear face photo.")
             return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
         
-        if form.is_valid():
-            inst = form.save(commit=False)
-            inst.user = request.user
-            inst.booking = booking
-            inst.pg = booking.room.pg
-            inst.room = booking.room
-            # Set all declaration fields to True (user agreed to combined declaration)
-            inst.decl_valuables = True
-            inst.decl_notice = True
-            inst.decl_deposit = True
-            inst.decl_truth = True
-            
-            # Update booking's payment_date based on selected payment_day
-            # Rule: if payment_day < joining_day -> payment falls in NEXT month, else same month
-            if booking.joining_date:
-                from calendar import monthrange
-                from datetime import date as _date
-                y = booking.joining_date.year
-                m = booking.joining_date.month
-                if payment_day < booking.joining_date.day:
-                    m += 1
-                    if m > 12:
-                        m = 1
-                        y += 1
-                max_day = monthrange(y, m)[1]
-                actual_day = min(payment_day, max_day)
-                new_payment_date = _date(y, m, actual_day)
-                if booking.payment_date != new_payment_date:
-                    booking.payment_date = new_payment_date
-                    booking.save(update_fields=['payment_date'])
-            
-            # Enforce selfie mandatory (either newly uploaded or already existing)
-            if not ((app and app.selfie_url) or request.FILES.get('selfie')):
-                messages.error(request, "Selfie is required. Capture or upload a clear face photo.")
-                return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
-            # Aadhaar file (PDF or Image) required on first submission
-            if app is None and not form.cleaned_data.get('aadhaar_pdf'):
-                messages.error(request, "Aadhaar Document 1 is required.")
-                return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
-            # Upload files to Drive with two separate Aadhaar fields
-            selfie_file = request.FILES.get('selfie')
-            aadhaar_file_1 = form.cleaned_data.get('aadhaar_pdf')
-            aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
-            
-            if selfie_file:
-                up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
-                if up:
-                    _fid, preview = up
-                    inst.selfie_url = preview
-            else:
-                # keep existing
-                if app:
-                    inst.selfie_url = app.selfie_url
+        # Aadhaar file required only on first submission or if not already uploaded
+        if not aadhaar_file_1 and not (app and app.aadhaar_file_url):
+            messages.error(request, "Aadhaar Document 1 is required.")
+            return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+        
+        # Save the application
+        inst = form.save(commit=False)
+        inst.user = request.user
+        inst.booking = booking
+        inst.pg = booking.room.pg
+        inst.room = booking.room
+        # Set all declaration fields to True (user agreed to combined declaration)
+        inst.decl_valuables = True
+        inst.decl_notice = True
+        inst.decl_deposit = True
+        inst.decl_truth = True
+        
+        # Update booking's payment_date based on selected payment_day
+        if booking.joining_date and payment_date_selected:
+            from calendar import monthrange
+            from datetime import date as _date
+            payment_day_num = payment_date_selected.day
+            y = booking.joining_date.year
+            m = booking.joining_date.month
+            if payment_day_num < booking.joining_date.day:
+                m += 1
+                if m > 12:
+                    m = 1
+                    y += 1
+            max_day = monthrange(y, m)[1]
+            actual_day = min(payment_day_num, max_day)
+            new_payment_date = _date(y, m, actual_day)
+            if booking.payment_date != new_payment_date:
+                booking.payment_date = new_payment_date
+                booking.save(update_fields=['payment_date'])
+        
+        # Upload files to Drive with two separate Aadhaar fields
+        aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
+        
+        if selfie_file:
+            up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
+            if up:
+                _fid, preview = up
+                inst.selfie_url = preview
+        else:
+            # keep existing
+            if app:
+                inst.selfie_url = app.selfie_url
             
             # Handle Aadhaar Document 1 and optionally Document 2
             folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
