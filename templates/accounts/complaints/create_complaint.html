@@ -28,6 +28,155 @@
     .priority-option input[type="radio"]:checked + label {
         font-weight: 600;
     }
+    
+    /* Media Upload Styles */
+    .media-upload-zone {
+        border: 2px dashed #dee2e6;
+        border-radius: 12px;
+        padding: 2rem;
+        text-align: center;
+        background-color: #fafafa;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    .media-upload-zone:hover,
+    .media-upload-zone.dragover {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+    }
+    .media-upload-zone.dragover {
+        transform: scale(1.01);
+    }
+    .media-upload-zone i {
+        font-size: 2.5rem;
+        color: #6c757d;
+        margin-bottom: 0.5rem;
+    }
+    .media-upload-zone:hover i {
+        color: #0d6efd;
+    }
+    
+    .media-preview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .media-preview-item {
+        position: relative;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        aspect-ratio: 1;
+    }
+    
+    .media-preview-item img,
+    .media-preview-item video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .media-preview-item .video-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.3);
+        color: white;
+        font-size: 2rem;
+    }
+    
+    .media-preview-item .remove-btn {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(220, 53, 69, 0.9);
+        border: none;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        z-index: 10;
+    }
+    .media-preview-item .remove-btn:hover {
+        background: #dc3545;
+        transform: scale(1.1);
+    }
+    
+    .media-preview-item .upload-progress {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: #e9ecef;
+    }
+    .media-preview-item .upload-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #0d6efd, #0dcaf0);
+        transition: width 0.3s ease;
+    }
+    
+    .media-preview-item .upload-status {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.9);
+    }
+    .media-preview-item .upload-status.success {
+        background: rgba(25, 135, 84, 0.15);
+        color: #198754;
+    }
+    .media-preview-item .upload-status.error {
+        background: rgba(220, 53, 69, 0.15);
+        color: #dc3545;
+    }
+    
+    .media-count {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    
+    /* Mobile camera capture buttons */
+    .capture-buttons {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .capture-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 50px;
+        font-size: 0.9rem;
+    }
+    
+    @media (max-width: 576px) {
+        .media-preview-grid {
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.5rem;
+        }
+        .media-upload-zone {
+            padding: 1.5rem;
+        }
+        .media-upload-zone i {
+            font-size: 2rem;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -156,9 +305,49 @@
                     </div>
                 </div>
                 
+                <!-- Media Upload Section -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-images"></i> Photos & Videos
+                            <span class="text-muted fw-normal">(Optional)</span>
+                        </label>
+                        
+                        <!-- Drop Zone -->
+                        <div class="media-upload-zone" id="mediaDropZone">
+                            <i class="bi bi-cloud-upload d-block"></i>
+                            <p class="mb-1 fw-medium">Drag & drop files here or click to browse</p>
+                            <p class="text-muted small mb-0">Images (JPG, PNG, WEBP) up to 10MB • Videos (MP4, MOV) up to 50MB</p>
+                            <input type="file" id="mediaFileInput" class="d-none" 
+                                   accept="image/*,video/*" multiple>
+                        </div>
+                        
+                        <!-- Mobile Capture Buttons -->
+                        <div class="capture-buttons">
+                            <button type="button" class="btn btn-outline-primary capture-btn" id="capturePhotoBtn">
+                                <i class="bi bi-camera"></i> Take Photo
+                            </button>
+                            <button type="button" class="btn btn-outline-primary capture-btn" id="captureVideoBtn">
+                                <i class="bi bi-camera-video"></i> Record Video
+                            </button>
+                        </div>
+                        <input type="file" id="cameraPhotoInput" class="d-none" accept="image/*" capture="environment">
+                        <input type="file" id="cameraVideoInput" class="d-none" accept="video/*" capture="environment">
+                        
+                        <!-- Preview Grid -->
+                        <div class="media-preview-grid" id="mediaPreviewGrid"></div>
+                        
+                        <!-- Media Count & Status -->
+                        <div class="media-count mt-2" id="mediaCount"></div>
+                        
+                        <!-- Hidden input to store uploaded media data -->
+                        <input type="hidden" name="media_data" id="mediaDataInput" value="[]">
+                    </div>
+                </div>
+                
                 <!-- Submit Buttons -->
                 <div class="d-flex gap-2 mb-4">
-                    <button type="submit" class="btn btn-primary flex-grow-1">
+                    <button type="submit" class="btn btn-primary flex-grow-1" id="submitBtn">
                         <i class="bi bi-send"></i> Submit Complaint
                     </button>
                     <a href="{% url 'my_complaints' %}" class="btn btn-outline-secondary">
@@ -169,4 +358,289 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dropZone = document.getElementById('mediaDropZone');
+    const fileInput = document.getElementById('mediaFileInput');
+    const previewGrid = document.getElementById('mediaPreviewGrid');
+    const mediaCountEl = document.getElementById('mediaCount');
+    const mediaDataInput = document.getElementById('mediaDataInput');
+    const submitBtn = document.getElementById('submitBtn');
+    const capturePhotoBtn = document.getElementById('capturePhotoBtn');
+    const captureVideoBtn = document.getElementById('captureVideoBtn');
+    const cameraPhotoInput = document.getElementById('cameraPhotoInput');
+    const cameraVideoInput = document.getElementById('cameraVideoInput');
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const MAX_FILES = 10;
+    let uploadedMedia = [];
+    let uploadQueue = [];
+    let isUploading = false;
+    
+    // Click on drop zone to open file picker
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    // Camera capture buttons
+    capturePhotoBtn.addEventListener('click', () => cameraPhotoInput.click());
+    captureVideoBtn.addEventListener('click', () => cameraVideoInput.click());
+    
+    // Drag and drop handlers
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'));
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'));
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        handleFiles(files);
+    });
+    
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+        fileInput.value = ''; // Reset for re-selection
+    });
+    
+    // Camera inputs
+    cameraPhotoInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+        cameraPhotoInput.value = '';
+    });
+    cameraVideoInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+        cameraVideoInput.value = '';
+    });
+    
+    function handleFiles(files) {
+        const remainingSlots = MAX_FILES - uploadedMedia.length;
+        if (remainingSlots <= 0) {
+            alert(`Maximum ${MAX_FILES} files allowed.`);
+            return;
+        }
+        
+        const filesToUpload = Array.from(files).slice(0, remainingSlots);
+        
+        filesToUpload.forEach(file => {
+            // Validate file type
+            const isImage = file.type.startsWith('image/');
+            const isVideo = file.type.startsWith('video/');
+            
+            if (!isImage && !isVideo) {
+                alert(`${file.name}: Only images and videos are allowed.`);
+                return;
+            }
+            
+            // Validate file size
+            const maxSize = isImage ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+            if (file.size > maxSize) {
+                alert(`${file.name}: File too large. Max ${isImage ? '10MB' : '50MB'}.`);
+                return;
+            }
+            
+            // Create preview and start upload
+            createPreviewItem(file);
+        });
+    }
+    
+    function createPreviewItem(file) {
+        const itemId = 'media-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        const isVideo = file.type.startsWith('video/');
+        
+        const div = document.createElement('div');
+        div.className = 'media-preview-item';
+        div.id = itemId;
+        div.innerHTML = `
+            <div class="upload-status uploading">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Uploading...</span>
+                </div>
+            </div>
+            <button type="button" class="remove-btn" onclick="removeMedia('${itemId}', null)" title="Remove">
+                <i class="bi bi-x"></i>
+            </button>
+            <div class="upload-progress">
+                <div class="upload-progress-bar" style="width: 0%"></div>
+            </div>
+        `;
+        
+        // Create blob preview
+        const url = URL.createObjectURL(file);
+        if (isVideo) {
+            const video = document.createElement('video');
+            video.src = url;
+            video.muted = true;
+            video.preload = 'metadata';
+            div.insertBefore(video, div.firstChild);
+            
+            const overlay = document.createElement('div');
+            overlay.className = 'video-overlay';
+            overlay.innerHTML = '<i class="bi bi-play-circle"></i>';
+            div.insertBefore(overlay, div.querySelector('.upload-status'));
+        } else {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = file.name;
+            div.insertBefore(img, div.firstChild);
+        }
+        
+        previewGrid.appendChild(div);
+        updateMediaCount();
+        
+        // Start upload
+        uploadFile(file, itemId);
+    }
+    
+    function uploadFile(file, itemId) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const xhr = new XMLHttpRequest();
+        const progressBar = document.querySelector(`#${itemId} .upload-progress-bar`);
+        const statusEl = document.querySelector(`#${itemId} .upload-status`);
+        
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                progressBar.style.width = percent + '%';
+            }
+        });
+        
+        xhr.addEventListener('load', () => {
+            const progressDiv = document.querySelector(`#${itemId} .upload-progress`);
+            if (progressDiv) progressDiv.remove();
+            
+            if (xhr.status === 200) {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.ok) {
+                        // Success
+                        statusEl.className = 'upload-status success';
+                        statusEl.innerHTML = '<i class="bi bi-check-circle"></i>';
+                        setTimeout(() => statusEl.remove(), 1000);
+                        
+                        // Store media data
+                        uploadedMedia.push({
+                            itemId: itemId,
+                            file_url: response.file_url,
+                            file_path: response.file_path,
+                            file_name: response.file_name,
+                            file_size: response.file_size,
+                            media_type: response.media_type,
+                            thumbnail_url: response.thumbnail_url || ''
+                        });
+                        
+                        // Update remove button with file_path for deletion
+                        const removeBtn = document.querySelector(`#${itemId} .remove-btn`);
+                        removeBtn.onclick = () => removeMedia(itemId, response.file_path);
+                        
+                        updateMediaData();
+                        updateSubmitButton();
+                    } else {
+                        showUploadError(itemId, response.error || 'Upload failed');
+                    }
+                } catch (e) {
+                    showUploadError(itemId, 'Upload failed');
+                }
+            } else {
+                showUploadError(itemId, 'Upload failed');
+            }
+        });
+        
+        xhr.addEventListener('error', () => {
+            showUploadError(itemId, 'Network error');
+        });
+        
+        xhr.open('POST', '{% url "upload_complaint_media" %}');
+        xhr.setRequestHeader('X-CSRFToken', csrfToken);
+        xhr.send(formData);
+    }
+    
+    function showUploadError(itemId, message) {
+        const statusEl = document.querySelector(`#${itemId} .upload-status`);
+        const progressDiv = document.querySelector(`#${itemId} .upload-progress`);
+        if (progressDiv) progressDiv.remove();
+        
+        if (statusEl) {
+            statusEl.className = 'upload-status error';
+            statusEl.innerHTML = `<i class="bi bi-x-circle"></i><br><small>${message}</small>`;
+        }
+    }
+    
+    window.removeMedia = function(itemId, filePath) {
+        // Remove from DOM
+        const item = document.getElementById(itemId);
+        if (item) {
+            item.remove();
+        }
+        
+        // Remove from uploaded media array
+        uploadedMedia = uploadedMedia.filter(m => m.itemId !== itemId);
+        updateMediaData();
+        updateMediaCount();
+        updateSubmitButton();
+        
+        // Delete from server if already uploaded
+        if (filePath) {
+            fetch('{% url "delete_complaint_media" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ file_path: filePath })
+            }).catch(() => {}); // Ignore errors
+        }
+    };
+    
+    function updateMediaData() {
+        const data = uploadedMedia.map(m => ({
+            file_url: m.file_url,
+            file_name: m.file_name,
+            file_size: m.file_size,
+            media_type: m.media_type,
+            thumbnail_url: m.thumbnail_url
+        }));
+        mediaDataInput.value = JSON.stringify(data);
+    }
+    
+    function updateMediaCount() {
+        const count = previewGrid.children.length;
+        if (count > 0) {
+            mediaCountEl.innerHTML = `<i class="bi bi-paperclip"></i> ${count} file${count !== 1 ? 's' : ''} attached (max ${MAX_FILES})`;
+        } else {
+            mediaCountEl.innerHTML = '';
+        }
+    }
+    
+    function updateSubmitButton() {
+        // Check if any uploads are still in progress
+        const uploading = document.querySelectorAll('.upload-status.uploading');
+        if (uploading.length > 0) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading...';
+        } else {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-send"></i> Submit Complaint';
+        }
+    }
+    
+    // Periodically check for ongoing uploads
+    setInterval(updateSubmitButton, 500);
+});
+</script>
 {% endblock %}

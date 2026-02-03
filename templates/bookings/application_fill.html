@@ -110,7 +110,20 @@
     <h2>Address & Admission</h2>
     <div class="mb-2">{{ form.address.label_tag }} {{ form.address }}{% if form.address.errors %}<div class="text-danger small">{{ form.address.errors|striptags }}</div>{% endif %}</div>
     <div class="grid-two">
-      <div>{{ form.date_of_admission.label_tag }} {{ form.date_of_admission }}{% if form.date_of_admission.errors %}<div class="text-danger small">{{ form.date_of_admission.errors|striptags }}</div>{% endif %}</div>
+      <div>
+        {{ form.date_of_admission.label_tag }}
+        {% if booking.status == 'approved' %}
+          <!-- Lock the joining date for approved bookings -->
+          <input type="text" class="form-control" value="{{ form.date_of_admission.value|date:'Y-m-d' }}" readonly disabled style="background-color: #e9ecef;">
+          <input type="hidden" name="date_of_admission" value="{{ form.date_of_admission.value|date:'Y-m-d' }}">
+          <small class="text-muted mt-1 d-block">
+            <i class="bi bi-lock"></i> Joining date is locked (booking already approved)
+          </small>
+        {% else %}
+          {{ form.date_of_admission }}
+        {% endif %}
+        {% if form.date_of_admission.errors %}<div class="text-danger small">{{ form.date_of_admission.errors|striptags }}</div>{% endif %}
+      </div>
       <div>{{ form.aadhaar_number.label_tag }} {{ form.aadhaar_number }}{% if form.aadhaar_number.errors %}<div class="text-danger small">{{ form.aadhaar_number.errors|striptags }}</div>{% endif %}</div>
     </div>
   </div>

@@ -109,7 +109,12 @@
                   <i class="bi bi-file-earmark-text me-1"></i>Edit Apps
                 </span>
               {% endif %}
-              {% if not a.permissions.can_view_employees and not a.permissions.can_edit_employees and not a.permissions.can_edit_payments and not a.permissions.can_delete_payments and not a.permissions.can_edit_applications %}
+              {% if a.permissions.can_delete_confirmed_bookings %}
+                <span class="badge bg-danger-subtle text-danger" title="Delete Confirmed Bookings">
+                  <i class="bi bi-person-x me-1"></i>Del Bookings
+                </span>
+              {% endif %}
+              {% if not a.permissions.can_view_employees and not a.permissions.can_edit_employees and not a.permissions.can_edit_payments and not a.permissions.can_delete_payments and not a.permissions.can_edit_applications and not a.permissions.can_delete_confirmed_bookings %}
                 <span class="text-muted small">Default</span>
               {% endif %}
             </div>
@@ -126,7 +131,8 @@
                       data-perm-edit-employees="{{ a.permissions.can_edit_employees|yesno:'true,false' }}"
                       data-perm-edit-payments="{{ a.permissions.can_edit_payments|yesno:'true,false' }}"
                       data-perm-delete-payments="{{ a.permissions.can_delete_payments|yesno:'true,false' }}"
-                      data-perm-edit-applications="{{ a.permissions.can_edit_applications|yesno:'true,false' }}">
+                      data-perm-edit-applications="{{ a.permissions.can_edit_applications|yesno:'true,false' }}"
+                      data-perm-delete-confirmed-bookings="{{ a.permissions.can_delete_confirmed_bookings|yesno:'true,false' }}">
                 <i class="bi bi-shield-lock me-1"></i>Edit Permissions
               </button>
               <form method="post" class="d-inline">
@@ -275,7 +281,7 @@
         </div>
         
         <!-- Application Permissions -->
-        <div class="card">
+        <div class="card mb-3">
           <div class="card-header bg-light py-2">
             <h6 class="mb-0"><i class="bi bi-file-earmark-text text-info me-2"></i>Application Management</h6>
           </div>
@@ -285,6 +291,22 @@
               <label class="form-check-label" for="permEditApplications">
                 <i class="bi bi-pencil-square text-info me-1"></i>Edit Tenant Applications
                 <small class="text-muted d-block">Can edit tenant application details and view booking info</small>
+              </label>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Booking Permissions -->
+        <div class="card">
+          <div class="card-header bg-light py-2">
+            <h6 class="mb-0"><i class="bi bi-calendar-check text-danger me-2"></i>Booking Management</h6>
+          </div>
+          <div class="card-body">
+            <div class="form-check form-switch">
+              <input class="form-check-input modal-permission-toggle" type="checkbox" id="permDeleteConfirmedBookings" data-permission="can_delete_confirmed_bookings">
+              <label class="form-check-label" for="permDeleteConfirmedBookings">
+                <i class="bi bi-person-x text-danger me-1"></i>Delete Confirmed Bookings
+                <small class="text-muted d-block">Can delete approved/confirmed bookings and associated data</small>
               </label>
             </div>
           </div>
@@ -325,6 +347,7 @@
     document.getElementById('permEditPayments').checked = button.getAttribute('data-perm-edit-payments') === 'true';
     document.getElementById('permDeletePayments').checked = button.getAttribute('data-perm-delete-payments') === 'true';
     document.getElementById('permEditApplications').checked = button.getAttribute('data-perm-edit-applications') === 'true';
+    document.getElementById('permDeleteConfirmedBookings').checked = button.getAttribute('data-perm-delete-confirmed-bookings') === 'true';
     
     // Hide save status
     document.getElementById('saveStatus').classList.add('d-none');

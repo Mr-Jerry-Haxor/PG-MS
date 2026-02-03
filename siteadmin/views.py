@@ -460,7 +460,7 @@ def pg_admin_permissions_api(request, admin_id):
         pg_admin = get_object_or_404(PGAdmin, pk=admin_id)
         permissions = PGAdminPermission.get_or_create_for_admin(pg_admin)
         
-        valid_permissions = ['can_view_employees', 'can_edit_employees', 'can_delete_payments', 'can_edit_payments', 'can_edit_applications']
+        valid_permissions = ['can_view_employees', 'can_edit_employees', 'can_delete_payments', 'can_edit_payments', 'can_edit_applications', 'can_delete_confirmed_bookings']
         if permission_name not in valid_permissions:
             return JsonResponse({'error': 'Invalid permission name.'}, status=400)
         

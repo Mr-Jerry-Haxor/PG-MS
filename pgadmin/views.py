@@ -3502,7 +3502,42 @@ def booking_approve(request, booking_id):
     share.save(update_fields=['status'])
     
     log(request.user, 'booking_approved', 'Booking', booking.id, f"Approved for room {booking.room.room_no} bed {booking.share_no}")
-    if confirm_application and hasattr(booking, 'application'):
+    
+    # Auto-create ResidentApplication for advance/future bookings if one doesn't exist
+    # This ensures all approved bookings appear in the applications page for tracking
+    if not hasattr(booking, 'application') or booking.application is None:
+        try:
+            user_obj = booking.user
+            name = (getattr(user_obj, 'first_name', '') or '').strip()
+            if not name:
+                name = (getattr(user_obj, 'get_full_name', lambda: '')() or user_obj.email or '').strip()
+            phone = ''
+            try:
+                phone = getattr(getattr(user_obj, 'profile', None), 'phone', '') or ''
+            except Exception:
+                phone = ''
+            email_addr = getattr(user_obj, 'email', '') or ''
+
+            app = ResidentApplication.objects.create(
+                user=user_obj,
+                booking=booking,
+                pg=pg,
+                room=booking.room,
+                status=ResidentApplication.PENDING,
+                name=name,
+                phone=phone,
+                email=email_addr,
+                date_of_admission=booking.joining_date,
+            )
+            # Refresh the booking to get the application relation
+            booking.refresh_from_db()
+            log(request.user, 'application_autocreated', 'ResidentApplication', app.id, 
+                f"Auto-created pending application for approved booking {booking.id} (advance/future booking)")
+        except Exception as exc:
+            # Log but don't fail the approval
+            _logger.warning(f"Could not auto-create application for booking {booking.id}: {exc}")
+    
+    if confirm_application and hasattr(booking, 'application') and booking.application:
         if booking.application.status != ResidentApplication.CONFIRMED:
             booking.application.status = ResidentApplication.CONFIRMED
             booking.application.save(update_fields=['status'])
@@ -7217,3 +7252,125 @@ def whatsapp_stats(request):
 
 
 # execute_future_swap_manually removed - swaps now only execute automatically on scheduled date via sync_bed_statuses
+
+
+@login_required
+@transaction.atomic
+def booking_delete(request, booking_id):
+    """
+    Delete a confirmed/approved booking. Requires PG Admin permission: can_delete_confirmed_bookings.
+    This will:
+    1. Free up the bed/share (set to VACANT)
+    2. Delete associated ResidentApplication if exists
+    3. Delete uploaded documents from Google Drive
+    4. Delete the booking record
+    """
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST request required.'}, status=405)
+    
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+    
+    booking = get_object_or_404(Booking, pk=booking_id)
+    
+    # Get the PG for this booking
+    booking_pg = getattr(booking, 'pg', None) or (booking.room.pg if booking.room else None)
+    
+    if not booking_pg:
+        messages.error(request, "Could not determine PG for this booking.")
+        return redirect('dashboard')
+    
+    # Check if admin has access to this PG
+    if not _admin_pgs(request.user).filter(id=booking_pg.id).exists():
+        messages.error(request, "You don't have admin access to this PG.")
+        return redirect('dashboard')
+    
+    # Check specific permission for deleting confirmed bookings
+    from .models import PGAdminPermission
+    try:
+        permission = PGAdminPermission.objects.get(pg_admin__user=request.user, pg_admin__pg=booking_pg)
+        can_delete = permission.can_delete_confirmed_bookings
+    except PGAdminPermission.DoesNotExist:
+        can_delete = False
+    
+    # Site admins can always delete
+    is_site_admin = request.user.is_staff or request.user.is_superuser
+    
+    if not can_delete and not is_site_admin:
+        messages.error(request, "You don't have permission to delete confirmed bookings.")
+        return redirect('booking_detail', booking_id=booking_id)
+    
+    # Store details for logging before deletion
+    user_name = booking.user.get_full_name() or booking.user.email
+    room_info = f"Room {booking.room.room_number}, Share {booking.share_no}" if booking.room else "N/A"
+    booking_status = booking.status
+    
+    # Free up the bed/share if booking was approved and has a room assigned
+    if booking.room and booking.share_no:
+        try:
+            share = RoomShareStatus.objects.get(room=booking.room, share_no=booking.share_no)
+            # Only free up if this booking was using the bed
+            if booking.status == Booking.APPROVED:
+                share.status = RoomShareStatus.VACANT
+                share.vacant_from = None
+                share.save(update_fields=['status', 'vacant_from'])
+                _logger.info(f"Freed up bed: Room {booking.room.room_number}, Share {booking.share_no}")
+        except RoomShareStatus.DoesNotExist:
+            pass  # Share might not exist
+    
+    # Delete uploaded documents from Google Drive
+    drive_files_deleted = []
+    if booking.aadhaar_front_url:
+        try:
+            drive_delete(booking.aadhaar_front_url)
+            drive_files_deleted.append('aadhaar_front')
+        except Exception as e:
+            _logger.warning(f"Failed to delete aadhaar_front from Drive: {e}")
+    
+    if booking.aadhaar_back_url:
+        try:
+            drive_delete(booking.aadhaar_back_url)
+            drive_files_deleted.append('aadhaar_back')
+        except Exception as e:
+            _logger.warning(f"Failed to delete aadhaar_back from Drive: {e}")
+    
+    if booking.photo_url:
+        try:
+            drive_delete(booking.photo_url)
+            drive_files_deleted.append('photo')
+        except Exception as e:
+            _logger.warning(f"Failed to delete photo from Drive: {e}")
+    
+    # Delete associated ResidentApplication if exists
+    application_deleted = False
+    if hasattr(booking, 'application') and booking.application:
+        booking.application.delete()
+        application_deleted = True
+    
+    # Delete the booking
+    booking.delete()
+    
+    # Log the deletion
+    log(
+        request.user,
+        'booking_deleted',
+        'Booking',
+        booking_id,
+        f"Deleted booking for {user_name} ({room_info}). Status was: {booking_status}. "
+        f"Application deleted: {application_deleted}. Drive files deleted: {drive_files_deleted}"
+    )
+    
+    messages.success(request, f"Booking for {user_name} has been deleted successfully.")
+    
+    # Handle AJAX response
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
+        return JsonResponse({
+            'ok': True,
+            'action': 'booking_delete',
+            'booking_id': booking_id,
+            'message': f'Booking for {user_name} deleted successfully.',
+            'redirect_url': reverse('pg_bookings_list')
+        })
+    
+    return redirect('pg_bookings_list')

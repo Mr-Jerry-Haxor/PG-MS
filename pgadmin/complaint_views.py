@@ -85,9 +85,13 @@ def admin_complaint_detail(request, complaint_id):
     # Get all comments (including internal)
     comments = complaint.comments.all().select_related('user').order_by('created_at')
     
+    # Get all media files attached to complaint
+    media_files = complaint.media_files.all()
+    
     context = {
         'complaint': complaint,
         'comments': comments,
+        'media_files': media_files,
         'status_choices': Complaint.STATUS_CHOICES,
     }
     

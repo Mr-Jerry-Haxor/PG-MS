@@ -39,9 +39,58 @@
         border-left: 3px solid #0d6efd;
     }
     
+    /* Media gallery styles */
+    .media-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 0.75rem;
+    }
+    .media-gallery-item {
+        position: relative;
+        aspect-ratio: 1;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #f8f9fa;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    .media-gallery-item:hover {
+        transform: scale(1.02);
+    }
+    .media-gallery-item img,
+    .media-gallery-item video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .media-gallery-item .video-badge {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+    }
+    .media-gallery-item .play-icon {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.2);
+        color: white;
+        font-size: 2rem;
+    }
+    
     @media (max-width: 576px) {
         .detail-label {
             font-size: 0.85rem;
+        }
+        .media-gallery {
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.5rem;
         }
     }
 </style>
@@ -122,6 +171,60 @@
                     <p class="mb-0" style="white-space: pre-wrap;">{{ complaint.description }}</p>
                 </div>
             </div>
+            
+            <!-- Attached Media Section -->
+            {% if media_files %}
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-images"></i> Attached Files
+                        <span class="badge bg-secondary ms-2">{{ media_files.count }}</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="media-gallery">
+                        {% for media in media_files %}
+                        <div class="media-gallery-item" data-bs-toggle="modal" data-bs-target="#mediaModal{{ media.id }}">
+                            {% if media.is_image %}
+                                <img src="{{ media.file_url }}" alt="{{ media.file_name }}" loading="lazy">
+                            {% else %}
+                                <video src="{{ media.file_url }}" preload="metadata"></video>
+                                <div class="play-icon"><i class="bi bi-play-circle-fill"></i></div>
+                                <span class="video-badge"><i class="bi bi-camera-video"></i> Video</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Media Modals -->
+            {% for media in media_files %}
+            <div class="modal fade" id="mediaModal{{ media.id }}" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h6 class="modal-title text-truncate">{{ media.file_name|default:"Attachment" }}</h6>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center p-0">
+                            {% if media.is_image %}
+                                <img src="{{ media.file_url }}" class="img-fluid" alt="{{ media.file_name }}">
+                            {% else %}
+                                <video src="{{ media.file_url }}" controls class="w-100" style="max-height: 70vh;"></video>
+                            {% endif %}
+                        </div>
+                        <div class="modal-footer">
+                            <a href="{{ media.file_url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-box-arrow-up-right"></i> Open in New Tab
+                            </a>
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
             
             <!-- Comments Section -->
             <div class="card">

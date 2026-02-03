@@ -24,6 +24,7 @@ urlpatterns = [
     path('bookings/confirmed/', views.bookings_confirmed, name='pg_bookings_confirmed'),
     path('bookings/<int:booking_id>/approve/', views.booking_approve, name='pg_booking_approve'),
     path('bookings/<int:booking_id>/reject/', views.booking_reject, name='pg_booking_reject'),
+    path('bookings/<int:booking_id>/delete/', views.booking_delete, name='pg_booking_delete'),
     path('bookings/<int:booking_id>/leave/', views.booking_leave_direct, name='pg_booking_leave_direct'),
     path('bookings/<int:booking_id>/swap/', views.booking_swap_room, name='pg_booking_swap_room'),
     path('bookings/<int:booking_id>/swap/options/rooms/', views.booking_swap_rooms_api, name='pg_booking_swap_rooms_api'),

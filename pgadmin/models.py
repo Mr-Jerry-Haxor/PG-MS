@@ -69,6 +69,9 @@ class PGAdminPermission(TimeStampedModel):
 	# Application Management
 	can_edit_applications = models.BooleanField(default=False, help_text='Can edit tenant applications for their PG')
 	
+	# Booking Management
+	can_delete_confirmed_bookings = models.BooleanField(default=False, help_text='Can delete confirmed/approved bookings')
+	
 	class Meta:
 		verbose_name = 'PG Admin Permission'
 		verbose_name_plural = 'PG Admin Permissions'
@@ -214,6 +217,44 @@ class Complaint(TimeStampedModel):
 			self.NOISE: 'bi-volume-up',
 			self.OTHER: 'bi-question-circle',
 		}.get(self.category, 'bi-chat-dots')
+
+
+class ComplaintMedia(TimeStampedModel):
+	"""
+	Media files (images/videos) attached to complaints.
+	Uploaded to Google Drive and URL stored here.
+	"""
+	MEDIA_TYPE_IMAGE = 'image'
+	MEDIA_TYPE_VIDEO = 'video'
+	MEDIA_TYPE_CHOICES = [
+		(MEDIA_TYPE_IMAGE, 'Image'),
+		(MEDIA_TYPE_VIDEO, 'Video'),
+	]
+	
+	complaint = models.ForeignKey(
+		Complaint,
+		on_delete=models.CASCADE,
+		related_name='media_files'
+	)
+	media_type = models.CharField(max_length=10, choices=MEDIA_TYPE_CHOICES, default=MEDIA_TYPE_IMAGE)
+	file_url = models.URLField(max_length=500, help_text='Google Drive URL of the uploaded file')
+	file_name = models.CharField(max_length=255, blank=True, help_text='Original filename')
+	file_size = models.BigIntegerField(null=True, blank=True, help_text='File size in bytes')
+	thumbnail_url = models.URLField(max_length=500, blank=True, help_text='Thumbnail URL for images/videos')
+	
+	class Meta:
+		ordering = ['created_at']
+		verbose_name = 'Complaint Media'
+		verbose_name_plural = 'Complaint Media'
+	
+	def __str__(self):
+		return f"{self.media_type} for complaint #{self.complaint_id}"
+	
+	def is_image(self):
+		return self.media_type == self.MEDIA_TYPE_IMAGE
+	
+	def is_video(self):
+		return self.media_type == self.MEDIA_TYPE_VIDEO
 
 
 class ComplaintComment(TimeStampedModel):

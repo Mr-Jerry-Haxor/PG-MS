@@ -1503,14 +1503,31 @@ def booking_detail(request, booking_id):
     booking = get_object_or_404(Booking, pk=booking_id)
     # Authorization: only the booking owner, superuser/site-admin, or a PG Admin of this booking's PG can view
     can_view = False
+    can_delete = False
+    is_admin = False
+    
     if request.user == booking.user:
         can_view = True
     elif getattr(request.user, 'is_superuser', False) or (hasattr(request.user, 'profile') and getattr(request.user.profile, 'is_website_admin', False)):
         can_view = True
+        can_delete = True  # Superusers and website admins can always delete
+        is_admin = True
     else:
         pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
-        if pg_id and PGAdmin.objects.filter(user=request.user, pg_id=pg_id).exists():
-            can_view = True
+        if pg_id:
+            pg_admin = PGAdmin.objects.filter(user=request.user, pg_id=pg_id).first()
+            if pg_admin:
+                can_view = True
+                is_admin = True
+                # Check delete permission
+                try:
+                    from pgadmin.models import PGAdminPermission
+                    perm = PGAdminPermission.objects.filter(pg_admin=pg_admin).first()
+                    if perm and perm.can_delete_confirmed_bookings:
+                        can_delete = True
+                except Exception:
+                    pass
+    
     if not can_view:
         messages.error(request, "You do not have permission to view this booking.")
         return redirect('dashboard')
@@ -1525,7 +1542,12 @@ def booking_detail(request, booking_id):
         ).order_by('created_at')
     else:
         events = AuditLog.objects.filter(target_type='Booking', target_id=booking.id).order_by('created_at')
-    return render(request, 'bookings/booking_detail.html', {"booking": booking, "events": events})
+    return render(request, 'bookings/booking_detail.html', {
+        "booking": booking, 
+        "events": events,
+        "can_delete": can_delete,
+        "is_admin": is_admin,
+    })
 
 
 @login_required

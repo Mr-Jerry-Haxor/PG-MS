@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import PG, PGAdmin, PGAdminPermission, Complaint, ComplaintComment
+from .models import PG, PGAdmin, PGAdminPermission, Complaint, ComplaintComment, ComplaintMedia
 
 
 @admin.register(PG)
@@ -76,4 +76,12 @@ class ComplaintCommentAdmin(admin.ModelAdmin):
 	list_display = ("complaint", "user", "is_internal", "created_at")
 	list_filter = ("is_internal", "created_at")
 	search_fields = ("comment", "complaint__title", "user__email")
+	readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ComplaintMedia)
+class ComplaintMediaAdmin(admin.ModelAdmin):
+	list_display = ("complaint", "media_type", "file_name", "created_at")
+	list_filter = ("media_type", "created_at")
+	search_fields = ("file_name", "complaint__title")
 	readonly_fields = ("created_at", "updated_at")

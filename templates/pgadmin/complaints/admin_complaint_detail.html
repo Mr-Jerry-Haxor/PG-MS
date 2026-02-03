@@ -53,12 +53,67 @@
         background: linear-gradient(135deg, #f8f9fa, #e9ecef);
     }
     
+    /* Media gallery styles */
+    .media-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+    .media-gallery-item {
+        position: relative;
+        aspect-ratio: 1;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #f8f9fa;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        border: 1px solid #dee2e6;
+    }
+    .media-gallery-item:hover {
+        transform: scale(1.03);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .media-gallery-item img,
+    .media-gallery-item video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .media-gallery-item .video-badge {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        background: rgba(0,0,0,0.75);
+        color: white;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+    }
+    .media-gallery-item .play-icon {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.25);
+        color: white;
+        font-size: 2.5rem;
+        transition: background 0.2s;
+    }
+    .media-gallery-item:hover .play-icon {
+        background: rgba(0,0,0,0.4);
+    }
+    
     @media (max-width: 768px) {
         .timeline {
             padding-left: 1.5rem;
         }
         .timeline-item::before {
             left: -1.2rem;
+        }
+        .media-gallery {
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.5rem;
         }
     }
 </style>
@@ -153,6 +208,66 @@
                     <p class="mb-0" style="white-space: pre-wrap;">{{ complaint.description }}</p>
                 </div>
             </div>
+            
+            <!-- Attached Media Section -->
+            {% if media_files %}
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">
+                        <i class="bi bi-images"></i> Attached Photos/Videos
+                        <span class="badge bg-primary ms-2">{{ media_files.count }}</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="media-gallery">
+                        {% for media in media_files %}
+                        <div class="media-gallery-item" data-bs-toggle="modal" data-bs-target="#mediaModal{{ media.id }}">
+                            {% if media.is_image %}
+                                <img src="{{ media.file_url }}" alt="{{ media.file_name }}" loading="lazy">
+                            {% else %}
+                                <video src="{{ media.file_url }}" preload="metadata"></video>
+                                <div class="play-icon"><i class="bi bi-play-circle-fill"></i></div>
+                                <span class="video-badge"><i class="bi bi-camera-video-fill"></i> Video</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Media Modals -->
+            {% for media in media_files %}
+            <div class="modal fade" id="mediaModal{{ media.id }}" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered modal-xl">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <div>
+                                <h6 class="modal-title text-truncate mb-0">{{ media.file_name|default:"Attachment" }}</h6>
+                                {% if media.file_size %}
+                                <small class="text-muted">{{ media.file_size|filesizeformat }}</small>
+                                {% endif %}
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center p-0 bg-dark">
+                            {% if media.is_image %}
+                                <img src="{{ media.file_url }}" class="img-fluid" alt="{{ media.file_name }}" style="max-height: 75vh;">
+                            {% else %}
+                                <video src="{{ media.file_url }}" controls class="w-100" style="max-height: 75vh;"></video>
+                            {% endif %}
+                        </div>
+                        <div class="modal-footer">
+                            <small class="text-muted me-auto">Uploaded: {{ media.created_at|date:"M d, Y g:i A" }}</small>
+                            <a href="{{ media.file_url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-box-arrow-up-right"></i> Open Original
+                            </a>
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
             
             <!-- Comments Timeline -->
             <div class="card border-0 shadow-sm">
