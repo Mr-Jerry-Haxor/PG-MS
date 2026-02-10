@@ -1539,17 +1539,47 @@ def monthly_dashboard(request):
         pending = round(expected_after_credit - collected, 2)
         primary_due = primary_seg.get('payment_due') if primary_seg else None
         status, status_label, status_css = _resolve_status(expected_after_credit, float(collected), m_first, primary_due, today)
-        # Phone sanitize
+        
+        # Phone sanitize - check application first, then fallback to profile
+        # Get application from primary booking
+        application_filled = False
+        phone_digits = ''
+        whatsapp_digits = ''
         try:
             import re
-            raw = getattr(getattr(u, 'profile', None), 'phone', '') or ''
-            digits = re.sub(r"\D", "", raw)
-            if digits.startswith('0') and len(digits) > 1:
-                digits = digits.lstrip('0')
-            if len(digits) == 10:
-                digits = '91' + digits
+            primary_booking = primary_seg.get('b') if primary_seg else (segs[0]['b'] if segs else None)
+            app = getattr(primary_booking, 'application', None) if primary_booking else None
+            
+            if app and app.phone:
+                # Application is filled - use application phone numbers
+                application_filled = True
+                # Normal phone from application
+                raw_phone = app.phone or ''
+                phone_digits = re.sub(r"\D", "", raw_phone)
+                if phone_digits.startswith('0') and len(phone_digits) > 1:
+                    phone_digits = phone_digits.lstrip('0')
+                if len(phone_digits) == 10:
+                    phone_digits = '91' + phone_digits
+                
+                # WhatsApp number from application (fallback to phone if not set)
+                raw_whatsapp = app.whatsapp_number or app.phone or ''
+                whatsapp_digits = re.sub(r"\D", "", raw_whatsapp)
+                if whatsapp_digits.startswith('0') and len(whatsapp_digits) > 1:
+                    whatsapp_digits = whatsapp_digits.lstrip('0')
+                if len(whatsapp_digits) == 10:
+                    whatsapp_digits = '91' + whatsapp_digits
+            else:
+                # No application filled - use profile phone as fallback
+                raw = getattr(getattr(u, 'profile', None), 'phone', '') or ''
+                phone_digits = re.sub(r"\D", "", raw)
+                if phone_digits.startswith('0') and len(phone_digits) > 1:
+                    phone_digits = phone_digits.lstrip('0')
+                if len(phone_digits) == 10:
+                    phone_digits = '91' + phone_digits
+                whatsapp_digits = phone_digits  # Same as phone for profile fallback
         except Exception:
-            digits = ''
+            phone_digits = ''
+            whatsapp_digits = ''
         # Tooltip (single or multi-segment)
         if len(segs) == 1:
             seg = segs[0]
@@ -1785,7 +1815,9 @@ def monthly_dashboard(request):
             'status_css': status_css,
             'joining': earliest_start,
             'leaving': latest_end,
-            'whatsapp_phone': digits,
+            'phone': phone_digits,
+            'whatsapp_phone': whatsapp_digits,
+            'application_filled': application_filled,
             # Advance collected in THIS month only (transaction date within m_first..m_last)
             'advance': round(_advance_paid_for_user_pg_month(u, pg, m_first, m_last), 2),
             # Advance total (all successful advance payments for this user in this PG)

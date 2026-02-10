@@ -7,31 +7,304 @@
   .status-partial{background:#fef9c3;color:#854d0e;border-color:#fde68a}
   .status-upcoming{background:#e0e7ff;color:#3730a3;border-color:#c7d2fe}
   .chip{display:inline-block;padding:.2rem .5rem;border-radius:1rem;border:1px solid #e2e8f0;font-weight:600;font-size:.7rem}
+  /* Keep currency values on one line */
+  .nowrap { white-space: nowrap; }
+  .pagination-info { font-size: 0.875rem; color: #6c757d; }
+  
+  /* View toggle buttons */
+  .view-toggle-btn {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .view-toggle-btn:hover {
+    background: #f8f9fa;
+  }
+  .view-toggle-btn.active {
+    background: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+  }
+  
+  /* Card view styles */
+  .monthly-cards-view { display: none; }
+  .monthly-cards-view.active { display: block; }
+  .monthly-table-view.hidden { display: none; }
+  
+  .resident-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    margin-bottom: 0.75rem;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    transition: box-shadow 0.2s;
+  }
+  .resident-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+  .resident-card-header {
+    padding: 0.6rem 0.75rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 0.5rem 0.5rem 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .resident-card-header .name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #212529;
+  }
+  .resident-card-header .room-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+    background: #e9ecef;
+    color: #495057;
+  }
+  .resident-card-body {
+    padding: 0.75rem;
+  }
+  .resident-card-footer {
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid #dee2e6;
+    background: #fafafa;
+    border-radius: 0 0 0.5rem 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .resident-card-body .detail-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 0.35rem;
+    font-size: 0.75rem;
+  }
+  .resident-card-body .detail-label {
+    color: #6c757d;
+    min-width: 80px;
+    font-weight: 500;
+  }
+  .resident-card-body .detail-value {
+    color: #212529;
+    flex: 1;
+    word-break: break-word;
+  }
+  .resident-card-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e9ecef;
+    margin-top: 0.5rem;
+  }
+  .resident-card-actions .btn {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+  }
+  
+  /* Card checkbox */
+  .card-chk {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+  }
+  .card-chk:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  
+  /* Card info icon (tooltip trigger) */
+  .card-expected-info, .card-advance-info {
+    cursor: help;
+    display: inline-flex;
+    align-items: center;
+    margin-right: 0.25rem;
+  }
+  .card-expected-info .badge, .card-advance-info .badge {
+    transition: transform 0.2s;
+  }
+  .card-expected-info:hover .badge, .card-advance-info:hover .badge {
+    transform: scale(1.1);
+  }
+  
+  /* Card pagination */
+  .card-pagination-bar {
+    background: #f8f9fa;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+  
+  /* Disabled action buttons */
+  .action-btn-disabled {
+    opacity: 0.5;
+    cursor: not-allowed !important;
+    pointer-events: none;
+  }
+  
+  /* Toast notification for disabled buttons */
+  .inline-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #343a40;
+    color: #fff;
+    padding: 0.6rem 1.2rem;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.3s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .inline-toast.show {
+    opacity: 1;
+  }
+  
+  /* Expected breakdown modal for cards */
+  .breakdown-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9998;
+    display: none;
+  }
+  .breakdown-modal-overlay.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .breakdown-modal-content {
+    background: #fff;
+    border-radius: 0.5rem;
+    max-width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  }
+  .breakdown-modal-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .breakdown-modal-header h6 {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+  .breakdown-modal-body {
+    padding: 1rem;
+    font-size: 0.8rem;
+  }
+  .breakdown-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    color: #6c757d;
+  }
+  .breakdown-modal-close:hover {
+    color: #000;
+  }
+  
   /* Mobile tweaks */
   @media (max-width: 576px) {
     #monthPicker { width: 100% !important; }
     .table thead th.sticky-sm { position: sticky; top: 0; background: #fff; z-index: 1; }
-  /* Hide less-critical columns on XS but keep room visible */
-  /* Keep all columns visible on small screens to match desktop layout */
-  .col-advance, .col-status, .col-actions { display: table-cell; }
-  /* Make room column compact on mobile */
-  .col-room { display: table-cell; min-width: 48px; width: 56px; }
-  .col-room { font-size: .75rem; }
-    /* Tighten table spacing on mobile */
+    .col-advance, .col-status, .col-actions { display: table-cell; }
+    .col-room { display: table-cell; min-width: 48px; width: 56px; font-size: .75rem; }
     table.table td, table.table th { padding: .35rem .5rem; }
-    /* Summary table on mobile */
-    #summaryTableBody td, #summaryTableBody th { font-size: 0.8rem; padding: 0.4rem 0.5rem; }
-    .pagination-info { font-size: 0.7rem; }
-    .pagination { font-size: 0.75rem; }
-    /* Summary table on mobile */
     #summaryTableBody td, #summaryTableBody th { font-size: 0.8rem; padding: 0.4rem 0.5rem; }
     .pagination-info { font-size: 0.7rem; }
     .pagination { font-size: 0.75rem; }
   }
-  /* Keep currency values on one line */
-  .nowrap { white-space: nowrap; }
-  .pagination-info { font-size: 0.875rem; color: #6c757d; }
-  .pagination-info { font-size: 0.875rem; color: #6c757d; }
+  
+  /* Card view mobile responsiveness */
+  @media (max-width: 768px) {
+    /* Keep 2-column layout on mobile - don't stack */
+    .resident-card-body .col-8 {
+      flex: 0 0 65%;
+      max-width: 65%;
+    }
+    .resident-card-body .col-4 {
+      flex: 0 0 35%;
+      max-width: 35%;
+    }
+    .resident-card-actions {
+      flex-direction: column !important;
+      gap: 0.3rem;
+    }
+    .resident-card-actions .btn {
+      font-size: 0.6rem;
+      padding: 0.25rem 0.2rem;
+      width: 100%;
+    }
+    .resident-card-actions .btn i {
+      font-size: 0.55rem;
+    }
+    .resident-card-header {
+      flex-wrap: wrap;
+    }
+    .resident-card-header .name {
+      font-size: 0.85rem;
+    }
+    .detail-row {
+      font-size: 0.7rem !important;
+    }
+    .detail-label {
+      font-size: 0.65rem !important;
+    }
+    .detail-value {
+      font-size: 0.65rem !important;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    /* Keep 2-column layout on very small screens */
+    .resident-card-body .col-8 {
+      flex: 0 0 60%;
+      max-width: 60%;
+    }
+    .resident-card-body .col-4 {
+      flex: 0 0 40%;
+      max-width: 40%;
+    }
+    .resident-card-actions .btn {
+      font-size: 0.55rem;
+      padding: 0.2rem 0.15rem;
+    }
+    .resident-card-actions .btn i {
+      font-size: 0.5rem;
+      margin-right: 0.1rem !important;
+    }
+    .resident-card-header .chip {
+      font-size: 0.6rem;
+    }
+    .resident-card-header .room-badge {
+      font-size: 0.65rem;
+    }
+    .detail-row {
+      font-size: 0.65rem !important;
+    }
+    .detail-label {
+      font-size: 0.6rem !important;
+    }
+    .detail-value {
+      font-size: 0.6rem !important;
+    }
+  }
 </style>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div class="d-flex align-items-center gap-2">
@@ -67,6 +340,15 @@
       <label class="form-label small d-flex align-items-center gap-2">
         Month
         <button type="button" class="btn btn-outline-secondary btn-sm" id="btnThisMonth">This Month</button>
+        <!-- View Toggle Buttons -->
+        <div class="d-flex gap-1 ms-2" id="viewToggleContainer">
+          <button type="button" class="view-toggle-btn active" id="btnTableView" title="Table View">
+            <i class="bi bi-table"></i>
+          </button>
+          <button type="button" class="view-toggle-btn" id="btnCardView" title="Card View">
+            <i class="bi bi-grid-3x3-gap-fill"></i>
+          </button>
+        </div>
       </label>
       <div class="d-flex gap-2 align-items-center">
         <input type="month" id="monthPicker" class="form-control form-control-sm" style="width:170px" min="2000-01" max="2100-12" value="{{ summary.year }}-{{ summary.month|stringformat:'02d' }}">
@@ -169,6 +451,9 @@
         <input id="searchBox" type="text" class="form-control" placeholder="Search by Name / Email / Room...">
       </div>
     </div>
+    
+    <!-- TABLE VIEW -->
+    <div class="monthly-table-view" id="tableViewContainer">
     <div class="table-responsive">
       <table class="table align-middle mb-0" id="monthlyTable">
         <thead>
@@ -341,10 +626,16 @@
             <td>
               <div class="d-flex flex-wrap gap-1">
                 <a class="btn btn-sm btn-outline-secondary" href="{% url 'finance_monthly_remind' r.user.id %}?year={{ summary.year }}&month={{ summary.month }}">Send Reminder</a>
-                {% if r.whatsapp_phone %}
-                  <a class="btn btn-sm btn-outline-primary" href="tel:{{ r.whatsapp_phone }}" title="Call {{ r.user.first_name }}">
+                {% if r.phone %}
+                  <a class="btn btn-sm btn-outline-primary action-call-btn" href="tel:{{ r.phone }}" title="Call {{ r.user.first_name }}">
                     <i class="bi bi-telephone-fill"></i>
                   </a>
+                {% else %}
+                  <button type="button" class="btn btn-sm btn-outline-primary action-btn-disabled" data-action-disabled="true" title="Application not filled">
+                    <i class="bi bi-telephone-fill"></i>
+                  </button>
+                {% endif %}
+                {% if r.whatsapp_phone %}
                   <a class="btn btn-sm btn-outline-success whatsapp-reminder-btn" target="_blank" 
                      data-phone="{{ r.whatsapp_phone }}"
                      data-name="{{ r.user.first_name }}"
@@ -359,6 +650,10 @@
                      href="#">
                     <i class="bi bi-whatsapp"></i>
                   </a>
+                {% else %}
+                  <button type="button" class="btn btn-sm btn-outline-success action-btn-disabled" data-action-disabled="true" title="Application not filled">
+                    <i class="bi bi-whatsapp"></i>
+                  </button>
                 {% endif %}
               </div>
               {% for credit in r.referral_pending %}
@@ -441,6 +736,278 @@
         </tfoot>
       </table>
     </div>
+    </div><!-- End TABLE VIEW -->
+    
+    <!-- CARD VIEW -->
+    <div class="monthly-cards-view p-3" id="cardViewContainer">
+      <!-- Card Pagination Controls -->
+      <div class="card-pagination-bar d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="pagination-info small text-muted">
+          Showing <span id="cardPageStart">0</span> to <span id="cardPageEnd">0</span> of <span id="cardTotalRecords">0</span> residents
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <label class="small mb-0">Per page:</label>
+          <select id="cardPageSize" class="form-select form-select-sm" style="width: auto;">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="999999">All</option>
+          </select>
+        </div>
+      </div>
+      <nav class="mb-3">
+        <ul class="pagination pagination-sm mb-0 justify-content-center" id="cardPagination"></ul>
+      </nav>
+
+      <!-- Cards Container -->
+      <div id="cardsContainer">
+        {% for r in rows %}
+          {% with name=r.user.first_name|add:" "|add:r.user.last_name %}
+          <div class="resident-card"
+               data-user-id="{{ r.user.id }}"
+               data-user-name="{{ name }}"
+               data-user-email="{{ r.user.email }}"
+               data-room-no="{{ r.room_no }}"
+               data-status="{{ r.status }}"
+               data-expected="{{ r.expected }}"
+               data-collected="{{ r.collected }}"
+               data-pending="{{ r.pending }}"
+               data-advance="{{ r.advance|default:'0' }}">
+            <!-- Card Header -->
+            <div class="resident-card-header">
+              <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="rowchk card-chk" name="user_ids" value="{{ r.user.id }}" {% if r.status == 'paid' %}disabled{% endif %}>
+                <span class="name">{{ name }}</span>
+                {% if r.is_daywise %}
+                  <span class="badge bg-info-subtle text-info small" title="Day-wise booking">Day-wise</span>
+                {% endif %}
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="chip {{ r.status_css }} quick-pay-chip"
+                  data-status="{{ r.status }}" data-status-label="{{ r.status_label }}"
+                  data-user-id="{{ r.user.id }}" data-user-name="{{ name }}"
+                  data-user-email="{{ r.user.email }}" data-expected="{% if filter_only == 'old_dues' %}{{ r.prev_month_pending }}{% else %}{{ r.expected }}{% endif %}"
+                  data-collected="{{ r.collected }}" data-pending="{% if filter_only == 'old_dues' %}{{ r.prev_month_pending }}{% else %}{{ r.pending }}{% endif %}"
+                  data-room="{{ r.room_no }}" data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
+                  data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}"
+                  data-due-date="{% if filter_only == 'old_dues' and r.prev_month_payment_due_iso %}{{ r.prev_month_payment_due_iso }}{% elif r.payment_date_iso %}{{ r.payment_date_iso }}{% elif r.payment_anchor_iso %}{{ r.payment_anchor_iso }}{% endif %}"
+                  data-is-old-dues="{% if filter_only == 'old_dues' %}true{% else %}false{% endif %}"
+                  data-old-dues-label="{% if filter_only == 'old_dues' %}{{ r.prev_month_label }}{% endif %}">{{ r.status_label }}</span>
+                <span class="room-badge">Room {{ r.room_no }}</span>
+              </div>
+            </div>
+
+            <!-- Card Body: Two Columns -->
+            <div class="resident-card-body">
+              <div class="row">
+                <!-- Left Column: Information -->
+                <div class="col-8">
+                  <div class="detail-row">
+                    <span class="detail-label">Email:</span>
+                    <span class="detail-value">{{ r.user.email }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Joining:</span>
+                    <span class="detail-value">{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% else %}—{% endif %}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Payment:</span>
+                    <span class="detail-value">
+                      {% if filter_only == 'old_dues' and r.prev_month_payment_due %}
+                        <span class="text-danger">{{ r.prev_month_payment_due|date:'Y-m-d' }}</span>
+                        <span class="badge bg-danger-subtle text-danger ms-1" style="font-size:0.6rem;">{{ r.prev_month_label }}</span>
+                      {% elif r.payment_due_date %}
+                        {{ r.payment_due_date|date:'Y-m-d' }}
+                      {% elif r.payment_anchor %}
+                        {{ r.payment_anchor|date:'Y-m-d' }}
+                      {% else %}—{% endif %}
+                      {% if r.primary_booking_id %}
+                        <button type="button" class="btn btn-link btn-sm p-0 ms-1 edit-payment-date"
+                                data-booking-id="{{ r.primary_booking_id }}"
+                                data-default-date="{% if r.payment_date_iso %}{{ r.payment_date_iso }}{% elif r.payment_anchor_iso %}{{ r.payment_anchor_iso }}{% endif %}"
+                                data-anchor="{{ r.payment_anchor_iso }}"
+                                data-resident="{{ name }}"
+                                data-year="{{ summary.year }}"
+                                data-month="{{ summary.month }}"
+                                data-sort="{{ current_sort|default:'room' }}"
+                                data-dir="{{ current_dir|default:'asc' }}"
+                                data-only="{{ request.GET.only|default:'' }}"
+                                data-pg="{% if pg %}{{ pg.id }}{% endif %}">
+                          <i class="bi bi-pencil-square" style="font-size:0.7rem;"></i>
+                        </button>
+                      {% endif %}
+                    </span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Leaving:</span>
+                    <span class="detail-value">{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% else %}—{% endif %}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Advance:</span>
+                    <span class="detail-value">
+                      {% if r.advance_details_html %}
+                        <span class="card-advance-info"
+                              data-bs-toggle="tooltip"
+                              data-bs-html="true"
+                              data-bs-placement="top"
+                              title="{{ r.advance_details_html|striptags }}">
+                          <span class="badge {% if r.advance and r.advance > 0 %}bg-success{% else %}bg-primary{% endif %} text-white" style="border-radius:50%;padding:.15rem .35rem;font-size:.65rem;line-height:1">i</span>
+                        </span>
+                      {% endif %}
+                      ₹ {{ r.advance_total|default:'0.00' }}
+                    </span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Expected:</span>
+                    <span class="detail-value">
+                      <span class="card-expected-info"
+                            data-bs-toggle="tooltip"
+                            data-bs-html="true"
+                            data-bs-placement="top"
+                            title="{{ r.expected_breakdown_html|striptags }}">
+                        <span class="badge bg-light text-primary border border-primary" style="border-radius:50%;padding:.15rem .35rem;font-size:.65rem;line-height:1">i</span>
+                      </span>
+                      ₹ {% if filter_only == 'old_dues' %}{{ r.prev_month_expected|floatformat:2 }}{% else %}{{ r.expected }}{% endif %}
+                    </span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Collected:</span>
+                    <span class="detail-value text-success">₹ {% if filter_only == 'old_dues' and r.prev_month_collected is not None %}{{ r.prev_month_collected|floatformat:2 }}{% else %}{{ r.collected }}{% endif %}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">Pending:</span>
+                    <span class="detail-value fw-semibold {% if r.pending > 0 %}text-danger{% else %}text-success{% endif %}">₹ {% if filter_only == 'old_dues' %}{{ r.prev_month_pending|floatformat:2 }}{% else %}{{ r.pending }}{% endif %}</span>
+                  </div>
+                  {% if r.referral_adjustment %}
+                  <div class="detail-row">
+                    <span class="detail-label">Referral:</span>
+                    <span class="detail-value text-success">-₹ {{ r.referral_adjustment|floatformat:2 }}</span>
+                  </div>
+                  {% endif %}
+                  {% if r.prev_month_pending and filter_only != 'old_dues' %}
+                  <div class="detail-row">
+                    <span class="detail-label text-danger">Old Dues:</span>
+                    <span class="detail-value text-danger">₹ {{ r.prev_month_pending|floatformat:2 }} ({{ r.prev_month_label }})</span>
+                  </div>
+                  {% endif %}
+                </div>
+
+                <!-- Right Column: Action Buttons -->
+                <div class="col-4">
+                  <div class="resident-card-actions flex-column">
+                    <a class="btn btn-sm btn-outline-secondary w-100" href="{% url 'finance_monthly_remind' r.user.id %}?year={{ summary.year }}&month={{ summary.month }}">
+                      <i class="bi bi-envelope me-1"></i>Remind
+                    </a>
+                    {% if r.phone %}
+                      <a class="btn btn-sm btn-outline-primary w-100 action-call-btn" href="tel:{{ r.phone }}" title="Call {{ r.user.first_name }}">
+                        <i class="bi bi-telephone-fill me-1"></i>Call
+                      </a>
+                    {% else %}
+                      <button type="button" class="btn btn-sm btn-outline-primary w-100 action-btn-disabled" data-action-disabled="true" title="Application not filled">
+                        <i class="bi bi-telephone-fill me-1"></i>Call
+                      </button>
+                    {% endif %}
+                    {% if r.whatsapp_phone %}
+                      <a class="btn btn-sm btn-outline-success w-100 whatsapp-reminder-btn" target="_blank"
+                         data-phone="{{ r.whatsapp_phone }}"
+                         data-name="{{ r.user.first_name }}"
+                         data-room="{{ r.room_no }}"
+                         data-pending="{% if filter_only == 'old_dues' %}{{ r.prev_month_pending|floatformat:2 }}{% else %}{{ r.pending }}{% endif %}"
+                         data-payment-date="{% if filter_only == 'old_dues' and r.prev_month_payment_due %}{{ r.prev_month_payment_due|date:'d M Y' }}{% elif r.payment_due_date %}{{ r.payment_due_date|date:'d M Y' }}{% elif r.payment_anchor %}{{ r.payment_anchor|date:'d M Y' }}{% endif %}"
+                         data-month-name="{% if filter_only == 'old_dues' %}{{ r.prev_month_label }}{% else %}{{ summary.month_label }}{% endif %}"
+                         data-is-old-dues="{% if filter_only == 'old_dues' %}true{% else %}false{% endif %}"
+                         data-billing-from="{% if filter_only == 'old_dues' and r.prev_month_billing_from %}{{ r.prev_month_billing_from|date:'d M Y' }}{% elif r.payment_due_date %}{{ r.payment_due_date|date:'d M Y' }}{% elif r.payment_anchor %}{{ r.payment_anchor|date:'d M Y' }}{% endif %}"
+                         data-billing-to="{% if filter_only == 'old_dues' and r.prev_month_billing_to %}{{ r.prev_month_billing_to|date:'d M Y' }}{% elif r.billing_to %}{{ r.billing_to|date:'d M Y' }}{% endif %}"
+                         href="#">
+                        <i class="bi bi-whatsapp me-1"></i>WhatsApp
+                      </a>
+                    {% else %}
+                      <button type="button" class="btn btn-sm btn-outline-success w-100 action-btn-disabled" data-action-disabled="true" title="Application not filled">
+                        <i class="bi bi-whatsapp me-1"></i>WhatsApp
+                      </button>
+                    {% endif %}
+                    <a class="btn btn-sm btn-outline-info w-100" href="{% url 'finance_ledger' r.user.id %}" title="View ledger for {{ r.user.first_name }}">
+                      <i class="bi bi-journal-text me-1"></i>Ledger
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Footer: Referral Actions -->
+            {% if r.referral_pending or r.referral_redeemed %}
+            <div class="resident-card-footer">
+              {% for credit in r.referral_pending %}
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary flex-grow-1 text-start apply-referral-btn"
+                        data-credit-id="{{ credit.id }}"
+                        data-year="{{ summary.year }}"
+                        data-month="{{ summary.month }}"
+                        data-pg="{% if pg %}{{ pg.id }}{% endif %}"
+                        data-sort="{{ current_sort|default:'room' }}"
+                        data-dir="{{ current_dir|default:'asc' }}"
+                        data-only="{{ request.GET.only|default:'' }}">
+                  Apply Referral Credit (₹ {{ credit.amount|floatformat:2 }})
+                  {% if credit.scheduled_month %}
+                    <span class="small text-secondary d-block">{{ credit.scheduled_month|date:"F Y" }}</span>
+                  {% else %}
+                    <span class="small text-secondary d-block">Apply manually</span>
+                  {% endif %}
+                  {% if credit.notes %}
+                    <span class="small text-secondary d-block">Note: {{ credit.notes }}</span>
+                  {% endif %}
+                </button>
+              {% endfor %}
+              {% for credit in r.referral_redeemed %}
+                <div class="d-flex gap-1 align-items-center">
+                  <span class="small text-success flex-grow-1">Applied: -₹ {{ credit.redeemed_amount|default:credit.amount|floatformat:2 }} ({{ credit.redeemed_for_month|date:'M Y' }})</span>
+                  <button type="button" class="btn btn-sm btn-outline-danger remove-referral-btn" title="Unapply referral"
+                          data-credit-id="{{ credit.id }}"
+                          data-year="{{ summary.year }}"
+                          data-month="{{ summary.month }}"
+                          data-pg="{% if pg %}{{ pg.id }}{% endif %}"
+                          data-sort="{{ current_sort|default:'room' }}"
+                          data-dir="{{ current_dir|default:'asc' }}"
+                          data-only="{{ request.GET.only|default:'' }}">
+                    &times;
+                  </button>
+                </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endwith %}
+        {% empty %}
+          <div class="text-center text-secondary py-4">No residents found for this month.</div>
+        {% endfor %}
+      </div>
+
+      <!-- Card View Totals -->
+      <div class="card mt-3 border-0 bg-light">
+        <div class="card-body py-2">
+          <div class="row text-center small">
+            <div class="col">
+              <div class="text-muted">Advance</div>
+              <div class="fw-semibold">₹ {{ footer_totals.advance|default:'0.00' }}</div>
+            </div>
+            <div class="col">
+              <div class="text-muted">Expected</div>
+              <div class="fw-semibold">₹ {{ footer_totals.expected|default:'0.00' }}</div>
+            </div>
+            <div class="col">
+              <div class="text-muted">Collected</div>
+              <div class="fw-semibold text-success">₹ {{ footer_totals.collected|default:'0.00' }}</div>
+            </div>
+            <div class="col">
+              <div class="text-muted">Pending</div>
+              <div class="fw-semibold text-danger">₹ {{ footer_totals.pending|default:'0.00' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- End CARD VIEW -->
+    
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex gap-2 align-items-center flex-wrap">
@@ -450,7 +1017,7 @@
           </div>
           <button class="btn btn-primary" type="submit">Send Bulk Reminder (Email)</button>
         </div>
-        <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex gap-2 align-items-center" id="tablePaginationControls">
           <div class="pagination-info small text-muted">
             Showing <span id="pageStart">0</span> to <span id="pageEnd">0</span> of <span id="totalRecords">0</span> residents
           </div>
@@ -466,7 +1033,7 @@
           </div>
         </div>
       </div>
-      <nav class="mt-2">
+      <nav class="mt-2" id="tablePaginationNav">
         <ul class="pagination pagination-sm mb-0 justify-content-center" id="pagination"></ul>
       </nav>
     </div>
@@ -849,10 +1416,28 @@
     // Initialize pagination on load
     initializePaginationData();
     
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
-      try { new bootstrap.Tooltip(tooltipTriggerEl); } catch (e) {}
-    });
+    // Initialize tooltips for both table and card views
+    function initializeTooltips() {
+      // Dispose existing tooltips first
+      var existingTooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      existingTooltips.forEach(function(el) {
+        var tooltip = bootstrap.Tooltip.getInstance(el);
+        if (tooltip) tooltip.dispose();
+      });
+      
+      // Initialize new tooltips
+      var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+      tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+        try { 
+          new bootstrap.Tooltip(tooltipTriggerEl, {
+            html: true,
+            trigger: 'hover focus',
+            container: 'body'
+          }); 
+        } catch (e) {}
+      });
+    }
+    initializeTooltips();
     if (typeof bootstrap !== 'undefined' && typeof bootstrap.Popover === 'function') {
       var popoverTriggerList = [].slice.call(document.querySelectorAll('.expected-breakdown[data-breakdown-target]'));
       popoverTriggerList.forEach(function (popoverTriggerEl) {
@@ -1237,11 +1822,14 @@
       });
     });
 
-    // Quick select unpaid
+    // Quick select unpaid (works for both table and card view)
     var btnSelectUnpaid = document.getElementById('btnSelectUnpaid');
     var btnClearSelection = document.getElementById('btnClearSelection');
     if (btnSelectUnpaid) btnSelectUnpaid.addEventListener('click', function(){
+      // Table view checkboxes
       document.querySelectorAll('#monthlyTable tbody tr[data-status="unpaid"] input.rowchk:not([disabled])').forEach(c=>c.checked=true);
+      // Card view checkboxes
+      document.querySelectorAll('#cardsContainer .resident-card[data-status="unpaid"] input.rowchk:not([disabled])').forEach(c=>c.checked=true);
     });
     if (btnClearSelection) btnClearSelection.addEventListener('click', function(){
       document.querySelectorAll('input.rowchk').forEach(c=>c.checked=false);
@@ -1605,6 +2193,253 @@
 
     // Normalize phone links on page load (removes 91 prefix from tel: links)
     normalizePhoneLinks();
+    
+    // ============================================
+    // VIEW TOGGLE (Table/Card) with localStorage
+    // ============================================
+    var tableViewContainer = document.getElementById('tableViewContainer');
+    var cardViewContainer = document.getElementById('cardViewContainer');
+    var btnTableView = document.getElementById('btnTableView');
+    var btnCardView = document.getElementById('btnCardView');
+    var VIEW_PREF_KEY = 'pgms_monthly_view_preference';
+    
+    // ============================================
+    // CARD VIEW PAGINATION ENGINE
+    // ============================================
+    var cardCurrentPage = 1;
+    var cardPageSize = 25;
+    var allCards = [];
+    var filteredCards = [];
+    var cardPaginationInitialized = false;
+    
+    function initializeCardPaginationData() {
+      allCards = Array.from(document.querySelectorAll('#cardsContainer .resident-card'));
+      cardPaginationInitialized = true;
+      applyCardSearchAndPagination();
+      // Re-initialize tooltips after cards are shown
+      setTimeout(initializeTooltips, 100);
+    }
+    
+    function applyCardSearchAndPagination() {
+      var searchBox = document.getElementById('searchBox');
+      var query = (searchBox ? searchBox.value : '').toLowerCase().trim();
+      
+      filteredCards = allCards.filter(function(card) {
+        var userName = (card.dataset.userName || '').toLowerCase();
+        var userEmail = (card.dataset.userEmail || '').toLowerCase();
+        var roomNo = (card.dataset.roomNo || '').toLowerCase();
+        return !query || userName.indexOf(query) !== -1 || userEmail.indexOf(query) !== -1 || roomNo.indexOf(query) !== -1;
+      });
+      
+      updateCardPaginationDisplay();
+    }
+    
+    function updateCardPaginationDisplay() {
+      var start = (cardCurrentPage - 1) * cardPageSize;
+      var end = Math.min(start + cardPageSize, filteredCards.length);
+      
+      // Hide all cards first
+      allCards.forEach(function(card) { card.style.display = 'none'; });
+      
+      // Show paginated filtered cards
+      for (var i = start; i < end; i++) {
+        filteredCards[i].style.display = '';
+      }
+      
+      updateCardPaginationControls();
+    }
+    
+    function updateCardPaginationControls() {
+      var totalPages = Math.ceil(filteredCards.length / cardPageSize);
+      var start = filteredCards.length > 0 ? (cardCurrentPage - 1) * cardPageSize + 1 : 0;
+      var end = Math.min(cardCurrentPage * cardPageSize, filteredCards.length);
+      
+      var startEl = document.getElementById('cardPageStart');
+      var endEl = document.getElementById('cardPageEnd');
+      var totalEl = document.getElementById('cardTotalRecords');
+      if (startEl) startEl.textContent = start;
+      if (endEl) endEl.textContent = end;
+      if (totalEl) totalEl.textContent = filteredCards.length;
+      
+      var pagination = document.getElementById('cardPagination');
+      if (!pagination) return;
+      pagination.innerHTML = '';
+      
+      if (totalPages <= 1) return;
+      
+      // Previous button
+      var prevLi = document.createElement('li');
+      prevLi.className = 'page-item ' + (cardCurrentPage === 1 ? 'disabled' : '');
+      prevLi.innerHTML = '<a class="page-link" href="#" data-page="' + (cardCurrentPage - 1) + '">Previous</a>';
+      pagination.appendChild(prevLi);
+      
+      var startPage = Math.max(1, cardCurrentPage - 2);
+      var endPage = Math.min(totalPages, cardCurrentPage + 2);
+      
+      if (startPage > 1) {
+        var firstLi = document.createElement('li');
+        firstLi.className = 'page-item';
+        firstLi.innerHTML = '<a class="page-link" href="#" data-page="1">1</a>';
+        pagination.appendChild(firstLi);
+        if (startPage > 2) {
+          var dotsLi = document.createElement('li');
+          dotsLi.className = 'page-item disabled';
+          dotsLi.innerHTML = '<span class="page-link">...</span>';
+          pagination.appendChild(dotsLi);
+        }
+      }
+      
+      for (var p = startPage; p <= endPage; p++) {
+        var li = document.createElement('li');
+        li.className = 'page-item ' + (p === cardCurrentPage ? 'active' : '');
+        li.innerHTML = '<a class="page-link" href="#" data-page="' + p + '">' + p + '</a>';
+        pagination.appendChild(li);
+      }
+      
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+          var dotsLi2 = document.createElement('li');
+          dotsLi2.className = 'page-item disabled';
+          dotsLi2.innerHTML = '<span class="page-link">...</span>';
+          pagination.appendChild(dotsLi2);
+        }
+        var lastLi = document.createElement('li');
+        lastLi.className = 'page-item';
+        lastLi.innerHTML = '<a class="page-link" href="#" data-page="' + totalPages + '">' + totalPages + '</a>';
+        pagination.appendChild(lastLi);
+      }
+      
+      var nextLi = document.createElement('li');
+      nextLi.className = 'page-item ' + (cardCurrentPage === totalPages ? 'disabled' : '');
+      nextLi.innerHTML = '<a class="page-link" href="#" data-page="' + (cardCurrentPage + 1) + '">Next</a>';
+      pagination.appendChild(nextLi);
+      
+      // Add click handlers
+      pagination.querySelectorAll('a').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+          e.preventDefault();
+          var page = parseInt(a.dataset.page);
+          if (page >= 1 && page <= totalPages) {
+            cardCurrentPage = page;
+            updateCardPaginationDisplay();
+            var cardContainer = document.getElementById('cardViewContainer');
+            if (cardContainer) cardContainer.scrollIntoView({behavior: 'smooth', block: 'start'});
+          }
+        });
+      });
+    }
+    
+    // Card page size change
+    var cardPageSizeEl = document.getElementById('cardPageSize');
+    if (cardPageSizeEl) {
+      cardPageSizeEl.addEventListener('change', function() {
+        cardPageSize = parseInt(this.value);
+        cardCurrentPage = 1;
+        updateCardPaginationDisplay();
+      });
+    }
+    
+    function setView(view) {
+      var tablePagCtrl = document.getElementById('tablePaginationControls');
+      var tablePagNav = document.getElementById('tablePaginationNav');
+      if (view === 'card') {
+        // Hide table view completely
+        tableViewContainer.style.display = 'none';
+        tableViewContainer.classList.add('hidden');
+        // Show card view
+        cardViewContainer.style.display = 'block';
+        cardViewContainer.classList.add('active');
+        btnTableView.classList.remove('active');
+        btnCardView.classList.add('active');
+        localStorage.setItem(VIEW_PREF_KEY, 'card');
+        // Hide table pagination controls
+        if (tablePagCtrl) tablePagCtrl.style.display = 'none';
+        if (tablePagNav) tablePagNav.style.display = 'none';
+        // Initialize card pagination
+        if (!cardPaginationInitialized) {
+          initializeCardPaginationData();
+        } else {
+          applyCardSearchAndPagination();
+          // Re-initialize tooltips for visible cards
+          setTimeout(initializeTooltips, 100);
+        }
+      } else {
+        // Show table view
+        tableViewContainer.style.display = 'block';
+        tableViewContainer.classList.remove('hidden');
+        // Hide card view completely
+        cardViewContainer.style.display = 'none';
+        cardViewContainer.classList.remove('active');
+        btnTableView.classList.add('active');
+        btnCardView.classList.remove('active');
+        localStorage.setItem(VIEW_PREF_KEY, 'table');
+        // Show table pagination controls
+        if (tablePagCtrl) tablePagCtrl.style.display = '';
+        if (tablePagNav) tablePagNav.style.display = '';
+      }
+    }
+    
+    // Load saved preference
+    var savedView = localStorage.getItem(VIEW_PREF_KEY);
+    if (savedView === 'card') {
+      setView('card');
+    }
+    
+    btnTableView.addEventListener('click', function() { setView('table'); });
+    btnCardView.addEventListener('click', function() { setView('card'); });
+    
+    // ============================================
+    // CARD VIEW SEARCH SYNC
+    // ============================================
+    // Hook search box to also filter card view with pagination
+    var searchBox = document.getElementById('searchBox');
+    if (searchBox) {
+      searchBox.addEventListener('input', function() {
+        if (cardViewContainer.classList.contains('active') && cardPaginationInitialized) {
+          cardCurrentPage = 1;
+          applyCardSearchAndPagination();
+        }
+      });
+    }
+    
+    // ============================================
+    // DISABLED ACTION BUTTONS - Show inline toast
+    // ============================================
+    var inlineToast = null;
+    
+    function showInlineToast(message) {
+      if (inlineToast) {
+        inlineToast.remove();
+      }
+      inlineToast = document.createElement('div');
+      inlineToast.className = 'inline-toast';
+      inlineToast.textContent = message;
+      document.body.appendChild(inlineToast);
+      
+      // Trigger animation
+      setTimeout(function() { inlineToast.classList.add('show'); }, 10);
+      
+      // Auto-hide after 3 seconds
+      setTimeout(function() {
+        if (inlineToast) {
+          inlineToast.classList.remove('show');
+          setTimeout(function() { 
+            if (inlineToast) {
+              inlineToast.remove(); 
+              inlineToast = null;
+            }
+          }, 300);
+        }
+      }, 3000);
+    }
+    
+    document.querySelectorAll('[data-action-disabled="true"]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showInlineToast('Application has not been filled. Contact details unavailable.');
+      });
+    });
   });
 </script>
 <!-- Toast container -->
