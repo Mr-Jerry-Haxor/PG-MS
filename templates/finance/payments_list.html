@@ -129,7 +129,7 @@
         <div class="row g-3">
           <div class="col-md-3">
             <label class="form-label small fw-semibold">Search</label>
-            <input type="search" id="searchInput" class="form-control form-control-sm" placeholder="Name, Email, Notes...">
+            <input type="search" id="searchInput" class="form-control form-control-sm" placeholder="Name / Email / Room / Notes">
           </div>
           <div class="col-md-2">
             <label class="form-label small fw-semibold">From Date</label>
@@ -177,6 +177,23 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Per Page Selector -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex align-items-center gap-2">
+      <label class="small mb-0 text-muted">Show:</label>
+      <select id="pageSizeTop" class="form-select form-select-sm" style="width: auto;">
+        <option value="10">10</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+        <option value="999999">All</option>
+      </select>
+      <span class="small text-muted">entries per page</span>
     </div>
   </div>
 </div>
@@ -379,9 +396,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectedModes = Array.from(document.querySelectorAll('.mode-filter:checked')).map(cb => cb.value);
     
     filteredPayments = allPayments.filter(payment => {
-      // Search filter
+      // Search filter (includes user, email, room, notes)
       if (searchTerm && !payment.user.toLowerCase().includes(searchTerm) && 
           !payment.email.toLowerCase().includes(searchTerm) && 
+          !payment.room.toLowerCase().includes(searchTerm) && 
           !payment.notes.toLowerCase().includes(searchTerm)) {
         return false;
       }
@@ -404,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function() {
       let aVal, bVal;
       switch(sortColumn) {
         case 'user': aVal = a.user; bVal = b.user; break;
-        case 'room': aVal = a.room; bVal = b.room; break;
+        case 'room': aVal = a.room || ''; bVal = b.room || ''; break;
         case 'amount': aVal = a.amount; bVal = b.amount; break;
         case 'upi': aVal = a.upi; bVal = b.upi; break;
         case 'cash': aVal = a.cash; bVal = b.cash; break;
@@ -444,17 +462,20 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
     
-    // Show filtered and paginated rows
+    // Show filtered and paginated rows in correct sorted order
     if (filteredPayments.length === 0) {
       const noResultsRow = document.createElement('tr');
       noResultsRow.className = 'no-results-row';
-      noResultsRow.innerHTML = '<td colspan="9" class="text-secondary text-center py-4">No payments match your filters.</td>';
+      noResultsRow.innerHTML = '<td colspan="10" class="text-secondary text-center py-4">No payments match your filters.</td>';
       tbody.appendChild(noResultsRow);
     } else {
-      // Show the current page of filtered payments
-      filteredPayments.slice(start, end).forEach(p => {
+      // Reorder visible rows in DOM to match sorted order
+      const pagePayments = filteredPayments.slice(start, end);
+      pagePayments.forEach((p, index) => {
         if (p.row && p.row.parentNode) {
           p.row.style.display = '';
+          // Move row to correct position in DOM
+          tbody.appendChild(p.row);
         }
       });
     }
@@ -722,11 +743,27 @@ document.addEventListener('DOMContentLoaded', function() {
     applyFiltersAndSort();
   });
   
-  document.getElementById('pageSize').addEventListener('change', function() {
-    pageSize = parseInt(this.value);
-    currentPage = 1;
-    updateDisplay();
-  });
+  // Sync both page size selectors
+  const pageSizeBottom = document.getElementById('pageSize');
+  const pageSizeTopEl = document.getElementById('pageSizeTop');
+  
+  if (pageSizeBottom) {
+    pageSizeBottom.addEventListener('change', function() {
+      pageSize = parseInt(this.value);
+      if (pageSizeTopEl) pageSizeTopEl.value = this.value;
+      currentPage = 1;
+      applyFiltersAndSort();
+    });
+  }
+  
+  if (pageSizeTopEl) {
+    pageSizeTopEl.addEventListener('change', function() {
+      pageSize = parseInt(this.value);
+      if (pageSizeBottom) pageSizeBottom.value = this.value;
+      currentPage = 1;
+      applyFiltersAndSort();
+    });
+  }
   
   document.getElementById('resetFilters').addEventListener('click', function() {
     document.getElementById('searchInput').value = '';
