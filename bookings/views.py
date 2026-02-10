@@ -1557,8 +1557,15 @@ def application_fill(request, booking_id):
     app = getattr(booking, 'application', None)
     # If confirmed, redirect to dashboard (form is no longer accessible)
     if app and getattr(app, 'status', None) == ResidentApplication.CONFIRMED:
-        messages.info(request, "Your application has been confirmed. You can view it from your dashboard.")
+        messages.info(request, "Your application has been confirmed and cannot be modified. Contact PG Admin if you need changes.")
         return redirect('dashboard')
+    # For other statuses, user can view/modify the application
+    elif app:
+        # Show appropriate message based on status
+        if app.status == ResidentApplication.REFILL_REQUESTED:
+            messages.info(request, "PG Admin has requested you to refill/update your application. Please review and resubmit.")
+        elif app.status in [ResidentApplication.SUBMITTED, ResidentApplication.RESUBMITTED]:
+            messages.info(request, "You can modify your application below until it is confirmed by PG Admin.")
     if request.method == 'POST':
         form = ResidentApplicationForm(request.POST, request.FILES, instance=app)
         
@@ -1625,24 +1632,11 @@ def application_fill(request, booking_id):
         inst.decl_deposit = True
         inst.decl_truth = True
         
-        # Update booking's payment_date based on selected payment_day
-        if booking.joining_date and payment_date_selected:
-            from calendar import monthrange
-            from datetime import date as _date
-            payment_day_num = payment_date_selected.day
-            y = booking.joining_date.year
-            m = booking.joining_date.month
-            if payment_day_num < booking.joining_date.day:
-                m += 1
-                if m > 12:
-                    m = 1
-                    y += 1
-            max_day = monthrange(y, m)[1]
-            actual_day = min(payment_day_num, max_day)
-            new_payment_date = _date(y, m, actual_day)
-            if booking.payment_date != new_payment_date:
-                booking.payment_date = new_payment_date
-                booking.save(update_fields=['payment_date'])
+        # Update booking's payment_date based on selected payment_day (full date from form)
+        # The form submits a full date (YYYY-MM-DD), so we use it directly
+        if payment_date_selected and booking.payment_date != payment_date_selected:
+            booking.payment_date = payment_date_selected
+            booking.save(update_fields=['payment_date'])
         
         # Upload files to Drive with two separate Aadhaar fields
         aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
@@ -1802,16 +1796,27 @@ def application_fill(request, booking_id):
             }
             form = ResidentApplicationForm(initial=initial)
     
-    # Calculate payment_day from booking's payment_date for display
-    payment_day = None
+    # Pass full payment_date (not just day) for display in date input field
+    # Priority: booking.payment_date (if booking is approved) > app final joining date > booking.joining_date
+    final_joining_date = None
+    is_payment_date_locked = False
+    
     if booking.payment_date:
-        payment_day = booking.payment_date.day
+        # If booking has payment_date (usually set when booking is approved), use it
+        final_joining_date = booking.payment_date
+        # For approved bookings, payment date should not be editable (it's confirmed)
+        if booking.status == Booking.APPROVED:
+            is_payment_date_locked = True
+    elif booking.joining_date:
+        # Fallback to joining date if no payment_date
+        final_joining_date = booking.joining_date
     
     return render(request, 'bookings/application_fill.html', {
         "form": form,
         "booking": booking,
         "app": app,
-        "payment_day": payment_day,
+        "final_joining_date": final_joining_date,
+        "is_payment_date_locked": is_payment_date_locked,
         "pg": booking.room.pg,
     })
 from django.shortcuts import render

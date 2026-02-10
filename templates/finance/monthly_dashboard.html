@@ -930,6 +930,25 @@
                     <a class="btn btn-sm btn-outline-info w-100" href="{% url 'finance_ledger' r.user.id %}" title="View ledger for {{ r.user.first_name }}">
                       <i class="bi bi-journal-text me-1"></i>Ledger
                     </a>
+                    <button type="button" 
+                            class="btn btn-sm btn-outline-primary w-100 quick-pay-chip"
+                            data-status="{{ r.status }}"
+                            data-status-label="{{ r.status_label }}"
+                            data-user-id="{{ r.user.id }}"
+                            data-user-name="{{ r.user.first_name }}"
+                            data-user-email="{{ r.user.email }}"
+                            data-expected="{% if filter_only == 'old_dues' %}{{ r.prev_month_pending }}{% else %}{{ r.expected }}{% endif %}"
+                            data-collected="{{ r.collected }}"
+                            data-pending="{% if filter_only == 'old_dues' %}{{ r.prev_month_pending }}{% else %}{{ r.pending }}{% endif %}"
+                            data-room="{{ r.room_no }}"
+                            data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
+                            data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}"
+                            data-due-date="{% if filter_only == 'old_dues' and r.prev_month_payment_due_iso %}{{ r.prev_month_payment_due_iso }}{% elif r.payment_date_iso %}{{ r.payment_date_iso }}{% elif r.payment_anchor_iso %}{{ r.payment_anchor_iso }}{% endif %}"
+                            data-is-old-dues="{% if filter_only == 'old_dues' %}true{% else %}false{% endif %}"
+                            data-old-dues-label="{% if filter_only == 'old_dues' %}{{ r.prev_month_label }}{% endif %}"
+                            title="Add payment for {{ r.user.first_name }}">
+                      <i class="bi bi-cash-coin me-1"></i>Add Payment
+                    </button>
                   </div>
                 </div>
               </div>
