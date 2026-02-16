@@ -611,6 +611,7 @@
               <th data-sort="email">Email <i class="bi bi-arrow-down-up sort-icon"></i></th>
               <th data-sort="phone">Phone <i class="bi bi-arrow-down-up sort-icon"></i></th>
               <th data-sort="room">Room/Bed <i class="bi bi-arrow-down-up sort-icon"></i></th>
+              <th data-sort="bookingid">Booking ID <i class="bi bi-arrow-down-up sort-icon"></i></th>
               <th data-sort="joining">Joining Date <i class="bi bi-arrow-down-up sort-icon"></i></th>
               <th data-sort="leaving">Leaving Date <i class="bi bi-arrow-down-up sort-icon"></i></th>
               <th data-sort="duration">Duration <i class="bi bi-arrow-down-up sort-icon"></i></th>
@@ -629,7 +630,8 @@
                 data-archived="{{ tenant.archived_at|date:'Y-m-d' }}"
                 data-joining="{{ tenant.joining_date|date:'Y-m-d'|default:'' }}"
                 data-leaving="{{ tenant.leaving_date|date:'Y-m-d'|default:'' }}"
-                data-duration="{{ tenant.stay_duration_days|default:0 }}">
+                data-duration="{{ tenant.stay_duration_days|default:0 }}"
+                data-bookingid="{{ tenant.original_booking_id|default:'' }}">
               <td>
                 <div class="fw-semibold">{{ tenant.full_name }}</div>
                 {% if tenant.father_name %}
@@ -653,6 +655,13 @@
               <td>
                 {% if tenant.room_no %}
                   Room {{ tenant.room_no }}{% if tenant.bed_no %} / Bed {{ tenant.bed_no }}{% endif %}
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if tenant.original_booking_id %}
+                  <span class="badge bg-secondary-subtle text-dark">#{{ tenant.original_booking_id }}</span>
                 {% else %}
                   <span class="text-muted">-</span>
                 {% endif %}

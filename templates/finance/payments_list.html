@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load tz %}
 {% block title %}Payments • PG-MS{% endblock %}
 {% block content %}
 <style>
@@ -271,7 +272,7 @@
           <td class="nowrap">₹ {{ i.amount }}</td>
           <td class="nowrap col-upi">{% if i.upi_amount %}₹ {{ i.upi_amount }}{% else %}—{% endif %}</td>
           <td class="nowrap col-cash">{% if i.cash_amount %}₹ {{ i.cash_amount }}{% else %}—{% endif %}</td>
-          <td>{{ i.date }}</td>
+          <td>{{ i.date }}<br><span class="text-muted" style="font-size:0.7rem;">{% timezone "Asia/Kolkata" %}{{ i.created_at|time:"h:i A" }} IST{% endtimezone %}</span></td>
           <td>
             {% if i.mode == 'upi' %}
               <span class="badge bg-success-subtle text-dark">UPI</span>
@@ -288,6 +289,8 @@
               <span class="badge bg-primary-subtle text-dark">Fee</span>
             {% elif i.type == 'advance' %}
               <span class="badge bg-secondary-subtle text-dark">Advance</span>
+            {% elif i.type == 'daywise' %}
+              <span class="badge bg-info-subtle text-dark">Day-wise</span>
             {% else %}
               {{ i.type }}
             {% endif %}

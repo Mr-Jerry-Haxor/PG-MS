@@ -142,6 +142,79 @@
     border-radius: 0.5rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
+
+  /* View Toggle Buttons */
+  .view-toggle-btn {
+    border: 1px solid #dee2e6;
+    background: #fff;
+    color: #6c757d;
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .view-toggle-btn.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border-color: #667eea;
+  }
+  .view-toggle-btn:hover:not(.active) {
+    background: #f0f0f0;
+  }
+
+  /* Leave Card Styles */
+  .leave-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    margin-bottom: 0.75rem;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    transition: all 0.2s ease;
+    overflow: hidden;
+  }
+  .leave-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    transform: translateY(-1px);
+  }
+  .leave-card-header {
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .leave-card-body {
+    padding: 0.75rem 1rem;
+  }
+  .leave-card-body .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.2rem 0;
+    border-bottom: 1px solid #f1f3f5;
+    font-size: 0.85rem;
+  }
+  .leave-card-body .detail-row:last-child {
+    border-bottom: none;
+  }
+  .leave-card-body .detail-label {
+    color: #6c757d;
+    font-weight: 500;
+    min-width: 100px;
+  }
+  .leave-card-body .detail-value {
+    text-align: right;
+    flex: 1;
+  }
+  .leave-card-actions {
+    padding: 0.5rem 1rem 0.75rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    border-top: 1px solid #e2e8f0;
+  }
 </style>
 {% endblock %}
 
@@ -259,19 +332,31 @@
    
   </div>
   
-   <div class="mt-2 d-flex justify-content-end">
-      <label class="small text-white me-2 align-self-center" style="color: #2d3748 !important;">Per page:</label>
-      <select id="itemsPerPageSelect" class="form-select form-select-sm" style="width: auto;">
-        <option value="10">10</option>
-        <option value="25">25</option>
-        <option value="50">50</option>
-        <option value="100">100</option>
-        <option value="all">All</option>
-      </select>
+   <div class="mt-2 d-flex justify-content-end align-items-center gap-3">
+      <!-- View Toggle Buttons -->
+      <div class="d-flex gap-1" id="leaveViewToggle">
+        <button type="button" class="view-toggle-btn active" id="btnLeaveTableView" title="Table View">
+          <i class="bi bi-table"></i>
+        </button>
+        <button type="button" class="view-toggle-btn" id="btnLeaveCardView" title="Card View">
+          <i class="bi bi-grid-3x3-gap-fill"></i>
+        </button>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <label class="small text-white me-0 align-self-center" style="color: #2d3748 !important;">Per page:</label>
+        <select id="itemsPerPageSelect" class="form-select form-select-sm" style="width: auto;">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="all">All</option>
+        </select>
+      </div>
     </div>
 
   <!-- Leave Requests Table -->
   {% if leave_requests %}
+  <div id="leaveTableViewContainer">
   <div class="card shadow-sm">
     <div class="card-body p-0">
       <!-- Horizontal Scroll Notice for Mobile -->
@@ -446,9 +531,172 @@
       </div>
     </div>
   </div>
-  
-  <!-- Pagination Controls (Bottom) -->
-  <div class="d-flex justify-content-between align-items-center mt-3" id="paginationBottom" style="display: none !important;">
+  </div><!-- End #leaveTableViewContainer -->
+
+  <!-- CARD VIEW -->
+  <div id="leaveCardViewContainer" style="display: none;">
+    <!-- Card Sort & Page Size Controls -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <div class="pagination-info small text-muted">
+        Showing <span id="cardPageStartLeave">0</span> to <span id="cardPageEndLeave">0</span> of <span id="cardTotalLeave">0</span> records
+      </div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <label class="small mb-0">Sort:</label>
+        <select id="leaveCardSortSelect" class="form-select form-select-sm" style="width: auto;">
+          <option value="name_asc">Name A–Z</option>
+          <option value="name_desc">Name Z–A</option>
+          <option value="room_asc">Room ↑</option>
+          <option value="room_desc">Room ↓</option>
+          <option value="leaving_asc">Leave Date ↑</option>
+          <option value="leaving_desc">Leave Date ↓</option>
+          <option value="initiated_asc">Initiated ↑</option>
+          <option value="initiated_desc">Initiated ↓</option>
+          <option value="status_asc">Status A–Z</option>
+          <option value="status_desc">Status Z–A</option>
+        </select>
+        <label class="small mb-0 ms-2">Per page:</label>
+        <select id="leaveCardPageSize" class="form-select form-select-sm" style="width: auto;">
+          <option value="10">10</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="999999">All</option>
+        </select>
+      </div>
+    </div>
+    <nav class="mb-3">
+      <ul class="pagination pagination-sm mb-0 justify-content-center" id="leaveCardPagination"></ul>
+    </nav>
+
+    <div id="leaveCardsContainer">
+      {% for booking in leave_requests %}
+      <div class="leave-card"
+           data-booking-id="{{ booking.id }}"
+           data-user-name="{{ booking.user.get_full_name }}"
+           data-user-email="{{ booking.user.email }}"
+           data-room-no="{{ booking.room.room_no }}"
+           data-share-no="{{ booking.share_no }}"
+           data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_date < today %}vacated{% else %}scheduled{% endif %}"
+           data-advance-eligibility="{% if booking.advance_eligible %}eligible{% else %}not-eligible{% endif %}"
+           data-advance-return="{% if booking.advance_returned %}returned{% else %}pending{% endif %}"
+           data-booking-type="{% if booking.booking_type == 'daywise' %}daywise{% else %}regular{% endif %}"
+           data-leaving-date="{% if booking.leaving_date %}{{ booking.leaving_date|date:'Y-m-d' }}{% endif %}"
+           data-initiated-date="{% if booking.leaving_initiated_at %}{{ booking.leaving_initiated_at|date:'Y-m-d' }}{% endif %}">
+        <!-- Card Header -->
+        <div class="leave-card-header">
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#appModal{{ booking.id }}" aria-label="View application">
+              <i class="bi bi-eye"></i>
+            </button>
+            <span class="fw-semibold">{{ booking.user.get_full_name }}</span>
+            {% if booking.booking_type == 'daywise' %}
+              <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">Day-wise</span>
+            {% endif %}
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary">Room {{ booking.room.room_no }}</span>
+            <span class="badge bg-secondary">Bed {{ booking.share_no }}</span>
+            {% if not booking.leaving_confirmed_date %}
+              <span class="badge bg-info">Pending</span>
+            {% elif booking.leaving_date < today %}
+              <span class="badge bg-dark">Vacated</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">Scheduled</span>
+            {% endif %}
+          </div>
+        </div>
+        <!-- Card Body -->
+        <div class="leave-card-body">
+          <div class="detail-row">
+            <span class="detail-label">Email:</span>
+            <span class="detail-value">{{ booking.user.email }}</span>
+          </div>
+          {% if booking.user.profile.phone %}
+          <div class="detail-row">
+            <span class="detail-label">Phone:</span>
+            <span class="detail-value">{{ booking.user.profile.phone }}</span>
+          </div>
+          {% endif %}
+          <div class="detail-row">
+            <span class="detail-label">Initiated:</span>
+            <span class="detail-value">{% if booking.leaving_initiated_at %}{{ booking.leaving_initiated_at|date:"M d, Y g:i A" }}{% else %}—{% endif %}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Leave Date:</span>
+            <span class="detail-value fw-semibold">
+              <span id="cardLeaveDate{{ booking.id }}">{{ booking.leaving_date|date:"M d, Y" }}</span>
+              <button class="btn btn-sm btn-link p-0 ms-1 edit-leave-date-btn" data-booking-id="{{ booking.id }}" data-leaving-date="{{ booking.leaving_date|date:'Y-m-d' }}" title="Edit date">
+                <i class="bi bi-pencil"></i>
+              </button>
+              {% if booking.leaving_confirmed_date %}
+                <span class="badge bg-success ms-1">Confirmed</span>
+              {% endif %}
+            </span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Reason:</span>
+            <span class="detail-value">
+              {% if booking.leaving_reason %}
+                <button class="btn btn-sm btn-outline-info py-0 px-1" data-bs-toggle="modal" data-bs-target="#reasonModal{{ booking.id }}">View</button>
+              {% else %}—{% endif %}
+            </span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Advance:</span>
+            <span class="detail-value">
+              {% if booking.advance_eligible %}
+                <span class="badge bg-success">✓ Eligible</span>
+              {% else %}
+                <span class="badge bg-secondary">✗ Not Eligible</span>
+              {% endif %}
+              {% if booking.advance_returned %}
+                <span class="badge bg-info ms-1">Returned ₹{{ booking.advance_returned_amount }}</span>
+                <button class="btn btn-sm btn-link p-0 ms-1 edit-advance-amount-btn" data-booking-id="{{ booking.id }}" data-current-amount="{{ booking.advance_returned_amount }}" data-advance-paid="{{ booking.advance_paid }}" title="Edit">
+                  <i class="bi bi-pencil" style="font-size:0.7rem;"></i>
+                </button>
+              {% elif booking.leaving_confirmed_date %}
+                <button class="btn btn-sm btn-outline-primary py-0 px-1 ms-1 mark-advance-returned-btn" data-booking-id="{{ booking.id }}" data-advance-paid="{{ booking.advance_paid }}" data-is-eligible="{% if booking.advance_eligible %}true{% else %}false{% endif %}">
+                  Mark Returned
+                </button>
+              {% endif %}
+            </span>
+          </div>
+        </div>
+        <!-- Card Actions -->
+        <div class="leave-card-actions">
+          {% if not booking.leaving_confirmed_date %}
+            <button class="btn btn-sm btn-success confirm-leave-btn" data-booking-id="{{ booking.id }}">
+              <i class="bi bi-check-circle me-1"></i>Confirm
+            </button>
+            <button class="btn btn-sm btn-outline-danger reject-leave-btn" data-booking-id="{{ booking.id }}">
+              <i class="bi bi-x-circle me-1"></i>Reject
+            </button>
+          {% else %}
+            <span class="badge bg-success align-self-center">Confirmed</span>
+            <button class="btn btn-sm btn-outline-warning show-recontinue-btn" data-booking-id="{{ booking.id }}">
+              <i class="bi bi-arrow-counterclockwise me-1"></i>Re-Continue
+            </button>
+            <button class="btn btn-sm btn-outline-danger delete-booking-btn"
+                    data-booking-id="{{ booking.id }}"
+                    data-full-name="{{ booking.user.get_full_name }}"
+                    data-email="{{ booking.user.email }}"
+                    data-room-no="{{ booking.room.room_no }}"
+                    data-share-no="{{ booking.share_no }}"
+                    data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}">
+              <i class="bi bi-trash me-1"></i>Delete Data
+            </button>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Card Pagination Bottom -->
+    <nav class="mt-3">
+      <ul class="pagination pagination-sm mb-0 justify-content-center" id="leaveCardPaginationBottom"></ul>
+    </nav>
+  </div><!-- End #leaveCardViewContainer -->
+  <div class="d-flex justify-content-between align-items-center mt-3" id="paginationBottom" style="display: none;">
     <div class="text-muted small">
       Showing <span id="pageStartBottom">0</span>-<span id="pageEndBottom">0</span> of <span id="totalFilteredBottom">0</span> results
     </div>
@@ -815,7 +1063,18 @@ function showReContinue(bookingId) {
       'X-CSRFToken': getCsrfToken()
     }
   })
-  .then(response => response.json())
+  .then(response => {
+    if (!response.ok) {
+      return response.text().then(text => {
+        throw new Error(`Server error: ${response.status}`);
+      });
+    }
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('Server returned non-JSON response. Please refresh the page and try again.');
+    }
+    return response.json();
+  })
   .then(data => {
     if (data.success) {
       showReContinueModal(bookingId, data);
@@ -824,7 +1083,7 @@ function showReContinue(bookingId) {
     }
   })
   .catch(error => {
-    alert('Error loading re-continue options: ' + error);
+    alert('Error loading re-continue options: ' + error.message);
   });
 }
 
@@ -950,7 +1209,18 @@ function submitReContinue(bookingId) {
     },
     body: formData
   })
-  .then(response => response.json())
+  .then(response => {
+    if (!response.ok) {
+      return response.text().then(text => {
+        throw new Error(`Server error: ${response.status}`);
+      });
+    }
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('Server returned non-JSON response. Please refresh the page and try again.');
+    }
+    return response.json();
+  })
   .then(data => {
     if (data.success) {
       location.reload();
@@ -959,7 +1229,7 @@ function submitReContinue(bookingId) {
     }
   })
   .catch(error => {
-    alert('Error processing re-continue: ' + error);
+    alert('Error processing re-continue: ' + error.message);
   });
 }
 
@@ -1367,6 +1637,256 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   }
+
+  // ============================================
+  // CARD VIEW TOGGLE + CARD PAGINATION ENGINE
+  // ============================================
+  var LEAVE_VIEW_PREF_KEY = 'pgms_leave_view_preference';
+  var leaveTableContainer = document.getElementById('leaveTableViewContainer');
+  var leaveCardContainer = document.getElementById('leaveCardViewContainer');
+  var btnLeaveTable = document.getElementById('btnLeaveTableView');
+  var btnLeaveCard = document.getElementById('btnLeaveCardView');
+  var paginationBottom = document.getElementById('paginationBottom');
+
+  var leaveCardCurrentPage = 1;
+  var leaveCardPageSize = 25;
+  var allLeaveCards = [];
+  var filteredLeaveCards = [];
+  var leaveCardInitialized = false;
+
+  function initLeaveCardData() {
+    allLeaveCards = Array.from(document.querySelectorAll('#leaveCardsContainer .leave-card'));
+    leaveCardInitialized = true;
+    applyLeaveCardFilters();
+  }
+
+  function applyLeaveCardFilters() {
+    var searchTerm = (filterState.search || '').toLowerCase();
+
+    filteredLeaveCards = allLeaveCards.filter(function(card) {
+      var cardStatus = card.dataset.status || '';
+      var cardAdvElig = card.dataset.advanceEligibility || '';
+      var cardAdvRet = card.dataset.advanceReturn || '';
+      var cardBookingType = card.dataset.bookingType || '';
+      var cardText = card.textContent.toLowerCase();
+
+      var statusMatch = filterState.status === 'all' || cardStatus === filterState.status;
+      var advEligMatch = filterState['advance-eligibility'] === 'all' || cardAdvElig === filterState['advance-eligibility'];
+      var advRetMatch = filterState['advance-return'] === 'all' || cardAdvRet === filterState['advance-return'];
+      var bookingTypeMatch = filterState['booking-type'] === 'all' || cardBookingType === filterState['booking-type'];
+      var searchMatch = !searchTerm || cardText.indexOf(searchTerm) !== -1;
+
+      return statusMatch && advEligMatch && advRetMatch && bookingTypeMatch && searchMatch;
+    });
+
+    // Apply card sorting
+    var sortSelect = document.getElementById('leaveCardSortSelect');
+    var sortVal = sortSelect ? sortSelect.value : 'name_asc';
+    var parts = sortVal.split('_');
+    var sortKey = parts[0];
+    var sortDir = parts[1] || 'asc';
+
+    filteredLeaveCards.sort(function(a, b) {
+      var va, vb;
+      if (sortKey === 'name') {
+        va = (a.dataset.userName || '').toLowerCase();
+        vb = (b.dataset.userName || '').toLowerCase();
+      } else if (sortKey === 'room') {
+        va = parseInt(a.dataset.roomNo) || 0;
+        vb = parseInt(b.dataset.roomNo) || 0;
+      } else if (sortKey === 'leaving') {
+        va = a.dataset.leavingDate || '';
+        vb = b.dataset.leavingDate || '';
+      } else if (sortKey === 'initiated') {
+        va = a.dataset.initiatedDate || '';
+        vb = b.dataset.initiatedDate || '';
+      } else if (sortKey === 'status') {
+        va = (a.dataset.status || '').toLowerCase();
+        vb = (b.dataset.status || '').toLowerCase();
+      } else {
+        va = (a.dataset.userName || '').toLowerCase();
+        vb = (b.dataset.userName || '').toLowerCase();
+      }
+      var cmp;
+      if (typeof va === 'number' && typeof vb === 'number') {
+        cmp = va - vb;
+      } else {
+        va = String(va); vb = String(vb);
+        if (!va && vb) return 1;
+        if (va && !vb) return -1;
+        cmp = va.localeCompare(vb);
+      }
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+
+    updateLeaveCardDisplay();
+  }
+
+  function updateLeaveCardDisplay() {
+    var container = document.getElementById('leaveCardsContainer');
+    var start = (leaveCardCurrentPage - 1) * leaveCardPageSize;
+    var end = Math.min(start + leaveCardPageSize, filteredLeaveCards.length);
+
+    // Hide all
+    allLeaveCards.forEach(function(c) { c.style.display = 'none'; });
+
+    // Reorder DOM
+    for (var i = 0; i < filteredLeaveCards.length; i++) {
+      container.appendChild(filteredLeaveCards[i]);
+    }
+
+    // Show current page
+    for (var i = start; i < end; i++) {
+      filteredLeaveCards[i].style.display = '';
+    }
+
+    // Update info
+    var startEl = document.getElementById('cardPageStartLeave');
+    var endEl = document.getElementById('cardPageEndLeave');
+    var totalEl = document.getElementById('cardTotalLeave');
+    if (startEl) startEl.textContent = filteredLeaveCards.length > 0 ? start + 1 : 0;
+    if (endEl) endEl.textContent = end;
+    if (totalEl) totalEl.textContent = filteredLeaveCards.length;
+
+    // Update counts in filter bar
+    document.getElementById('visibleCount').textContent = filteredLeaveCards.length;
+    var totalCards = allLeaveCards.length;
+    document.getElementById('totalCount').textContent = totalCards;
+
+    updateLeaveCardPagination();
+  }
+
+  function updateLeaveCardPagination() {
+    var totalPages = Math.ceil(filteredLeaveCards.length / leaveCardPageSize);
+    ['leaveCardPagination', 'leaveCardPaginationBottom'].forEach(function(elId) {
+      var pagination = document.getElementById(elId);
+      if (!pagination) return;
+      pagination.innerHTML = '';
+      if (totalPages <= 1) return;
+
+      // Previous
+      var prevLi = document.createElement('li');
+      prevLi.className = 'page-item ' + (leaveCardCurrentPage === 1 ? 'disabled' : '');
+      prevLi.innerHTML = '<a class="page-link" href="#" data-page="' + (leaveCardCurrentPage - 1) + '">Previous</a>';
+      pagination.appendChild(prevLi);
+
+      var startP = Math.max(1, leaveCardCurrentPage - 2);
+      var endP = Math.min(totalPages, leaveCardCurrentPage + 2);
+
+      if (startP > 1) {
+        var f = document.createElement('li');
+        f.className = 'page-item';
+        f.innerHTML = '<a class="page-link" href="#" data-page="1">1</a>';
+        pagination.appendChild(f);
+        if (startP > 2) {
+          var d = document.createElement('li');
+          d.className = 'page-item disabled';
+          d.innerHTML = '<span class="page-link">...</span>';
+          pagination.appendChild(d);
+        }
+      }
+
+      for (var p = startP; p <= endP; p++) {
+        var li = document.createElement('li');
+        li.className = 'page-item ' + (p === leaveCardCurrentPage ? 'active' : '');
+        li.innerHTML = '<a class="page-link" href="#" data-page="' + p + '">' + p + '</a>';
+        pagination.appendChild(li);
+      }
+
+      if (endP < totalPages) {
+        if (endP < totalPages - 1) {
+          var d2 = document.createElement('li');
+          d2.className = 'page-item disabled';
+          d2.innerHTML = '<span class="page-link">...</span>';
+          pagination.appendChild(d2);
+        }
+        var l = document.createElement('li');
+        l.className = 'page-item';
+        l.innerHTML = '<a class="page-link" href="#" data-page="' + totalPages + '">' + totalPages + '</a>';
+        pagination.appendChild(l);
+      }
+
+      // Next
+      var nextLi = document.createElement('li');
+      nextLi.className = 'page-item ' + (leaveCardCurrentPage === totalPages ? 'disabled' : '');
+      nextLi.innerHTML = '<a class="page-link" href="#" data-page="' + (leaveCardCurrentPage + 1) + '">Next</a>';
+      pagination.appendChild(nextLi);
+
+      // Click handlers
+      pagination.querySelectorAll('a').forEach(function(a) {
+        a.addEventListener('click', function(e) {
+          e.preventDefault();
+          var page = parseInt(a.dataset.page);
+          if (page >= 1 && page <= totalPages) {
+            leaveCardCurrentPage = page;
+            updateLeaveCardDisplay();
+            if (leaveCardContainer) leaveCardContainer.scrollIntoView({behavior: 'smooth', block: 'start'});
+          }
+        });
+      });
+    });
+  }
+
+  // Card sort change
+  var leaveCardSort = document.getElementById('leaveCardSortSelect');
+  if (leaveCardSort) {
+    leaveCardSort.addEventListener('change', function() {
+      leaveCardCurrentPage = 1;
+      applyLeaveCardFilters();
+    });
+  }
+
+  // Card page size change
+  var leaveCardPageSizeEl = document.getElementById('leaveCardPageSize');
+  if (leaveCardPageSizeEl) {
+    leaveCardPageSizeEl.addEventListener('change', function() {
+      leaveCardPageSize = parseInt(this.value);
+      leaveCardCurrentPage = 1;
+      updateLeaveCardDisplay();
+    });
+  }
+
+  function setLeaveView(view) {
+    if (view === 'card') {
+      if (leaveTableContainer) leaveTableContainer.style.display = 'none';
+      if (paginationBottom) paginationBottom.style.display = 'none';
+      if (leaveCardContainer) leaveCardContainer.style.display = 'block';
+      if (btnLeaveTable) btnLeaveTable.classList.remove('active');
+      if (btnLeaveCard) btnLeaveCard.classList.add('active');
+      localStorage.setItem(LEAVE_VIEW_PREF_KEY, 'card');
+      if (!leaveCardInitialized) {
+        initLeaveCardData();
+      } else {
+        applyLeaveCardFilters();
+      }
+    } else {
+      if (leaveTableContainer) leaveTableContainer.style.display = '';
+      if (leaveCardContainer) leaveCardContainer.style.display = 'none';
+      if (btnLeaveTable) btnLeaveTable.classList.add('active');
+      if (btnLeaveCard) btnLeaveCard.classList.remove('active');
+      localStorage.setItem(LEAVE_VIEW_PREF_KEY, 'table');
+      applyFilters();
+    }
+  }
+
+  if (btnLeaveTable) btnLeaveTable.addEventListener('click', function() { setLeaveView('table'); });
+  if (btnLeaveCard) btnLeaveCard.addEventListener('click', function() { setLeaveView('card'); });
+
+  // Load saved preference
+  var savedLeaveView = localStorage.getItem(LEAVE_VIEW_PREF_KEY);
+  if (savedLeaveView === 'card') {
+    setLeaveView('card');
+  }
+
+  // Hook existing filter changes to also update card view
+  var origApplyFilters = applyFilters;
+  applyFilters = function() {
+    origApplyFilters();
+    if (leaveCardContainer && leaveCardContainer.style.display !== 'none' && leaveCardInitialized) {
+      leaveCardCurrentPage = 1;
+      applyLeaveCardFilters();
+    }
+  };
 });
 
 // SweetAlert2 Delete Confirmation Function

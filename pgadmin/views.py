@@ -1271,9 +1271,7 @@ def _require_pg_admin(user):
 
 
 def _admin_pgs(user):
-    # Superusers and website admins see all PGs
-    if getattr(user, 'is_superuser', False) or (hasattr(user, 'profile') and getattr(user.profile, 'is_website_admin', False)):
-        return PG.objects.all().order_by('name')
+    # All users (including superusers/website admins) only see PGs they have explicit PGAdmin access to
     return PG.objects.filter(admins__user=user).order_by('name')
 
 
@@ -3314,7 +3312,8 @@ def booking_approve(request, booking_id):
                             type='daywise',  # Use 'daywise' type instead of 'fee'
                             notes=f"Day-wise booking payment for Room {room.room_no} Bed {share_no}",
                             from_date=booking.joining_date,
-                            to_date=booking.leaving_date
+                            to_date=booking.leaving_date,
+                            booking=booking
                         )
                     except Exception as e:
                         # Log but don't fail the approval
@@ -5926,22 +5925,25 @@ def edit_advance_returned_amount(request, booking_id):
 # RE-CONTINUE FEATURE
 # ============================================================================
 
-@login_required
 def re_continue_booking(request, booking_id):
     """Allow user to re-continue (cancel leaving) before or on leaving date"""
     from bookings.models import RoomSwap
     
-    booking = get_object_or_404(
-        Booking.objects.select_related('room', 'room__pg'),
-        id=booking_id
-    )
+    # Check authentication - return JSON for AJAX requests
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'error': 'Please login to continue'}, status=401)
+    
+    try:
+        booking = Booking.objects.select_related('room', 'room__pg').get(id=booking_id)
+    except Booking.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Booking not found'}, status=404)
     
     if not _require_pg_admin(request.user) or not _admin_pgs(request.user).filter(id=booking.room.pg.id).exists():
-        return JsonResponse({'error': 'Unauthorized'}, status=403)
+        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=403)
     
     # Can only re-continue if leaving_confirmed_date exists
     if not booking.leaving_confirmed_date:
-        return JsonResponse({'error': 'No confirmed leaving date'}, status=400)
+        return JsonResponse({'success': False, 'error': 'No confirmed leaving date'}, status=400)
     
     # Note: Re-continue is now allowed even after leaving date has passed
     # This allows PG admins to bring back tenants who left but want to return

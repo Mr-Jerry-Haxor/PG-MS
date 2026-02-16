@@ -146,6 +146,45 @@
   </div>
 </div>
 
+{% if old_tenant_records %}
+<div class="card border-0 shadow-sm mt-3">
+  <div class="card-body">
+    <h2 class="h6 mb-3"><i class="bi bi-archive me-1"></i>Archived Tenant History</h2>
+    <p class="small text-secondary mb-3">Historical records preserved from previous stays (after booking deletion).</p>
+    {% for ot in old_tenant_records %}
+    <div class="border rounded p-3 mb-3 bg-body-tertiary">
+      <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
+        <div>
+          <span class="fw-semibold">{{ ot.full_name }}</span>
+          {% if ot.room_no %}
+            <span class="badge bg-primary-subtle text-primary ms-2">Room {{ ot.room_no }}{% if ot.bed_no %} · Bed {{ ot.bed_no }}{% endif %}</span>
+          {% endif %}
+        </div>
+        <span class="badge bg-secondary-subtle text-secondary small">Archived {{ ot.archived_at|date:'Y-m-d' }}</span>
+      </div>
+      <div class="row g-2 small">
+        <div class="col-6 col-md-3"><span class="text-secondary">Joining:</span> {% if ot.joining_date %}{{ ot.joining_date|date:'Y-m-d' }}{% else %}—{% endif %}</div>
+        <div class="col-6 col-md-3"><span class="text-secondary">Leaving:</span> {% if ot.leaving_date %}{{ ot.leaving_date|date:'Y-m-d' }}{% else %}—{% endif %}</div>
+        <div class="col-6 col-md-3"><span class="text-secondary">Stay:</span> {% if ot.stay_duration_days %}{{ ot.stay_duration_days }} days{% else %}—{% endif %}</div>
+        <div class="col-6 col-md-3"><span class="text-secondary">Booking ID:</span> {% if ot.original_booking_id %}#{{ ot.original_booking_id }}{% else %}—{% endif %}</div>
+      </div>
+      <div class="row g-2 small mt-1">
+        <div class="col-6 col-md-3"><span class="text-secondary">Email:</span> {{ ot.email }}</div>
+        <div class="col-6 col-md-3"><span class="text-secondary">Phone:</span> {{ ot.phone|default:"—" }}</div>
+        <div class="col-6 col-md-3"><span class="text-secondary">Advance Paid:</span> ₹ {{ ot.advance_paid }}</div>
+        <div class="col-6 col-md-3"><span class="text-secondary">Advance Returned:</span> ₹ {{ ot.advance_returned }}</div>
+      </div>
+      {% if ot.leaving_reason %}
+      <div class="small mt-2">
+        <span class="text-secondary">Leaving Reason:</span> {{ ot.leaving_reason }}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {% comment %} Resident Application Modal(s) — reuse simplified layout {% endcomment %}
 {% if app_bookings %}
 <div class="modal fade" id="ledgerAppModal" tabindex="-1" aria-labelledby="ledgerAppLabel" aria-hidden="true">

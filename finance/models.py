@@ -63,6 +63,7 @@ class Payment(TimeStampedModel):
 	to_date = models.DateField(null=True, blank=True, help_text='Billing period end date')
 	upi_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='UPI component when mode is UPI+CASH')
 	cash_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Cash component when mode is UPI+CASH')
+	booking = models.ForeignKey('bookings.Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', help_text='Linked booking for this payment')
 
 	def __str__(self):
 		return f"{self.user} - {self.pg} - {self.amount}"

@@ -93,11 +93,9 @@ def _has_payment_permission(user, permission_name, pg=None):
 
 def _admin_pgs(user):
     """PGs visible/manageable by the current user.
-    - Superusers and website admins see all PGs
-    - Regular PG admins see only their assigned PGs
+    All users (including superusers/website admins) only see PGs
+    they have explicit PGAdmin access to.
     """
-    if getattr(user, 'is_superuser', False) or (hasattr(user, 'profile') and getattr(user.profile, 'is_website_admin', False)):
-        return PG.objects.all().order_by('name')
     return PG.objects.filter(admins__user=user).order_by('name')
 
 
@@ -3370,6 +3368,17 @@ def ledger_view(request, user_id):
             # Ignore missing one-to-one relations
             pass
 
+    # Old tenant records for this user (archived bookings after leaving)
+    from pgadmin.models import OldTenant
+    old_tenant_records = list(
+        OldTenant.objects.filter(pg=pg, original_user=resident).order_by('-leaving_date', '-archived_at')
+    )
+    # Also try to match by email if user was re-created or original_user was cleared
+    if not old_tenant_records:
+        old_tenant_records = list(
+            OldTenant.objects.filter(pg=pg, email=resident.email).order_by('-leaving_date', '-archived_at')
+        )
+
     ctx = {
         'pg': pg,
         'resident': resident,
@@ -3386,6 +3395,7 @@ def ledger_view(request, user_id):
             'past': past_bks,
         },
         'app_bookings': app_bookings,
+        'old_tenant_records': old_tenant_records,
         'resident_details': {
             'username': getattr(resident, 'username', ''),
             'email': resident.email,
@@ -3755,7 +3765,7 @@ def monthly_quick_payment(request):
             cash_amount_val = None
 
     ptype = (request.POST.get('type') or 'fee').lower()
-    if ptype not in ('fee', 'advance'):
+    if ptype not in ('fee', 'advance', 'daywise'):
         ptype = 'fee'
     notes = (request.POST.get('notes') or '').strip()
     # Optional date override
@@ -3790,6 +3800,23 @@ def monthly_quick_payment(request):
         to_date_val = None
 
     # Create Payment (success by default)
+    # Look up the user's current booking in this PG for linking
+    linked_booking = None
+    try:
+        from bookings.models import Booking
+        linked_booking = Booking.objects.filter(
+            user=u, room__pg=pg, status=Booking.APPROVED,
+            joining_date__lte=pay_date,
+        ).filter(
+            Q(leaving_date__isnull=True) | Q(leaving_date__gte=pay_date)
+        ).select_related('room').first()
+    except Exception:
+        pass
+
+    # Safety check: if linked booking is daywise and type is 'fee', override to 'daywise'
+    if linked_booking and getattr(linked_booking, 'booking_type', '') == 'daywise' and ptype == 'fee':
+        ptype = 'daywise'
+
     try:
         # Server-side validation for UPI+CASH: require the split and ensure sum equals amount
         if mode == 'upi_cash':
@@ -3803,6 +3830,7 @@ def monthly_quick_payment(request):
             status='success', mode=mode, type=ptype, notes=notes,
             from_date=from_date_val, to_date=to_date_val,
             upi_amount=upi_amount_val, cash_amount=cash_amount_val,
+            booking=linked_booking,
         )
         
         # If payment type is 'advance', update the user's booking based on payment date
