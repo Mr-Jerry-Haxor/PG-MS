@@ -1392,20 +1392,45 @@ def _collected_for_user_pg_month(u, pg, m_first, m_last) -> float:
     return float(p_sum) + float(adj_sum)
 
 
-def _advance_paid_for_user_pg(u, pg) -> float:
-    adv = Payment.objects.filter(user=u, pg=pg, status='success', type='advance').aggregate(total=Sum('amount')).get('total') or 0
+def _advance_paid_for_user_pg(u, pg, booking_ids=None, not_before=None) -> float:
+    """Return total successful advances for a user in a PG.
+
+    If booking_ids is provided, only include payments that either:
+    - Have a booking_id matching one of the current active booking IDs, OR
+    - Have booking_id=NULL and (if not_before given) a payment date >= not_before
+      (legacy data before the booking FK was populated).
+    This prevents old-booking advances from leaking into new-booking totals.
+    """
+    qs = Payment.objects.filter(user=u, pg=pg, status='success', type='advance')
+    if booking_ids is not None:
+        q = Q(booking_id__in=booking_ids)
+        if not_before:
+            q |= Q(booking__isnull=True, date__gte=not_before)
+        else:
+            q |= Q(booking__isnull=True)
+        qs = qs.filter(q)
+    adv = qs.aggregate(total=Sum('amount')).get('total') or 0
     return float(adv)
 
 
-def _advance_paid_for_user_pg_month(u, pg, m_first: date, m_last: date) -> float:
+def _advance_paid_for_user_pg_month(u, pg, m_first: date, m_last: date, booking_ids=None, not_before=None) -> float:
     """Return total advance payments (successful) for the user in the given month range.
 
     This ensures advances are counted only in the month where the payment's transaction
     date lies (date between m_first and m_last inclusive).
+    If booking_ids is provided, scopes to those bookings (with legacy NULL-FK fallback).
     """
-    adv = Payment.objects.filter(
+    qs = Payment.objects.filter(
         user=u, pg=pg, status='success', type='advance', date__gte=m_first, date__lte=m_last
-    ).aggregate(total=Sum('amount')).get('total') or 0
+    )
+    if booking_ids is not None:
+        q = Q(booking_id__in=booking_ids)
+        if not_before:
+            q |= Q(booking__isnull=True, date__gte=not_before)
+        else:
+            q |= Q(booking__isnull=True)
+        qs = qs.filter(q)
+    adv = qs.aggregate(total=Sum('amount')).get('total') or 0
     return float(adv)
 
 
@@ -1744,8 +1769,25 @@ def monthly_dashboard(request):
         expected_breakdown_html = format_html_join('', '{}', ((p,) for p in parts))
         expected_breakdown_id = f"expected-breakdown-{u.id}"
 
-        # Build advance payment details (all successful advances for this user in this PG)
-        adv_qs = Payment.objects.filter(user=u, pg=pg, status='success', type='advance').order_by('date')
+        # Compute earliest_start / latest_end here (needed by adv_qs scoping below)
+        earliest_start = min((seg['start'] or m_first) for seg in segs)
+        latest_end = None
+        ends = [seg['end'] for seg in segs if seg['end']]
+        if ends:
+            latest_end = max(ends)
+
+        # Build advance payment details scoped to this user's current active bookings only.
+        # Prevents old-booking advances from leaking into new-booking display.
+        active_booking_ids = [seg['booking_id'] for seg in segs if seg.get('booking_id')]
+        _adv_q = Q(user=u, pg=pg, status='success', type='advance')
+        if active_booking_ids:
+            # Include advances linked to current bookings OR legacy advances (NULL booking FK)
+            # with a date >= the earliest current booking start (so old-booking legacy advances are excluded)
+            _adv_q &= (
+                Q(booking_id__in=active_booking_ids) |
+                Q(booking__isnull=True, date__gte=earliest_start)
+            )
+        adv_qs = Payment.objects.filter(_adv_q).order_by('date')
         adv_items = []
         adv_total_all = 0.0
         for adv in adv_qs:
@@ -1784,11 +1826,7 @@ def monthly_dashboard(request):
         advance_breakdown_id = f"advance-breakdown-{u.id}"
 
         # Pick joining as earliest start in month; leaving as latest end if present
-        earliest_start = min((seg['start'] or m_first) for seg in segs)
-        latest_end = None
-        ends = [seg['end'] for seg in segs if seg['end']]
-        if ends:
-            latest_end = max(ends)
+        # (already computed above before adv_qs block)
         # Choose a representative room_no (latest segment's room)
         last_seg = sorted(segs, key=lambda x: (x['start'] or m_first, x['end'] or m_last))[-1]
         payment_due = primary_seg.get('payment_due') if primary_seg else None
@@ -1796,7 +1834,16 @@ def monthly_dashboard(request):
         payment_due_day = payment_anchor.day if payment_anchor else None
         primary_booking_id = primary_seg.get('booking_id') if primary_seg else None
         # Calculate billing period (from/to dates) for WhatsApp message
-        billing_from, billing_to = _billing_period_from_payment_date(payment_due) if payment_due else (None, None)
+        is_daywise_row = any(getattr(seg.get('b'), 'booking_type', None) == 'daywise' for seg in segs)
+        if is_daywise_row:
+            # For day-wise bookings billing period is simply the stay: joining → leaving
+            billing_from = earliest_start
+            billing_to = latest_end
+        else:
+            billing_from, billing_to = _billing_period_from_payment_date(payment_due) if payment_due else (None, None)
+            # Cap billing_to at leaving date when the tenant departs before the cycle end
+            if billing_to and latest_end and latest_end < billing_to:
+                billing_to = latest_end
         # Exclude tenants who left on or before the payment due date for this month.
         # Example: payment due 10th, leaving on 9th or 10th => do not show in overview/export for this month.
         if latest_end and payment_due and payment_due >= latest_end:
@@ -1817,7 +1864,7 @@ def monthly_dashboard(request):
             'whatsapp_phone': whatsapp_digits,
             'application_filled': application_filled,
             # Advance collected in THIS month only (transaction date within m_first..m_last)
-            'advance': round(_advance_paid_for_user_pg_month(u, pg, m_first, m_last), 2),
+            'advance': round(_advance_paid_for_user_pg_month(u, pg, m_first, m_last, booking_ids=active_booking_ids, not_before=earliest_start), 2),
             # Advance total (all successful advance payments for this user in this PG)
             'advance_total': round(adv_total_all, 2),
             'advance_details_html': advance_breakdown_html,
@@ -1827,6 +1874,7 @@ def monthly_dashboard(request):
             'payment_due_day': payment_due_day,
             'payment_anchor_iso': payment_anchor.isoformat() if payment_anchor else '',
             'payment_date_iso': payment_due.isoformat() if payment_due else '',
+            'billing_from': billing_from,
             'billing_to': billing_to,
             'primary_booking_id': primary_booking_id,
             'referral_adjustment': redeemed_total,
@@ -2351,7 +2399,8 @@ def monthly_export_csv(request):
         collected = _collected_for_user_pg_month(u, pg, m_first, m_last)
         pending = round(expected - collected, 2)
         status, status_label, status_css = _resolve_status(expected, float(collected), m_first, due_date, today)
-        advance = _advance_paid_for_user_pg(u, pg)
+        csv_booking_ids = [b.id for b in bookings]
+        advance = _advance_paid_for_user_pg(u, pg, booking_ids=csv_booking_ids, not_before=earliest_start)
         if only_filter in ('paid', 'partial', 'unpaid', 'upcoming') and status != only_filter:
             continue
         # Exclude users who have left on or before their payment due date for this month.
@@ -3816,6 +3865,25 @@ def monthly_quick_payment(request):
     # Safety check: if linked booking is daywise and type is 'fee', override to 'daywise'
     if linked_booking and getattr(linked_booking, 'booking_type', '') == 'daywise' and ptype == 'fee':
         ptype = 'daywise'
+
+    # For day-wise payments the billing period = actual stay dates (joining → leaving),
+    # NOT a monthly payment cycle. Override from/to when not explicitly set by the user.
+    if ptype == 'daywise' and linked_booking:
+        bk_from = getattr(linked_booking, 'joining_date', None) or getattr(linked_booking, 'start_date', None)
+        bk_to = getattr(linked_booking, 'leaving_date', None)
+        if bk_from and not from_date_val:
+            from_date_val = bk_from
+        if bk_to and not to_date_val:
+            to_date_val = bk_to
+        elif not to_date_val and from_date_val:
+            to_date_val = from_date_val  # single-day stay fallback
+
+    # For non-advance payments: cap to_date at the booking's leaving date when the
+    # tenant departs before the end of the monthly payment cycle.
+    if ptype != 'advance' and linked_booking:
+        bk_leaving = getattr(linked_booking, 'leaving_date', None)
+        if bk_leaving and to_date_val and bk_leaving < to_date_val:
+            to_date_val = bk_leaving
 
     try:
         # Server-side validation for UPI+CASH: require the split and ensure sum equals amount

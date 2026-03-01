@@ -133,6 +133,23 @@
       </div>
       <div>{{ form.aadhaar_number.label_tag }} {{ form.aadhaar_number }}{% if form.aadhaar_number.errors %}<div class="text-danger small">{{ form.aadhaar_number.errors|striptags }}</div>{% endif %}</div>
     </div>
+    <div class="mt-2">
+      <label class="form-label fw-semibold">Final Joining Date <span class="fw-normal text-muted small">(Date from which monthly PG fee is calculated)</span></label>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <input type="date" name="payment_day" id="payment_day" class="form-control" style="max-width:260px;" required value="{% if final_joining_date %}{{ final_joining_date|date:'Y-m-d' }}{% endif %}" data-locked="{{ is_payment_date_locked|yesno:'true,false' }}">
+        {% if not is_payment_date_locked %}
+        <div class="form-check form-switch mb-0 ms-1">
+          <input class="form-check-input" type="checkbox" role="switch" id="toggleEditPaymentDate" style="cursor:pointer;width:2.5em;height:1.3em;">
+          <label class="form-check-label small text-muted" for="toggleEditPaymentDate">Edit date</label>
+        </div>
+        {% endif %}
+      </div>
+      {% if is_payment_date_locked %}
+      <div class="form-text text-info"><i class="bi bi-lock-fill me-1"></i>This date is locked (booking approved). Contact PG Admin to change.</div>
+      {% else %}
+      <div class="form-text" id="paymentDayHint">{% if final_joining_date %}Current: {{ final_joining_date|date:'d M Y' }}.{% endif %} Toggle switch to customise (within 31 days of admission date).</div>
+      {% endif %}
+    </div>
   </div>
   <div class="app-section">
     <h2>Preferences & Background</h2>
@@ -307,27 +324,6 @@
         {% endif %}
       </div>
     {% endif %}
-  </div>
-  <div class="app-section">
-    <h2>Final Joining Date <span class="fw-normal text-muted small">(This is the date from which the monthly PG fee is calculated)</span></h2>
-    <div class="mb-2">
-      <div class="d-flex align-items-center gap-2">
-        <input type="date" name="payment_day" id="payment_day" class="form-control" {% if is_payment_date_locked %}readonly{% else %}readonly{% endif %} style="max-width: 280px;" required value="{% if final_joining_date %}{{ final_joining_date|date:'Y-m-d' }}{% endif %}" data-locked="{{ is_payment_date_locked|yesno:'true,false' }}">
-        {% if not is_payment_date_locked %}
-        <div class="form-check mb-0">
-          <input class="form-check-input" type="checkbox" id="enableEditPaymentDate" style="cursor: pointer;">
-          <label class="form-check-label small text-muted" for="enableEditPaymentDate" style="cursor: pointer;">
-            Enable editing
-          </label>
-        </div>
-        {% endif %}
-      </div>
-      {% if is_payment_date_locked %}
-      <div class="form-text text-info"><i class="bi bi-lock-fill me-1"></i>This date is locked as your booking has been approved. Contact PG Admin to change.</div>
-      {% else %}
-      <div class="form-text">{% if final_joining_date %}Current date: {{ final_joining_date|date:'d M Y' }}.{% endif %} Check the box to customize (within 31 days of admission date).</div>
-      {% endif %}
-    </div>
   </div>
   <div class="app-section declarations">
     <h2>Declaration</h2>
@@ -1416,23 +1412,22 @@
   (function(){
     // In application_fill, the joining date is the "date_of_admission" field
     const joiningDateInput = document.getElementById('id_date_of_admission');
-    const paymentDayInput = document.getElementById('payment_day');
-    const enableEditCheckbox = document.getElementById('enableEditPaymentDate');
+    const toggleBtn = document.getElementById('toggleEditPaymentDate');
+    const hint = document.getElementById('paymentDayHint');
+    let paymentDayInput = document.getElementById('payment_day');
     
     // Check if payment date is locked (for approved bookings)
     const isLocked = paymentDayInput && paymentDayInput.dataset.locked === 'true';
     
     if (!joiningDateInput || !paymentDayInput) return;
     
-    // If locked, disable all interactions and return early
+    // If locked permanently, disable and exit
     if (isLocked) {
-      paymentDayInput.setAttribute('readonly', 'readonly');
+      paymentDayInput.readOnly = true;
       paymentDayInput.style.cursor = 'not-allowed';
       paymentDayInput.style.backgroundColor = '#f8f9fa';
       return;
     }
-    
-    if (!enableEditCheckbox) return;
     
     // Helper to format date as YYYY-MM-DD
     function formatDateYMD(dateStr) {
@@ -1454,7 +1449,13 @@
       return formatDateYMD(d.toISOString());
     }
     
-    // Update payment date based on joining date
+    function setLocked(locked) {
+      paymentDayInput.readOnly = locked;
+      paymentDayInput.style.backgroundColor = locked ? '#f8f9fa' : '';
+      paymentDayInput.style.cursor = locked ? 'not-allowed' : '';
+    }
+    
+    // Update payment date based on admission date
     function updatePaymentDate() {
       const joiningVal = joiningDateInput.value;
       if (!joiningVal) {
@@ -1468,10 +1469,8 @@
       paymentDayInput.setAttribute('min', joiningVal);
       paymentDayInput.setAttribute('max', addDays(joiningVal, 31));
       
-      // If editing is not enabled, auto-fill with joining date
-      // But preserve existing value if payment date was already set from backend
-      if (!enableEditCheckbox.checked) {
-        // Only auto-fill if field is empty
+      // If editing is not enabled (toggle is off), auto-fill with joining date
+      if (!toggleBtn || !toggleBtn.checked) {
         if (!paymentDayInput.value) {
           paymentDayInput.value = joiningVal;
         }
@@ -1488,33 +1487,34 @@
       }
     }
     
-    // Toggle edit mode
-    function toggleEditMode() {
-      if (enableEditCheckbox.checked) {
-        paymentDayInput.removeAttribute('readonly');
-      } else {
-        paymentDayInput.setAttribute('readonly', 'readonly');
-        // Reset to joining date when disabling edit
-        if (joiningDateInput.value) {
-          paymentDayInput.value = joiningDateInput.value;
+    // Toggle (bootstrap switch): ON = editing enabled, OFF = locked
+    if (toggleBtn) {
+      toggleBtn.addEventListener('change', function() {
+        var editing = toggleBtn.checked;
+        setLocked(!editing);
+        if (editing) {
+          paymentDayInput.focus();
+          if (typeof paymentDayInput.showPicker === 'function') {
+            try { paymentDayInput.showPicker(); } catch(_) {}
+          }
+        } else {
+          // Turned off: reset to joining date
+          if (joiningDateInput.value) {
+            paymentDayInput.value = joiningDateInput.value;
+          }
         }
-      }
+      });
     }
     
     // Listen for joining date changes
     joiningDateInput.addEventListener('change', updatePaymentDate);
     joiningDateInput.addEventListener('input', updatePaymentDate);
     
-    // Listen for edit checkbox changes
-    enableEditCheckbox.addEventListener('change', toggleEditMode);
-    
-    // Initialize
+    // Initialize: start locked
+    setLocked(true);
     if (joiningDateInput.value) {
       updatePaymentDate();
     }
-    
-    // Ensure readonly on load
-    toggleEditMode();
   })();
 
   // Preview logic removed per request

@@ -89,12 +89,28 @@
         <div class="booking-head">
           <div class="user-line fw-semibold">{{ b.user.first_name }} {{ b.user.last_name }} <span class="text-faded">({{ b.user.email }})</span></div>
           <div class="meta">
-            <span class="badge-pill">Regular</span>
+            {% if not b.has_application or b.application.status == 'pending' %}
+              <span class="badge-pill warn">Advance Booking</span>
+            {% else %}
+              <span class="badge-pill">Regular</span>
+            {% endif %}
             <span class="badge-pill">Room {{ b.room.room_no }}</span>
             <span class="badge-pill">Bed {{ b.share_no }}</span>
-            <span class="badge-pill {% if b.has_application %}success{% else %}warn{% endif %}">{% if b.has_application %}Application Submitted{% else %}Application Pending{% endif %}</span>
-            <span class="badge-pill">Joining {{ b.joining_date|default:"—" }}</span>
-            <span class="badge-pill">Payment {{ b.payment_date|date:"Y-m-d"|default:"—" }}</span>
+            <span class="badge-pill {% if b.has_application and b.application.status != 'pending' %}success{% else %}warn{% endif %}">{% if b.has_application and b.application.status != 'pending' %}Application Submitted{% else %}Application Pending{% endif %}</span>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mt-1 align-items-center" style="font-size:.8rem">
+            <span class="text-secondary">Joining:
+              <span id="joiningDateDisplay{{ b.id }}" class="fw-semibold">{{ b.joining_date|default:"—" }}</span>
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Edit joining date" data-bs-toggle="modal" data-bs-target="#joinDateModal{{ b.id }}">
+                <i class="bi bi-pencil-square"></i>
+              </button>
+            </span>
+            <span class="text-secondary">Payment:
+              <span id="paymentDateDisplay{{ b.id }}" class="fw-semibold">{{ b.payment_date|date:"Y-m-d"|default:"—" }}</span>
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" title="Edit payment date" data-bs-toggle="modal" data-bs-target="#paymentDateModal{{ b.id }}">
+                <i class="bi bi-pencil-square"></i>
+              </button>
+            </span>
           </div>
           <div class="small text-faded">Phone: {{ b.user.profile.phone|default:"—" }}</div>
           {% if b.has_application and b.application.whatsapp_number %}
@@ -221,9 +237,97 @@
   {% if b.has_application and b.application %}
     {% include 'pgadmin/_application_modal.html' with booking=b pg=pg referral_options=referral_options %}
   {% endif %}
+  {% if b.booking_type != 'daywise' %}
+  <!-- Edit Joining Date Modal -->
+  <div class="modal fade" id="joinDateModal{{ b.id }}" tabindex="-1" aria-labelledby="joinDateLabel{{ b.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form method="post" action="{% url 'pg_booking_joining_update' b.id %}" class="joining-date-form" data-booking-id="{{ b.id }}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="joinDateLabel{{ b.id }}">Edit Joining Date</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label">Joining Date</label>
+            <input type="date" name="joining_date" class="form-control" value="{% if b.joining_date %}{{ b.joining_date|date:'Y-m-d' }}{% endif %}" required />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <!-- Edit Payment Date Modal -->
+  <div class="modal fade" id="paymentDateModal{{ b.id }}" tabindex="-1" aria-labelledby="paymentDateLabel{{ b.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form method="post" action="{% url 'pg_booking_payment_date_update' b.id %}" class="payment-date-form" data-booking-id="{{ b.id }}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="paymentDateLabel{{ b.id }}">Edit Payment Date</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label class="form-label">Payment Date</label>
+            <input type="date" name="payment_date" class="form-control" value="{% if b.payment_date %}{{ b.payment_date|date:'Y-m-d' }}{% elif b.joining_date %}{{ b.joining_date|date:'Y-m-d' }}{% endif %}" required />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 {% endfor %}
 
 <script>
+(function(){
+  function attachAjaxFormHandler(selector, dateFieldPrefix) {
+    document.querySelectorAll(selector).forEach(function(form){
+      form.addEventListener('submit', function(evt){
+        evt.preventDefault();
+        const bookingId = form.dataset.bookingId;
+        fetch(form.getAttribute('action'), {
+          method: 'POST',
+          headers: {'X-Requested-With': 'XMLHttpRequest'},
+          body: new FormData(form),
+          credentials: 'same-origin'
+        })
+        .then(function(res){ return res.json(); })
+        .then(function(data){
+          if (!data || !data.ok) {
+            const msg = (data && (data.error || data.message)) || 'Update failed.';
+            if (window.showToast) window.showToast(msg, 'danger'); else alert(msg);
+            return;
+          }
+          const displaySpan = document.getElementById(dateFieldPrefix + 'Display' + bookingId);
+          if (displaySpan) {
+            displaySpan.textContent = data.display || data.value || '—';
+            displaySpan.classList.remove('flash-update');
+            void displaySpan.offsetWidth;
+            displaySpan.classList.add('flash-update');
+          }
+          const input = form.querySelector('input[type="date"]');
+          if (input && data.value_iso) input.value = data.value_iso;
+          const modalEl = form.closest('.modal');
+          if (modalEl && window.bootstrap) {
+            (bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl)).hide();
+          }
+          if (window.showToast) window.showToast(data.message || 'Updated successfully.', 'success');
+        })
+        .catch(function(){ if (window.showToast) window.showToast('Update failed. Please try again.', 'danger'); else alert('Update failed.'); });
+      });
+    });
+  }
+  attachAjaxFormHandler('.joining-date-form', 'joiningDate');
+  attachAjaxFormHandler('.payment-date-form', 'paymentDate');
+})();
+
 document.addEventListener('DOMContentLoaded', function () {
   const syncMap = new Map();
 

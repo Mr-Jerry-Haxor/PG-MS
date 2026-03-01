@@ -1,4 +1,5 @@
 import io
+import calendar as _cal
 from datetime import timedelta, date
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
@@ -22,6 +23,36 @@ from pgadmin.models import PG, PGAdmin
 from .application_forms import ResidentApplicationForm
 from .forms import AadhaarForm, BookingRequestForm
 from .models import Room, RoomShareStatus, Booking, RoomSwap
+
+
+def _normalize_payment_day(payment_date, anchor_date):
+    """
+    Given a raw payment_date (potentially months away from anchor_date) and
+    an anchor_date (booking joining/admission date), return a normalized date
+    with the same day-of-month placed in the first eligible month on-or-after
+    anchor_date where the result falls within 31 days of anchor_date.
+
+    Example: anchor=2025-11-01, payment_date=2026-01-05 → target_day=5
+             Nov 5 - Nov 1 = 4 days ✓  →  returns 2025-11-05
+    Falls back to anchor_date if no valid placement found in 3 months.
+    """
+    if not payment_date or not anchor_date:
+        return anchor_date or payment_date
+    target_day = payment_date.day
+    year, month = anchor_date.year, anchor_date.month
+    for _ in range(3):  # try current month, next month, month after
+        last = _cal.monthrange(year, month)[1]
+        day = min(target_day, last)
+        candidate = date(year, month, day)
+        diff = (candidate - anchor_date).days
+        if 0 <= diff <= 31:
+            return candidate
+        if month == 12:
+            year, month = year + 1, 1
+        else:
+            month += 1
+    return anchor_date
+
 
 def _pg_by_slug_or_404(slug: str):
     from django.shortcuts import get_object_or_404
@@ -581,24 +612,18 @@ def handle_booknow_booking(request, pg, has_active, context):
                 errors.append(f"{fld}: {er}")
 
     # Validate payment day selection (shown as "Final Joining Date" in UI)
-    # Now receives a full date (YYYY-MM-DD) instead of just day number
     payment_day_raw = request.POST.get('payment_day', '')
     payment_date_selected = None
     if not payment_day_raw:
         errors.append('Final joining date is required. Please select a joining date first.')
     else:
         try:
-            # Parse the date string
             payment_date_selected = parse_date(payment_day_raw)
             if not payment_date_selected:
                 errors.append('Invalid final joining date format.')
-            else:
-                # Validate it's within 31 days from joining date
-                if joining_date:
-                    from datetime import timedelta
-                    days_diff = (payment_date_selected - joining_date).days
-                    if days_diff < 0 or days_diff > 31:
-                        errors.append('Final joining date must be within 31 days from the joining date.')
+            elif joining_date:
+                # Normalize: extract day-of-month and place it within 31 days of joining
+                payment_date_selected = _normalize_payment_day(payment_date_selected, joining_date)
         except (ValueError, TypeError):
             errors.append('Invalid final joining date.')
 
@@ -866,24 +891,18 @@ def handle_booknow_booking(request, pg, has_active, context):
                 errors.append(f"{fld}: {er}")
 
     # Validate payment day selection (shown as "Final Joining Date" in UI)
-    # Now receives a full date (YYYY-MM-DD) instead of just day number
     payment_day_raw = request.POST.get('payment_day', '')
     payment_date_selected = None
     if not payment_day_raw:
         errors.append('Final joining date is required. Please select a joining date first.')
     else:
         try:
-            # Parse the date string
             payment_date_selected = parse_date(payment_day_raw)
             if not payment_date_selected:
                 errors.append('Invalid final joining date format.')
-            else:
-                # Validate it's within 31 days from joining date
-                if joining_date:
-                    from datetime import timedelta
-                    days_diff = (payment_date_selected - joining_date).days
-                    if days_diff < 0 or days_diff > 31:
-                        errors.append('Final joining date must be within 31 days from the joining date.')
+            elif joining_date:
+                # Normalize: extract day-of-month and place it within 31 days of joining
+                payment_date_selected = _normalize_payment_day(payment_date_selected, joining_date)
         except (ValueError, TypeError):
             errors.append('Invalid final joining date.')
 
@@ -1588,20 +1607,14 @@ def application_fill(request, booking_id):
             return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
         
         try:
-            # Parse the date string (YYYY-MM-DD format)
             payment_date_selected = parse_date(payment_day_raw)
             if not payment_date_selected:
                 messages.error(request, "Invalid final joining date format.")
                 return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
-            
-            # Validate it's within 31 days from admission date
+            # Normalize: extract day-of-month and place within 31 days of admission
             admission_date = form.cleaned_data.get('date_of_admission')
             if admission_date:
-                from datetime import timedelta
-                days_diff = (payment_date_selected - admission_date).days
-                if days_diff < 0 or days_diff > 31:
-                    messages.error(request, "Final joining date must be within 31 days from the admission date.")
-                    return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
+                payment_date_selected = _normalize_payment_day(payment_date_selected, admission_date)
         except (ValueError, TypeError):
             messages.error(request, "Invalid final joining date.")
             return render(request, 'bookings/application_fill.html', {"form": form, "booking": booking, "app": app})
@@ -1640,150 +1653,146 @@ def application_fill(request, booking_id):
         
         # Upload files to Drive with two separate Aadhaar fields
         aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
-        
+
+        # --- Selfie ---
         if selfie_file:
             up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
             if up:
                 _fid, preview = up
                 inst.selfie_url = preview
-        else:
-            # keep existing
-            if app:
-                inst.selfie_url = app.selfie_url
-            
-            # Handle Aadhaar Document 1 and optionally Document 2
-            folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
-            if aadhaar_file_1:
-                old_url_1 = app.aadhaar_file_url if app else None
-                old_url_2 = getattr(app, 'aadhaar_file_url_2', None) if app else None
-                
-                name = (getattr(aadhaar_file_1, 'name', '') or '').lower()
-                ctype = getattr(aadhaar_file_1, 'content_type', '') or ''
-                is_pdf = ctype == 'application/pdf' or name.endswith('.pdf')
-                
-                if is_pdf:
-                    # Upload PDF - delete old files if switching from images
-                    up = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}.pdf", folder)
-                    if up:
-                        _fid, preview = up
-                        inst.aadhaar_file_url = preview
-                        inst.aadhaar_file_url_2 = ''
-                        # Delete old files if they're different
-                        if old_url_1 and old_url_1 != preview:
-                            try:
-                                drive_delete(old_url_1)
-                            except Exception:
-                                pass
-                        if old_url_2:
+        elif app:
+            # No new selfie uploaded — preserve existing
+            inst.selfie_url = app.selfie_url
+
+        # --- Aadhaar (always runs, independent of selfie) ---
+        folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '')
+        if aadhaar_file_1:
+            old_url_1 = app.aadhaar_file_url if app else None
+            old_url_2 = getattr(app, 'aadhaar_file_url_2', None) if app else None
+
+            name = (getattr(aadhaar_file_1, 'name', '') or '').lower()
+            ctype = getattr(aadhaar_file_1, 'content_type', '') or ''
+            is_pdf = ctype == 'application/pdf' or name.endswith('.pdf')
+
+            if is_pdf:
+                up = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}.pdf", folder)
+                if up:
+                    _fid, preview = up
+                    inst.aadhaar_file_url = preview
+                    inst.aadhaar_file_url_2 = ''
+                    if old_url_1 and old_url_1 != preview:
+                        try:
+                            drive_delete(old_url_1)
+                        except Exception:
+                            pass
+                    if old_url_2:
+                        try:
+                            drive_delete(old_url_2)
+                        except Exception:
+                            pass
+            else:
+                def _pick_ext(nm: str):
+                    if nm.endswith('.png'): return '.png'
+                    if nm.endswith('.webp'): return '.webp'
+                    return '.jpg'
+
+                ext1 = _pick_ext(name)
+                up1 = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}_front{ext1}", folder)
+                if up1:
+                    _fid1, preview1 = up1
+                    inst.aadhaar_file_url = preview1
+                    if old_url_1 and old_url_1 != preview1:
+                        try:
+                            drive_delete(old_url_1)
+                        except Exception:
+                            pass
+
+                if aadhaar_file_2:
+                    name2 = (getattr(aadhaar_file_2, 'name', '') or '').lower()
+                    ext2 = _pick_ext(name2)
+                    up2 = drive_upload(aadhaar_file_2, f"aadhaar_{request.user.id}_back{ext2}", folder)
+                    if up2:
+                        _fid2, preview2 = up2
+                        inst.aadhaar_file_url_2 = preview2
+                        if old_url_2 and old_url_2 != preview2:
                             try:
                                 drive_delete(old_url_2)
                             except Exception:
                                 pass
                 else:
-                    # Upload image as front
-                    def _pick_ext(nm: str):
-                        if nm.endswith('.png'): return '.png'
-                        if nm.endswith('.webp'): return '.webp'
-                        return '.jpg'
-                    
-                    ext1 = _pick_ext(name)
-                    up1 = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}_front{ext1}", folder)
-                    if up1:
-                        _fid1, preview1 = up1
-                        inst.aadhaar_file_url = preview1
-                        # Delete old file if different
-                        if old_url_1 and old_url_1 != preview1:
-                            try:
-                                drive_delete(old_url_1)
-                            except Exception:
-                                pass
-                    
-                    # Handle optional Document 2 (back side)
-                    if aadhaar_file_2:
-                        name2 = (getattr(aadhaar_file_2, 'name', '') or '').lower()
-                        ext2 = _pick_ext(name2)
-                        up2 = drive_upload(aadhaar_file_2, f"aadhaar_{request.user.id}_back{ext2}", folder)
-                        if up2:
-                            _fid2, preview2 = up2
-                            inst.aadhaar_file_url_2 = preview2
-                            # Delete old back file if different
-                            if old_url_2 and old_url_2 != preview2:
-                                try:
-                                    drive_delete(old_url_2)
-                                except Exception:
-                                    pass
-                    else:
-                        # No back image provided - clear and delete old
-                        inst.aadhaar_file_url_2 = ''
-                        if old_url_2:
-                            try:
-                                drive_delete(old_url_2)
-                            except Exception:
-                                pass
-            else:
-                if app:
-                    inst.aadhaar_file_url = app.aadhaar_file_url
-                    # Preserve second url if present
-                    inst.aadhaar_file_url_2 = getattr(app, 'aadhaar_file_url_2', '')
-            # Status transitions
-            is_new = app is None
-            inst.save()
-            from .models import ApplicationStatusHistory
-            if is_new:
+                    inst.aadhaar_file_url_2 = ''
+                    if old_url_2:
+                        try:
+                            drive_delete(old_url_2)
+                        except Exception:
+                            pass
+        else:
+            # No new Aadhaar uploaded — preserve existing
+            if app:
+                inst.aadhaar_file_url = app.aadhaar_file_url
+                inst.aadhaar_file_url_2 = getattr(app, 'aadhaar_file_url_2', '')
+
+        # --- Save instance and handle status transitions ---
+        is_new = app is None
+        inst.save()
+        from .models import ApplicationStatusHistory
+        if is_new:
+            inst.status = ResidentApplication.SUBMITTED
+            inst.save(update_fields=['status'])
+            ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Submitted by user')
+        else:
+            if app.status == ResidentApplication.REFILL_REQUESTED:
+                inst.status = ResidentApplication.RESUBMITTED
+                inst.save(update_fields=['status'])
+                ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Re-submitted by user')
+            elif app.status in (ResidentApplication.REJECTED, ResidentApplication.SUBMITTED, ResidentApplication.RESUBMITTED):
+                inst.status = ResidentApplication.SUBMITTED
+                inst.save(update_fields=['status'])
+                ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Updated by user')
+            elif app.status == ResidentApplication.PENDING:
                 inst.status = ResidentApplication.SUBMITTED
                 inst.save(update_fields=['status'])
                 ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Submitted by user')
-            else:
-                # If admin requested refill, mark as re-submitted; else treat as submitted
-                if app.status == ResidentApplication.REFILL_REQUESTED:
-                    inst.status = ResidentApplication.RESUBMITTED
-                    inst.save(update_fields=['status'])
-                    ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Re-submitted by user')
-                elif app.status in (ResidentApplication.REJECTED, ResidentApplication.SUBMITTED, ResidentApplication.RESUBMITTED):
-                    # Keep as submitted to indicate awaiting confirmation
-                    inst.status = ResidentApplication.SUBMITTED
-                    inst.save(update_fields=['status'])
-                    ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Updated by user')
 
-            # Notify PG Admins via in-app notification and email with a link to review/confirm
-            try:
-                admin_url = request.build_absolute_uri(reverse('pg_resident_applications'))
-                action = 'Submitted' if inst.status == ResidentApplication.SUBMITTED else ('Re-submitted' if inst.status == ResidentApplication.RESUBMITTED else 'Updated')
-                # In-app notifications
-                admin_profiles = list(inst.pg.admins.select_related('user').all())
-                for ap in admin_profiles:
-                    Notification.objects.create(
-                        user=ap.user,
-                        title=f"Resident Application {action}",
-                        message=(
-                            f"{inst.user.email} {action.lower()} an application for Room {booking.room.room_no} Share {booking.share_no}. "
-                            f"Review and confirm: {admin_url}"
-                        ),
-                    )
-                # Email
-                admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
-                if admin_emails:
-                    send_mail(
-                        subject=f"PG-MS: Resident Application {action}",
-                        message=(
-                            f"A resident application was {action.lower()} and awaits your confirmation.\n\n"
-                            f"PG: {inst.pg.name}\n"
-                            f"Room: {booking.room.room_no} | Share: {booking.share_no}\n"
-                            f"Applicant: {inst.name or inst.user.get_full_name() or inst.user.email}\n"
-                            f"Email: {inst.user.email}\n\n"
-                            f"View and confirm here: {admin_url}\n"
-                        ),
-                        from_email=None,
-                        recipient_list=admin_emails,
-                        fail_silently=True,
-                    )
-            except Exception:
-                # Non-fatal notification/email errors shouldn't block form completion
-                pass
-            messages.success(request, "Application saved.")
-            if request.GET.get('from') == 'self':
-                return redirect('my_application')
-            return redirect('dashboard')
+        # Notify PG Admins via in-app notification and email with a link to review/confirm
+        try:
+            admin_url = request.build_absolute_uri(reverse('pg_resident_applications'))
+            action = 'Submitted' if inst.status == ResidentApplication.SUBMITTED else ('Re-submitted' if inst.status == ResidentApplication.RESUBMITTED else 'Updated')
+            # In-app notifications
+            admin_profiles = list(inst.pg.admins.select_related('user').all())
+            for ap in admin_profiles:
+                Notification.objects.create(
+                    user=ap.user,
+                    title=f"Resident Application {action}",
+                    message=(
+                        f"{inst.user.email} {action.lower()} an application for Room {booking.room.room_no} Share {booking.share_no}. "
+                        f"Review and confirm: {admin_url}"
+                    ),
+                )
+            # Email
+            admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
+            if admin_emails:
+                send_mail(
+                    subject=f"PG-MS: Resident Application {action}",
+                    message=(
+                        f"A resident application was {action.lower()} and awaits your confirmation.\n\n"
+                        f"PG: {inst.pg.name}\n"
+                        f"Room: {booking.room.room_no} | Share: {booking.share_no}\n"
+                        f"Applicant: {inst.name or inst.user.get_full_name() or inst.user.email}\n"
+                        f"Email: {inst.user.email}\n\n"
+                        f"View and confirm here: {admin_url}\n"
+                    ),
+                    from_email=None,
+                    recipient_list=admin_emails,
+                    fail_silently=True,
+                )
+        except Exception:
+            # Non-fatal notification/email errors shouldn't block form completion
+            pass
+        messages.success(request, "Application saved.")
+        if request.GET.get('from') == 'self':
+            return redirect('my_application')
+        return redirect('dashboard')
     else:
         if app:
             form = ResidentApplicationForm(instance=app)
@@ -1797,19 +1806,25 @@ def application_fill(request, booking_id):
             form = ResidentApplicationForm(initial=initial)
     
     # Pass full payment_date (not just day) for display in date input field
-    # Priority: booking.payment_date (if booking is approved) > app final joining date > booking.joining_date
+    # Priority: booking.payment_date (normalized) > booking.joining_date
     final_joining_date = None
     is_payment_date_locked = False
-    
+    _anchor = booking.joining_date or booking.start_date
+
     if booking.payment_date:
-        # If booking has payment_date (usually set when booking is approved), use it
-        final_joining_date = booking.payment_date
-        # For approved bookings, payment date should not be editable (it's confirmed)
         if booking.status == Booking.APPROVED:
+            # Locked: show as-is (do not normalize — admin set this deliberately)
+            final_joining_date = booking.payment_date
             is_payment_date_locked = True
-    elif booking.joining_date:
-        # Fallback to joining date if no payment_date
-        final_joining_date = booking.joining_date
+        else:
+            # Not yet approved: normalize to be within 31 days of joining so the
+            # form renders a sensible default even if admin set a far-future date.
+            final_joining_date = (
+                _normalize_payment_day(booking.payment_date, _anchor)
+                if _anchor else booking.payment_date
+            )
+    elif _anchor:
+        final_joining_date = _anchor
     
     return render(request, 'bookings/application_fill.html', {
         "form": form,

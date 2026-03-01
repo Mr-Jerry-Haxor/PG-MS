@@ -481,7 +481,9 @@
               data-room-no="{{ r.room_no }}"
               data-whatsapp-phone="{{ r.whatsapp_phone|default:'' }}"
               data-expected="{{ r.expected }}" data-collected="{{ r.collected }}"
-              data-pending="{{ r.pending }}" data-advance="{{ r.advance|default:'0' }}">
+              data-pending="{{ r.pending }}" data-advance="{{ r.advance|default:'0' }}"
+              data-billing-from="{% if r.billing_from %}{{ r.billing_from|date:'d M Y' }}{% endif %}"
+              data-billing-to="{% if r.billing_to %}{{ r.billing_to|date:'d M Y' }}{% endif %}">
             <td><input type="checkbox" class="rowchk" name="user_ids" value="{{ r.user.id }}" {% if r.status == 'paid' %}disabled{% endif %}></td>
             <td>
               <a href="{% url 'finance_ledger' r.user.id %}">{{ r.user.first_name }} {{ r.user.last_name }}</a>
@@ -623,7 +625,8 @@
                 data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}"
                 data-due-date="{% if filter_only == 'old_dues' and r.prev_month_payment_due_iso %}{{ r.prev_month_payment_due_iso }}{% elif r.payment_date_iso %}{{ r.payment_date_iso }}{% elif r.payment_anchor_iso %}{{ r.payment_anchor_iso }}{% endif %}"
                 data-is-old-dues="{% if filter_only == 'old_dues' %}true{% else %}false{% endif %}"
-                data-old-dues-label="{% if filter_only == 'old_dues' %}{{ r.prev_month_label }}{% endif %}">{{ r.status_label }}</span>
+                data-old-dues-label="{% if filter_only == 'old_dues' %}{{ r.prev_month_label }}{% endif %}"
+                data-is-daywise="{% if r.is_daywise %}true{% else %}false{% endif %}">{{ r.status_label }}</span>
             </td>
             <td>
               <div class="d-flex flex-wrap gap-1">
@@ -796,7 +799,9 @@
                data-advance="{{ r.advance|default:'0' }}"
                data-joining="{% if r.joining %}{{ r.joining|date:'Y-m-d' }}{% endif %}"
                data-payment-date="{% if r.payment_due_date %}{{ r.payment_due_date|date:'Y-m-d' }}{% elif r.payment_anchor %}{{ r.payment_anchor|date:'Y-m-d' }}{% endif %}"
-               data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}">
+               data-leaving="{% if r.leaving %}{{ r.leaving|date:'Y-m-d' }}{% endif %}"
+               data-billing-from="{% if r.billing_from %}{{ r.billing_from|date:'d M Y' }}{% endif %}"
+               data-billing-to="{% if r.billing_to %}{{ r.billing_to|date:'d M Y' }}{% endif %}">
             <!-- Card Header -->
             <div class="resident-card-header">
               <div class="d-flex align-items-center gap-2">
@@ -1931,12 +1936,30 @@
           if (dateInput) {
             dateInput.value = todayIsoDate();
           }
+          // Auto-detect day-wise FIRST so billing-period logic can branch correctly.
+          var isDaywise = (this.dataset.isDaywise || '').toLowerCase() === 'true';
           // Determine billing-period base: prefer the user's configured due date
           // (if available on the chip) so From/To reflect the payment cycle.
           var assignedDue = (this.dataset.dueDate || '').trim();
           var modalPeriodBase = assignedDue || (dateInput ? dateInput.value : '');
-          // Populate From/To initially from the modal base
-          updateQuickPayBillingPeriod(modalPeriodBase);
+          // Helper: restore billing period based on booking type.
+          // Day-wise → joining to leaving (actual stay dates);
+          // Monthly  → standard payment-cycle (computeBillingPeriod).
+          function restoreBillingPeriod() {
+            if (isDaywise && joining) {
+              if (fromInput) fromInput.value = joining;
+              if (toInput) toInput.value = leaving || joining;
+            } else {
+              updateQuickPayBillingPeriod(modalPeriodBase);
+              // Cap the computed to-date at the tenant's leaving date when it falls
+              // before the end of the monthly payment cycle.
+              if (leaving && toInput && toInput.value && toInput.value > leaving) {
+                toInput.value = leaving;
+              }
+            }
+          }
+          // Populate From/To initially
+          restoreBillingPeriod();
 
           // Ensure From/To are readonly by default; override enables editing
           if (fromInput) fromInput.readOnly = true;
@@ -1951,7 +1974,7 @@
               // (overwrite any manual edits) so the modal reflects the
               // canonical billing cycle when not overridden.
               if (!editable) {
-                updateQuickPayBillingPeriod(modalPeriodBase);
+                restoreBillingPeriod();
               }
             };
           }
@@ -1972,10 +1995,10 @@
               // When revealing From/To again, repopulate them if not overridden
               if (fromInput && toInput) {
                 if (overrideCheckbox) {
-                  if (!overrideCheckbox.checked) updateQuickPayBillingPeriod(modalPeriodBase);
+                  if (!overrideCheckbox.checked) restoreBillingPeriod();
                 } else {
                   // No override control present: ensure fields populated
-                  if (!fromInput.value || !toInput.value) updateQuickPayBillingPeriod(modalPeriodBase);
+                  if (!fromInput.value || !toInput.value) restoreBillingPeriod();
                 }
               }
             }
@@ -1994,7 +2017,7 @@
             }
           }
           // Auto-select daywise type for daywise users
-          var isDaywise = (this.dataset.isDaywise || '').toLowerCase() === 'true';
+          // (isDaywise is already declared above for billing-period logic)
           if (typeSelect) {
             if (isDaywise) {
               typeSelect.value = 'daywise';
@@ -2234,7 +2257,18 @@
               var paidAmount = document.getElementById('qp_amount') ? document.getElementById('qp_amount').value : '0';
               var paidType = document.getElementById('qp_type') ? document.getElementById('qp_type').value : 'fee';
               var paidMode = document.getElementById('qp_mode') ? document.getElementById('qp_mode').value : '';
-              showWhatsAppPaymentConfirmation(res.user_id, paidAmount, paidType, paidMode);
+              // Read billing period directly from the modal form fields (already correct for old_dues and day-wise)
+              var qpFromVal = document.getElementById('qp_from_date') ? document.getElementById('qp_from_date').value : '';
+              var qpToVal = document.getElementById('qp_to_date') ? document.getElementById('qp_to_date').value : '';
+              // Convert ISO (YYYY-MM-DD) to display format (DD Mon YYYY)
+              function isoToDisplay(iso) {
+                if (!iso) return '';
+                var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                var p = iso.split('-');
+                if (p.length !== 3) return iso;
+                return p[2] + ' ' + (months[parseInt(p[1],10)-1] || '') + ' ' + p[0];
+              }
+              showWhatsAppPaymentConfirmation(res.user_id, paidAmount, paidType, paidMode, isoToDisplay(qpFromVal), isoToDisplay(qpToVal));
             }
           })
           .catch(function(){ showToast('Network error while adding payment.', 'danger'); })
@@ -2703,9 +2737,9 @@
   }
 
   // Main function to show WhatsApp confirmation
-  window.showWhatsAppPaymentConfirmation = function(userId, amountPaid, paymentType, paymentMode) {
+  window.showWhatsAppPaymentConfirmation = function(userId, amountPaid, paymentType, paymentMode, overrideBillingFrom, overrideBillingTo) {
     console.log('=== showWhatsAppPaymentConfirmation CALLED ===');
-    console.log('Parameters:', { userId, amountPaid, paymentType, paymentMode });
+    console.log('Parameters:', { userId, amountPaid, paymentType, paymentMode, overrideBillingFrom, overrideBillingTo });
     
     // Step 1: Check toggle
     var toggle = document.getElementById('whatsappConfirmToggle');
@@ -2724,13 +2758,17 @@
     var phone = '';
     var userName = '';
     var roomNo = '';
+    var billingFrom = '';
+    var billingTo = '';
     
     var row = document.querySelector('#monthlyTable tbody tr[data-user-id="' + userId + '"]');
     if (row) {
       phone = row.dataset.whatsappPhone || '';
       userName = row.dataset.userName || '';
       roomNo = row.dataset.roomNo || '';
-      console.log('Found data from TABLE:', { phone, userName, roomNo });
+      billingFrom = row.dataset.billingFrom || '';
+      billingTo = row.dataset.billingTo || '';
+      console.log('Found data from TABLE:', { phone, userName, roomNo, billingFrom, billingTo });
     }
     
     if (!phone) {
@@ -2739,7 +2777,9 @@
         phone = card.dataset.whatsappPhone || '';
         userName = userName || card.dataset.userName || '';
         roomNo = roomNo || card.dataset.roomNo || '';
-        console.log('Found data from CARD:', { phone, userName, roomNo });
+        billingFrom = billingFrom || card.dataset.billingFrom || '';
+        billingTo = billingTo || card.dataset.billingTo || '';
+        console.log('Found data from CARD:', { phone, userName, roomNo, billingFrom, billingTo });
       }
     }
     
@@ -2749,6 +2789,10 @@
     }
 
     // Step 3: Prepare message
+    // Prefer caller-supplied billing dates (from modal form fields — always correct)
+    // over the row/card dataset values (which may reflect current month only)
+    var msgBillingFrom = overrideBillingFrom || billingFrom;
+    var msgBillingTo   = overrideBillingTo   || billingTo;
     waPhoneStore = phone;
     var pgName = '{{ pg.name|escapejs }}';
     var today = new Date();
@@ -2759,6 +2803,11 @@
     message += 'Payment Details:\n';
     message += '- PG: ' + pgName + '\n';
     message += '- Room: ' + roomNo + '\n';
+    if (msgBillingFrom && msgBillingTo) {
+      message += '- Billing Period: ' + msgBillingFrom + ' to ' + msgBillingTo + '\n';
+    } else if (msgBillingFrom) {
+      message += '- Billing From: ' + msgBillingFrom + '\n';
+    }
     message += '- Amount Paid: ₹' + parseFloat(amountPaid).toFixed(2) + '\n';
     message += '- Payment Type: ' + (paymentType || 'Fee') + '\n';
     message += '- Mode: ' + (paymentMode || '').toUpperCase() + '\n';

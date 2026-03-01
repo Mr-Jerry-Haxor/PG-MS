@@ -127,12 +127,12 @@
             <i class="bi bi-pencil"></i>
           </a>
           {% endif %}
-          {% if b.application.status == 'submitted' or b.application.status == 'resubmitted' or b.application.status == 'refill_requested' or b.application.status == 'rejected' %}
+          {% if b.application.status == 'submitted' or b.application.status == 'resubmitted' or b.application.status == 'refill_requested' or b.application.status == 'rejected' or b.application.status == 'pending' %}
             <form method="post" action="{% url 'pg_application_confirm' b.application.id %}" class="d-inline">{% csrf_token %}
               <button class="btn btn-sm btn-success" type="submit">Confirm</button>
             </form>
           {% endif %}
-          {% if b.application.status == 'submitted' or b.application.status == 'resubmitted' %}
+          {% if b.application.status == 'submitted' or b.application.status == 'resubmitted' or b.application.status == 'pending' %}
             <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ b.id }}">Reject</button>
           {% endif %}
           {% if b.application.status == 'confirmed' %}

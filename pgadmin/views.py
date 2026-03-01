@@ -3673,6 +3673,7 @@ def booking_approve(request, booking_id):
             payment_obj = Payment.objects.create(
                 user=booking.user,
                 pg=pg,
+                booking=booking,
                 amount=advance_amount_value,
                 date=timezone.now().date(),
                 status='success',
