@@ -563,7 +563,6 @@
         }
 
         function showNotificationPermissionPrompt(onAllow) {
-          if (localStorage.getItem('pgms-notification-dismissed') === 'permanent') return;
           if (document.getElementById('push-permission-banner')) return;
 
           const banner = document.createElement('div');
@@ -577,7 +576,6 @@
                   <p class="mb-2 small">Please turn on notifications to get PG updates.</p>
                   <div class="d-flex gap-2 justify-content-end flex-wrap">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="push-dismiss-temp">Not now</button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" id="push-dismiss-perm">Don't ask again</button>
                     <button type="button" class="btn btn-sm btn-primary" id="push-allow-btn">Allow notifications</button>
                   </div>
                 </div>
@@ -587,10 +585,6 @@
           document.body.appendChild(banner);
 
           document.getElementById('push-dismiss-temp').addEventListener('click', () => {
-            banner.remove();
-          });
-          document.getElementById('push-dismiss-perm').addEventListener('click', () => {
-            localStorage.setItem('pgms-notification-dismissed', 'permanent');
             banner.remove();
           });
           document.getElementById('push-allow-btn').addEventListener('click', async () => {
