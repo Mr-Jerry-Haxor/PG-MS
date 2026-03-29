@@ -466,22 +466,39 @@ const complaintMeta = {
     tenantPhone: '{{ tenant_phone|default:""|escapejs }}',
 };
 
-const conversationItems = [
-    {
-        sender: '{{ complaint.user.get_full_name|default:complaint.user.email|escapejs }}',
-        role: 'Tenant',
-        timestamp: '{{ complaint.created_at|date:"M d, Y g:i A"|escapejs }}',
-        message: '{{ complaint.description|escapejs }}'
-    },
-    {% for c in public_comments %}
-    {
-        sender: '{{ c.user.get_full_name|default:c.user.email|escapejs }}',
-        role: '{% if c.user_id == complaint.user_id %}Tenant{% else %}PG Admin{% endif %}',
-        timestamp: '{{ c.created_at|date:"M d, Y g:i A"|escapejs }}',
-        message: '{{ c.comment|escapejs }}'
-    },
-    {% endfor %}
-];
+const conversationItems = (() => {
+    const items = [
+        {
+            sender: complaintMeta.tenantName,
+            role: 'Tenant',
+            timestamp: '{{ complaint.created_at|date:"M d, Y g:i A"|escapejs }}',
+            message: '{{ complaint.description|escapejs }}'
+        }
+    ];
+
+    // Build public conversation from rendered timeline to keep JS parser-safe.
+    document.querySelectorAll('.timeline-item').forEach((item) => {
+        if (item.classList.contains('internal')) {
+            return;
+        }
+
+        const senderEl = item.querySelector('strong');
+        const timeEl = item.querySelector('small.text-muted');
+        const msgEl = item.querySelector('.comment-text');
+        if (!senderEl || !timeEl || !msgEl) {
+            return;
+        }
+
+        const sender = senderEl.textContent.replace(/\s+/g, ' ').trim();
+        const role = sender === complaintMeta.tenantName ? 'Tenant' : 'PG Admin';
+        const timestamp = timeEl.textContent.replace(/\s+/g, ' ').trim();
+        const message = msgEl.textContent.trim();
+
+        items.push({ sender, role, timestamp, message });
+    });
+
+    return items;
+})();
 
 function normalizedPhone(phone) {
     return (phone || '').replace(/[^\d]/g, '');
