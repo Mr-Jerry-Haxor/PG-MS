@@ -33,19 +33,26 @@
             <!-- Leave Date Selection -->
             <div class="leave-date-selection mb-4">
               <h5 class="mb-3">Select Leave Date</h5>
+              <div class="alert alert-light border small mb-3 py-2 px-3">
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>Rule:</strong> Latest allowed leave date is always <strong>one day before</strong> the next payment date.
+              </div>
 
-              <!-- Quick Select - Next Payment Day (card style for clarity) -->
+              <!-- Quick Select - latest allowed date (payment date - 1 day) -->
               <div class="card bg-light border-0 mb-3 shadow-sm">
                 <div class="card-body p-3">
                   <div class="d-flex flex-column flex-md-row gap-3 align-items-start align-items-md-center">
                     <div class="flex-grow-1">
-                      <div class="small text-uppercase text-muted">Quick option</div>
-                      <div class="h6 mb-1"><i class="bi bi-calendar-check-fill text-primary me-2"></i>Leave on Next Payment Day</div>
-                      <div class="text-muted">Scheduled for <strong id="qpDateDisplay">{{ next_payment_date|date:"F d, Y" }}</strong></div>
+                      <div class="small text-uppercase text-muted">Default date</div>
+                      <div class="h6 mb-1"><i class="bi bi-calendar-check-fill text-primary me-2"></i>Latest Allowed Leave Date</div>
+                      <div class="text-muted">Next payment date: <strong>{{ next_payment_due_date|date:"F d, Y" }}</strong> • Leave date: <strong id="qpDateDisplay">{{ next_payment_date|date:"F d, Y" }}</strong></div>
+                      {% if day_one_adjustment %}
+                      <div class="form-text">Payment date is the 1st, so leave date is the last day of previous month.</div>
+                      {% endif %}
                     </div>
                     <div class="d-flex flex-column align-items-stretch w-100 w-md-auto">
                       <button type="button" class="btn btn-primary btn-lg mb-2 w-100 w-md-auto" id="selectNextPaymentDay" data-date="{{ next_payment_date|date:'Y-m-d' }}">
-                        <i class="bi bi-calendar-check me-2"></i>Select Next Payment Day
+                        <i class="bi bi-calendar-check me-2"></i>Use This Date
                       </button>
                       
                     </div>
@@ -60,13 +67,21 @@
                   </div>
                 </div>
               </div>
-              {% if pg and pg.allow_custom_leave_date %}
-              <small class="text-muted text-center">Or choose a custom date below</small>
+
+              <!-- Selected Date Confirmation (shown after "Use This Date" is clicked) -->
+              <div id="selectedDateConfirm" class="card border-0 bg-light p-2 mb-3 text-center text-md-start" style="display: none;">
+                <div class="small text-muted">✓ Selected leave date</div>
+                <div class="fw-semibold fs-5" id="confirmedDateDisplay">{{ next_payment_date|date:"F d, Y" }}</div>
+                <div class="form-text">{% if allow_custom_leave_date %}You can change this by selecting "Choose earlier custom date" below.{% else %}This booking only allows this date (payment date minus 1 day).{% endif %}</div>
+              </div>
+
+              {% if allow_custom_leave_date %}
+              <small class="text-muted text-center d-block mb-2">You can choose an earlier date only (latest: {{ next_payment_date|date:"M d, Y" }})</small>
               <div class="custom-date-section">
                 <div class="form-check mb-3">
                   <input type="checkbox" class="form-check-input" id="customDateCheck">
                   <label class="form-check-label fw-semibold" for="customDateCheck">
-                    Select custom date
+                    Choose earlier custom date
                   </label>
                 </div>
 
@@ -74,7 +89,7 @@
                   <div class="mb-3">
                     <label for="leavingDateInput" class="form-label">Leave Date</label>
                     {{ form.leaving_date }}
-                    <div class="form-text">Pick a date at least <strong>{{ notice_period }}</strong> days ahead to be eligible for advance return.</div>
+                    <div class="form-text">Pick a date between tomorrow and <strong>{{ next_payment_date|date:"M d, Y" }}</strong>.</div>
                   </div>
                   
                   <!-- Dynamic Notice Period Warning -->
@@ -91,11 +106,6 @@
               </div>
           {% else %}
           <input type="hidden" id="leavingDateInput" name="leaving_date" value="{{ next_payment_date|date:'Y-m-d' }}" />
-          <div class="card border-0 bg-light p-2 mb-3 text-center text-md-start">
-            <div class="small text-muted">Selected leave date</div>
-            <div class="fw-semibold fs-5" id="selectedLeaveDateDisplay">{{ next_payment_date|date:"F d, Y" }}</div>
-            <div class="form-text">If you want to select a different date, please contact the PG owner.</div>
-          </div>
           {% endif %}
               
               <!-- Acknowledgment for No Advance (moved outside custom date picker) -->
@@ -141,6 +151,7 @@
   .card.bg-light { background: linear-gradient(180deg, #ffffff, #fbfbfd); }
   #qpDateDisplay { color: #0d6efd; }
   #selectedLeaveDateDisplay { color: #0b5ed7; }
+  .custom-date-section { border-top: 1px dashed #d1d5db; padding-top: .75rem; }
 
   /* Mobile responsiveness tweaks */
   @media (max-width: 575.98px) {
@@ -173,7 +184,9 @@
 <script id="django-data" type="application/json">
 {
   "noticePeriod": {{ notice_period }},
-  "today": "{{ today|date:'Y-m-d' }}"
+  "today": "{{ today|date:'Y-m-d' }}",
+  "dayOneAdjustment": {% if day_one_adjustment %}true{% else %}false{% endif %},
+  "latestAllowed": "{{ next_payment_date|date:'Y-m-d' }}"
 }
 </script>
 
@@ -188,12 +201,23 @@ document.addEventListener('DOMContentLoaded', function() {
   const acknowledgeSection = document.getElementById('acknowledgeSection');
   const acknowledgeCheckbox = document.getElementById('id_acknowledge_no_advance');
   const submitBtn = document.getElementById('submitLeaveBtn');
+  const selectedDateConfirm = document.getElementById('selectedDateConfirm');
+  const confirmedDateDisplay = document.getElementById('confirmedDateDisplay');
 
   // Load Django data
   const djangoDataEl = document.getElementById('django-data');
-  const djangoData = djangoDataEl ? JSON.parse(djangoDataEl.textContent) : { noticePeriod: 30, today: new Date().toISOString().slice(0,10) };
+  const djangoData = djangoDataEl ? JSON.parse(djangoDataEl.textContent) : { noticePeriod: 30, today: new Date().toISOString().slice(0,10), dayOneAdjustment: false, latestAllowed: '' };
   const noticePeriodDays = djangoData.noticePeriod;
-  const today = new Date(djangoData.today);
+  const latestAllowed = djangoData.latestAllowed || '';
+
+  function parseDateValue(v) {
+    if (!v) return null;
+    const d = new Date(v + 'T00:00:00');
+    return isNaN(d) ? null : d;
+  }
+
+  const today = parseDateValue(djangoData.today) || new Date();
+  const latestAllowedDate = parseDateValue(latestAllowed);
 
   // Toggle custom date picker only if checkbox exists
   if (customDateCheck) {
@@ -201,14 +225,16 @@ document.addEventListener('DOMContentLoaded', function() {
       if (this.checked) {
         if (customDatePicker) customDatePicker.style.display = 'block';
         if (selectNextPaymentBtn) { selectNextPaymentBtn.disabled = true; selectNextPaymentBtn.classList.add('opacity-50'); }
+        if (selectedDateConfirm) selectedDateConfirm.style.display = 'none';
       } else {
         if (customDatePicker) customDatePicker.style.display = 'none';
         if (selectNextPaymentBtn) { selectNextPaymentBtn.disabled = false; selectNextPaymentBtn.classList.remove('opacity-50'); }
-        if (leavingDateInput) leavingDateInput.value = '';
+        if (leavingDateInput && latestAllowed) leavingDateInput.value = latestAllowed;
         if (noticePeriodWarning) noticePeriodWarning.style.display = 'none';
         if (noticePeriodSuccess) noticePeriodSuccess.style.display = 'none';
         if (acknowledgeSection) acknowledgeSection.style.display = 'none';
         if (acknowledgeCheckbox) { acknowledgeCheckbox.checked = false; acknowledgeCheckbox.removeAttribute('required'); }
+        if (leavingDateInput) leavingDateInput.dispatchEvent(new Event('change'));
       }
     });
   }
@@ -223,6 +249,14 @@ document.addEventListener('DOMContentLoaded', function() {
         customDateCheck.checked = false;
         if (customDatePicker) customDatePicker.style.display = 'none';
       }
+      // Show the selected date confirmation
+      if (selectedDateConfirm) {
+        const selectedDate = new Date(date);
+        if (!isNaN(selectedDate) && confirmedDateDisplay) {
+          confirmedDateDisplay.textContent = selectedDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+        }
+        selectedDateConfirm.style.display = 'block';
+      }
       // Trigger the change event to check notice period compliance
       leavingDateInput.dispatchEvent(new Event('change'));
     });
@@ -231,12 +265,18 @@ document.addEventListener('DOMContentLoaded', function() {
   // Calculate notice period compliance on date change (only if leavingDateInput exists)
   if (leavingDateInput) {
     leavingDateInput.addEventListener('change', function() {
-      const selectedDate = new Date(this.value);
+      let selectedDate = parseDateValue(this.value);
       if (!this.value || isNaN(selectedDate)) {
         if (noticePeriodWarning) noticePeriodWarning.style.display = 'none';
         if (noticePeriodSuccess) noticePeriodSuccess.style.display = 'none';
         if (acknowledgeSection) acknowledgeSection.style.display = 'none';
         return;
+      }
+
+      if (latestAllowedDate && selectedDate > latestAllowedDate) {
+        this.value = latestAllowed;
+        selectedDate = parseDateValue(this.value);
+        alert('You can only select up to ' + latestAllowedDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) + ' (payment date minus 1 day).');
       }
 
       const diffTime = selectedDate - today;
@@ -266,26 +306,29 @@ document.addEventListener('DOMContentLoaded', function() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const minDate = tomorrow.toISOString().split('T')[0];
     leavingDateInput.setAttribute('min', minDate);
-    // update displayed selected date where present
+    if (latestAllowed) {
+      leavingDateInput.setAttribute('max', latestAllowed);
+    }
+    if (!leavingDateInput.value && latestAllowed) {
+      leavingDateInput.value = latestAllowed;
+      leavingDateInput.dispatchEvent(new Event('change'));
+    }
+    // update displayed selected date in confirmation card
     function updateSelectedDisplay() {
-      const el = document.getElementById('selectedLeaveDateDisplay');
-      const qp = document.getElementById('qpDateDisplay');
-      if (el && leavingDateInput.value) {
+      if (confirmedDateDisplay && leavingDateInput.value) {
         const d = new Date(leavingDateInput.value);
         if (!isNaN(d)) {
-          el.textContent = d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+          confirmedDateDisplay.textContent = d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
         }
       }
-      if (qp && leavingDateInput.value) {
+      if (document.getElementById('qpDateDisplay') && leavingDateInput.value) {
         const d = new Date(leavingDateInput.value);
         if (!isNaN(d)) {
-          qp.textContent = d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+          document.getElementById('qpDateDisplay').textContent = d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
         }
       }
     }
     leavingDateInput.addEventListener('change', updateSelectedDisplay);
-    // Initialize display on load
-    updateSelectedDisplay();
   }
 });
 </script>

@@ -413,7 +413,7 @@
         // Service Worker Registration for PWA
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/static/service-worker.js')
+            navigator.serviceWorker.register('/service-worker.js')
               .then((registration) => {
                 console.log('✅ Service Worker registered successfully:', registration.scope);
                 
@@ -528,6 +528,161 @@
         }
       });
     </script>
+
+    {% if FIREBASE_PUSH_ENABLED and user.is_authenticated %}
+      {{ FIREBASE_WEB_CONFIG|json_script:"firebase-web-config" }}
+      <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+        import { getMessaging, getToken, onMessage, isSupported } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-messaging.js";
+
+        function getCookie(name) {
+          let cookieValue = null;
+          if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+              const cookie = cookies[i].trim();
+              if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+              }
+            }
+          }
+          return cookieValue;
+        }
+
+        async function postJson(url, data) {
+          return fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCookie('csrftoken') || '',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(data),
+          });
+        }
+
+        function showNotificationPermissionPrompt(onAllow) {
+          if (localStorage.getItem('pgms-notification-dismissed') === 'permanent') return;
+          if (document.getElementById('push-permission-banner')) return;
+
+          const banner = document.createElement('div');
+          banner.id = 'push-permission-banner';
+          banner.innerHTML = `
+            <div class="alert alert-primary fade show position-fixed bottom-0 start-50 translate-middle-x mb-3 shadow-lg" style="z-index:9999; max-width:90%; width:460px;" role="alert">
+              <div class="d-flex align-items-start gap-2">
+                <i class="bi bi-bell-fill fs-4 mt-1"></i>
+                <div class="flex-grow-1">
+                  <strong>Turn On Notifications</strong>
+                  <p class="mb-2 small">Please turn on notifications to get PG updates.</p>
+                  <div class="d-flex gap-2 justify-content-end flex-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="push-dismiss-temp">Not now</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="push-dismiss-perm">Don't ask again</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="push-allow-btn">Allow notifications</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(banner);
+
+          document.getElementById('push-dismiss-temp').addEventListener('click', () => {
+            banner.remove();
+          });
+          document.getElementById('push-dismiss-perm').addEventListener('click', () => {
+            localStorage.setItem('pgms-notification-dismissed', 'permanent');
+            banner.remove();
+          });
+          document.getElementById('push-allow-btn').addEventListener('click', async () => {
+            banner.remove();
+            await onAllow();
+          });
+        }
+
+        async function initFirebasePush() {
+          if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+            return;
+          }
+          if (!await isSupported()) {
+            return;
+          }
+
+          const cfgEl = document.getElementById('firebase-web-config');
+          if (!cfgEl) return;
+
+          let firebaseConfig = {};
+          try {
+            firebaseConfig = JSON.parse(cfgEl.textContent || '{}');
+          } catch (_) {
+            return;
+          }
+
+          const vapidKey = "{{ FIREBASE_VAPID_KEY|default:''|escapejs }}";
+          if (!vapidKey) {
+            console.info('FCM VAPID key missing. Skipping web token registration.');
+            return;
+          }
+
+          const app = initializeApp(firebaseConfig);
+          const messaging = getMessaging(app);
+
+          const registerToken = async () => {
+            try {
+              const swReg = await navigator.serviceWorker.ready;
+              const token = await getToken(messaging, {
+                vapidKey: vapidKey,
+                serviceWorkerRegistration: swReg,
+              });
+              if (token) {
+                await postJson('{% url "register_fcm_token" %}', {
+                  token: token,
+                  device_type: 'web',
+                });
+              }
+            } catch (err) {
+              console.warn('FCM token setup failed:', err);
+            }
+          };
+
+          if (Notification.permission === 'granted') {
+            await registerToken();
+          } else if (Notification.permission === 'default') {
+            showNotificationPermissionPrompt(async () => {
+              const permission = await Notification.requestPermission();
+              if (permission === 'granted') {
+                await registerToken();
+              }
+            });
+          }
+
+          onMessage(messaging, (payload) => {
+            try {
+              const title = payload?.notification?.title || 'PG-MS';
+              const body = payload?.notification?.body || 'You have a new update.';
+              const url = payload?.data?.url || '/';
+
+              if (Notification.permission === 'granted') {
+                const n = new Notification(title, {
+                  body,
+                  icon: '/static/img/icon-192x192.png',
+                  data: { url },
+                });
+                n.onclick = () => {
+                  window.location.href = url;
+                };
+              }
+            } catch (e) {
+              console.warn('Foreground notification handling failed', e);
+            }
+          });
+        }
+
+        window.addEventListener('load', () => {
+          initFirebasePush();
+        });
+      </script>
+    {% endif %}
+
     {% block body_extra %}{% endblock %}
   </body>
 </html>

@@ -40,3 +40,19 @@ def pg_context(request):
 def google_client(request):
     from django.conf import settings
     return {"GOOGLE_CLIENT_ID": getattr(settings, 'SOCIALACCOUNT_PROVIDERS', {}).get('google', {}).get('APP', {}).get('client_id', '')}
+
+
+def firebase_config(request):
+    from django.conf import settings
+    return {
+        'FIREBASE_PUSH_ENABLED': bool(getattr(settings, 'FIREBASE_PUSH_ENABLED', False)),
+        'FIREBASE_VAPID_KEY': getattr(settings, 'FIREBASE_VAPID_KEY', ''),
+        'FIREBASE_WEB_CONFIG': {
+            'apiKey': getattr(settings, 'FIREBASE_WEB_API_KEY', ''),
+            'authDomain': getattr(settings, 'FIREBASE_WEB_AUTH_DOMAIN', ''),
+            'projectId': getattr(settings, 'FIREBASE_WEB_PROJECT_ID', ''),
+            'storageBucket': getattr(settings, 'FIREBASE_WEB_STORAGE_BUCKET', ''),
+            'messagingSenderId': getattr(settings, 'FIREBASE_WEB_MESSAGING_SENDER_ID', ''),
+            'appId': getattr(settings, 'FIREBASE_WEB_APP_ID', ''),
+        },
+    }

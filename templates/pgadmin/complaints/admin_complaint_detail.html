@@ -155,6 +155,12 @@
                         </div>
                         <div class="col-12 col-md-6 col-lg-3">
                             <div class="text-muted small">
+                                <i class="bi bi-telephone"></i> <strong>Phone</strong><br>
+                                <span class="text-dark">{{ tenant_phone|default:"Not available" }}</span>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6 col-lg-3">
+                            <div class="text-muted small">
                                 <i class="bi bi-building"></i> <strong>PG</strong><br>
                                 <span class="text-dark">{{ complaint.pg.name }}</span>
                             </div>
@@ -371,25 +377,28 @@
                     
                     <hr>
                     
-                    <!-- Add Comment Form -->
-                    <form id="commentForm" onsubmit="addComment(event)">
-                        {% csrf_token %}
-                        <label class="form-label fw-semibold">
-                            <i class="bi bi-chat-left-text"></i> Add Comment/Update
-                        </label>
-                        <textarea class="form-control mb-2" name="comment" rows="4" 
-                                  placeholder="Type your response or update..." required></textarea>
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" name="is_internal" 
-                                   id="internalCheck" value="true">
-                            <label class="form-check-label small" for="internalCheck">
-                                <i class="bi bi-lock"></i> Internal note (not visible to tenant)
-                            </label>
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-send"></i> Post Comment
-                        </button>
-                    </form>
+                                        <!-- Add Comment Form -->
+                                        <form id="commentForm" onsubmit="addComment(event)">
+                                                {% csrf_token %}
+                                                <label class="form-label fw-semibold">
+                                                        <i class="bi bi-chat-left-text"></i> Add Comment/Update
+                                                </label>
+                                                <textarea class="form-control mb-2" id="commentInput" name="comment" rows="4" 
+                                                                    placeholder="Type your response or update..." required></textarea>
+                                                <div class="form-check mb-3">
+                                                        <input class="form-check-input" type="checkbox" name="is_internal" 
+                                                                     id="internalCheck" value="true">
+                                                        <label class="form-check-label small" for="internalCheck">
+                                                                <i class="bi bi-lock"></i> Internal note (not visible to tenant)
+                                                        </label>
+                                                </div>
+                                                <button type="submit" class="btn btn-primary w-100 mb-2">
+                                                        <i class="bi bi-send"></i> Post Comment
+                                                </button>
+                                                <button type="button" class="btn btn-outline-success w-100" onclick="sendComplaintWhatsApp()">
+                                                        <i class="bi bi-whatsapp"></i> Send complaint updates
+                                                </button>
+                                        </form>
                 </div>
             </div>
         </div>
@@ -445,6 +454,91 @@ function getCookie(name) {
         }
     }
     return cookieValue;
+}
+
+const complaintMeta = {
+    id: '{{ complaint.id }}',
+    title: '{{ complaint.title|escapejs }}',
+    status: '{{ complaint.get_status_display|escapejs }}',
+    priority: '{{ complaint.get_priority_display|escapejs }}',
+    pgName: '{{ complaint.pg.name|escapejs }}',
+    tenantName: '{{ complaint.user.get_full_name|default:complaint.user.email|escapejs }}',
+    tenantPhone: '{{ tenant_phone|default:""|escapejs }}',
+};
+
+const conversationItems = [
+    {
+        sender: '{{ complaint.user.get_full_name|default:complaint.user.email|escapejs }}',
+        role: 'Tenant',
+        timestamp: '{{ complaint.created_at|date:"M d, Y g:i A"|escapejs }}',
+        message: '{{ complaint.description|escapejs }}'
+    },
+    {% for c in public_comments %}
+    {
+        sender: '{{ c.user.get_full_name|default:c.user.email|escapejs }}',
+        role: '{% if c.user_id == complaint.user_id %}Tenant{% else %}PG Admin{% endif %}',
+        timestamp: '{{ c.created_at|date:"M d, Y g:i A"|escapejs }}',
+        message: '{{ c.comment|escapejs }}'
+    },
+    {% endfor %}
+];
+
+function normalizedPhone(phone) {
+    return (phone || '').replace(/[^\d]/g, '');
+}
+
+function sendComplaintWhatsApp() {
+    const phone = normalizedPhone(complaintMeta.tenantPhone);
+    if (!phone) {
+        alert('Tenant WhatsApp number is not available.');
+        return;
+    }
+
+    const latestComment = (document.getElementById('commentInput')?.value || '').trim();
+    const emoji = {
+        pin: '\u{1F4CC}',     // 📌
+        id: '\u{1F194}',      // 🆔
+        home: '\u{1F3E0}',    // 🏠
+        title: '\u{1F4CB}',   // 📋
+        status: '\u{1F6A6}',  // 🚦
+        priority: '\u26A0\uFE0F', // ⚠️
+        tenant: '\u{1F464}',  // 👤
+        chat: '\u{1F4AC}',    // 💬
+        time: '\u{1F552}',    // 🕒
+        update: '\u{1F195}',  // 🆕
+        thanks: '\u{1F64F}',  // 🙏
+    };
+    const lines = [];
+    lines.push(`${emoji.pin} *PG-MS Complaint Update*`);
+    lines.push('');
+    lines.push(`${emoji.id} Complaint: #${complaintMeta.id}`);
+    lines.push(`${emoji.home} PG: ${complaintMeta.pgName}`);
+    lines.push(`${emoji.title} Title: ${complaintMeta.title}`);
+    lines.push(`${emoji.status} Status: ${complaintMeta.status}`);
+    lines.push(`${emoji.priority} Priority: ${complaintMeta.priority}`);
+    lines.push(`${emoji.tenant} Tenant: ${complaintMeta.tenantName}`);
+    lines.push('');
+    lines.push(`${emoji.chat} *Conversation*`);
+
+    conversationItems.forEach((item, idx) => {
+        lines.push('');
+        lines.push(`${idx + 1}. ${item.sender} (${item.role})`);
+        lines.push(`${emoji.time} ${item.timestamp}`);
+        lines.push(item.message);
+    });
+
+    if (latestComment) {
+        lines.push('');
+        lines.push(`${emoji.update} *New Comment from PG Admin*`);
+        lines.push(latestComment);
+    }
+
+    lines.push('');
+    lines.push(`${emoji.thanks} Thank you. We are working on this.`);
+
+    const text = encodeURIComponent(lines.join('\n').normalize('NFC'));
+    const waUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${text}`;
+    window.open(waUrl, '_blank', 'noopener');
 }
 
 function updateStatus() {
@@ -507,7 +601,7 @@ function addComment(event) {
     const form = event.target;
     const formData = new FormData(form);
     const csrftoken = getCookie('csrftoken');
-    
+
     fetch('{% url "admin_complaint_add_comment" complaint.id %}', {
         method: 'POST',
         headers: {
@@ -518,6 +612,7 @@ function addComment(event) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            form.reset();
             location.reload();
         } else {
             alert('Error: ' + data.error);

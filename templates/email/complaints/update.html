@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Complaint Update</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f6fb; color: #111827; margin: 0; padding: 0; }
+    .wrap { max-width: 760px; margin: 24px auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+    .header { background: #0d6efd; color: #fff; padding: 18px 22px; }
+    .header h1 { margin: 0; font-size: 20px; }
+    .content { padding: 20px 22px; }
+    .meta { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+    .meta p { margin: 6px 0; font-size: 14px; }
+    .thread { margin-top: 14px; }
+    .item { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+    .sender { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .stamp { color: #6b7280; font-size: 12px; margin-bottom: 8px; }
+    .msg { white-space: pre-wrap; font-size: 14px; line-height: 1.45; }
+    .footer { background: #f8fafc; color: #4b5563; padding: 14px 22px; font-size: 12px; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-right: 6px; }
+    .status { background: #e0f2fe; color: #075985; }
+    .priority { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>{{ event_label }}</h1>
+    </div>
+
+    <div class="content">
+      <div class="meta">
+        <p><strong>Complaint #:</strong> {{ complaint.id }}</p>
+        <p><strong>Title:</strong> {{ complaint.title }}</p>
+        <p><strong>PG Name:</strong> {{ complaint.pg.name }}</p>
+        <p>
+          <span class="badge status">Status: {{ complaint.get_status_display }}</span>
+          <span class="badge priority">Priority: {{ complaint.get_priority_display }}</span>
+        </p>
+        <p><strong>Latest Sender:</strong> {{ latest_sender }}</p>
+      </div>
+
+      <h3 style="margin:0 0 10px 0; font-size:16px;">Message Thread / Conversation</h3>
+      <div class="thread">
+        {% for item in thread_items %}
+          <div class="item">
+            <div class="sender">{{ item.sender }} ({{ item.sender_role }})</div>
+            <div class="stamp">{{ item.timestamp|date:"d M Y, h:i A" }}</div>
+            <div class="msg">{{ item.message }}</div>
+          </div>
+        {% empty %}
+          <p>No messages in the thread yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="footer">
+      This is an automated notification from PG-MS.
+    </div>
+  </div>
+</body>
+</html>

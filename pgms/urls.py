@@ -19,8 +19,16 @@ from django.urls import path, include
 from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
-from core.views import dashboard, notifications, notification_read, notifications_mark_all, home
-from core.views import dashboard
+from core.views import (
+    dashboard,
+    notifications,
+    notification_read,
+    notifications_mark_all,
+    home,
+    service_worker,
+    register_fcm_token,
+    unregister_fcm_token,
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -33,11 +41,14 @@ urlpatterns = [
     path('sa/', include('siteadmin.urls')),
     path('employees/', include('employee.urls')),
     path('ads/', include('advertisements.urls')),
+    path('service-worker.js', service_worker, name='service_worker'),
     path('', home, name='home'),
     path('dashboard/', dashboard, name='dashboard'),
     path('notifications/', notifications, name='notifications'),
     path('notifications/<int:pk>/read/', notification_read, name='notification_read'),
     path('notifications/mark-all/', notifications_mark_all, name='notifications_mark_all'),
+    path('notifications/fcm/register/', register_fcm_token, name='register_fcm_token'),
+    path('notifications/fcm/unregister/', unregister_fcm_token, name='unregister_fcm_token'),
 ]
 
 # Serve media files in development

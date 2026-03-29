@@ -1,6 +1,14 @@
+import json
+import logging
+from pathlib import Path
+
 from django.contrib.auth.decorators import login_required
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Notification
+from django.views.decorators.http import require_POST
+from django.conf import settings
+
+from .models import Notification, UserDeviceToken
 from bookings.models import RoomShareStatus, Booking, ReferralCredit, RoomSwap
 from finance.models import Payment, Expenditure
 from django.utils import timezone
@@ -8,7 +16,6 @@ from django.db.models import Sum, Q
 from pgadmin.models import PG, Complaint
 from datetime import date as _date
 from datetime import datetime as _datetime
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -459,5 +466,66 @@ def notification_read(request, pk):
 def notifications_mark_all(request):
 	Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
 	return redirect('notifications')
+
+
+@login_required
+@require_POST
+def register_fcm_token(request):
+	try:
+		payload = json.loads(request.body.decode('utf-8') or '{}')
+	except Exception:
+		return JsonResponse({'ok': False, 'error': 'Invalid JSON payload.'}, status=400)
+
+	token = (payload.get('token') or '').strip()
+	device_type = (payload.get('device_type') or UserDeviceToken.WEB).strip().lower()
+
+	if not token:
+		return JsonResponse({'ok': False, 'error': 'Token is required.'}, status=400)
+	if device_type not in {UserDeviceToken.WEB, UserDeviceToken.ANDROID, UserDeviceToken.IOS}:
+		device_type = UserDeviceToken.WEB
+
+	obj, _created = UserDeviceToken.objects.update_or_create(
+		token=token,
+		defaults={
+			'user': request.user,
+			'device_type': device_type,
+			'user_agent': request.META.get('HTTP_USER_AGENT', '')[:500],
+			'is_active': True,
+		},
+	)
+
+	# Keep one latest active token per user/device in this browser family to avoid duplicates.
+	UserDeviceToken.objects.filter(user=request.user, device_type=device_type).exclude(id=obj.id).update(is_active=False)
+
+	return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
+def unregister_fcm_token(request):
+	try:
+		payload = json.loads(request.body.decode('utf-8') or '{}')
+	except Exception:
+		payload = {}
+
+	token = (payload.get('token') or '').strip()
+	if token:
+		UserDeviceToken.objects.filter(user=request.user, token=token).update(is_active=False)
+	else:
+		UserDeviceToken.objects.filter(user=request.user).update(is_active=False)
+
+	return JsonResponse({'ok': True})
+
+
+def service_worker(request):
+	"""Serve service worker from root scope so push works across the full site."""
+	sw_path = Path(settings.BASE_DIR) / 'static' / 'service-worker.js'
+	if not sw_path.exists():
+		raise Http404('service-worker.js not found')
+
+	response = HttpResponse(sw_path.read_text(encoding='utf-8'), content_type='application/javascript; charset=utf-8')
+	response['Service-Worker-Allowed'] = '/'
+	response['Cache-Control'] = 'no-cache'
+	return response
 
 # Create your views here.

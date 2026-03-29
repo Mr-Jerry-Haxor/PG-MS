@@ -491,15 +491,32 @@
                     <button class="btn btn-sm btn-outline-warning mt-1 show-recontinue-btn" data-booking-id="{{ booking.id }}">
                       <i class="bi bi-arrow-counterclockwise me-1"></i>Re-Continue
                     </button>
-                    <button class="btn btn-sm btn-outline-danger delete-booking-btn" 
-                            data-booking-id="{{ booking.id }}"
-                            data-full-name="{{ booking.user.get_full_name }}"
-                            data-email="{{ booking.user.email }}"
-                            data-room-no="{{ booking.room.room_no }}"
-                            data-share-no="{{ booking.share_no }}"
-                            data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}">
-                      <i class="bi bi-trash me-1"></i>Delete Data
-                    </button>
+                    {% firstof booking.user.profile.phone booking.application.whatsapp_number as whatsapp_phone %}
+                    <div class="d-flex align-items-center gap-1 mt-1">
+                      {% if whatsapp_phone %}
+                      <button type="button" class="btn btn-sm btn-outline-success whatsapp-leave-btn"
+                              data-phone="{{ whatsapp_phone }}"
+                              data-full-name="{{ booking.user.get_full_name }}"
+                              data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                              title="Send WhatsApp message">
+                        <i class="bi bi-whatsapp me-1"></i>WhatsApp
+                      </button>
+                      {% else %}
+                      <button type="button" class="btn btn-sm btn-outline-success" disabled title="Phone number not available">
+                        <i class="bi bi-whatsapp me-1"></i>WhatsApp
+                      </button>
+                      {% endif %}
+                      <button class="btn btn-sm btn-outline-danger delete-booking-btn" 
+                              data-booking-id="{{ booking.id }}"
+                              data-full-name="{{ booking.user.get_full_name }}"
+                              data-email="{{ booking.user.email }}"
+                              data-room-no="{{ booking.room.room_no }}"
+                              data-share-no="{{ booking.share_no }}"
+                              data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                              title="Delete leave data">
+                        <i class="bi bi-trash me-1"></i>Delete
+                      </button>
+                    </div>
                   {% endif %}
                 </div>
               </td>
@@ -676,15 +693,32 @@
             <button class="btn btn-sm btn-outline-warning show-recontinue-btn" data-booking-id="{{ booking.id }}">
               <i class="bi bi-arrow-counterclockwise me-1"></i>Re-Continue
             </button>
-            <button class="btn btn-sm btn-outline-danger delete-booking-btn"
-                    data-booking-id="{{ booking.id }}"
-                    data-full-name="{{ booking.user.get_full_name }}"
-                    data-email="{{ booking.user.email }}"
-                    data-room-no="{{ booking.room.room_no }}"
-                    data-share-no="{{ booking.share_no }}"
-                    data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}">
-              <i class="bi bi-trash me-1"></i>Delete Data
-            </button>
+            {% firstof booking.user.profile.phone booking.application.whatsapp_number as whatsapp_phone %}
+            <div class="d-flex align-items-center gap-1 flex-wrap">
+              {% if whatsapp_phone %}
+              <button type="button" class="btn btn-sm btn-outline-success whatsapp-leave-btn"
+                      data-phone="{{ whatsapp_phone }}"
+                      data-full-name="{{ booking.user.get_full_name }}"
+                      data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                      title="Send WhatsApp message">
+                <i class="bi bi-whatsapp me-1"></i>WhatsApp
+              </button>
+              {% else %}
+              <button type="button" class="btn btn-sm btn-outline-success" disabled title="Phone number not available">
+                <i class="bi bi-whatsapp me-1"></i>WhatsApp
+              </button>
+              {% endif %}
+              <button class="btn btn-sm btn-outline-danger delete-booking-btn"
+                      data-booking-id="{{ booking.id }}"
+                      data-full-name="{{ booking.user.get_full_name }}"
+                      data-email="{{ booking.user.email }}"
+                      data-room-no="{{ booking.room.room_no }}"
+                      data-share-no="{{ booking.share_no }}"
+                      data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                      title="Delete leave data">
+                <i class="bi bi-trash me-1"></i>Delete
+              </button>
+            </div>
           {% endif %}
         </div>
       </div>
@@ -1302,6 +1336,31 @@ document.addEventListener('DOMContentLoaded', function() {
         this.dataset.shareNo,
         this.dataset.leaveDate
       );
+    });
+  });
+
+  // WhatsApp buttons for confirmed leave notifications
+  document.querySelectorAll('.whatsapp-leave-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const rawPhone = (this.dataset.phone || '').replace(/\D/g, '');
+      if (!rawPhone) {
+        alert('Phone number not available for this tenant.');
+        return;
+      }
+
+      const tenantName = this.dataset.fullName || 'Tenant';
+      const leaveDate = this.dataset.leaveDate || '';
+      const checkoutDate = leaveDate || 'the confirmed date';
+      const pgName = "{{ pg.name|escapejs }}" || 'PG Management';
+      const message = `Hello ${tenantName},
+    This is a reminder that your checkout date is confirmed as ${checkoutDate}. Kindly ensure that you vacate the PG by this date and take all your belongings with you.
+
+    We truly appreciate having you stay with us and hope you had a pleasant experience. You are always welcome back whenever you need accommodation in the future.
+
+    Thank you, and we wish you all the very best ahead!
+    - ${pgName}`;
+      const whatsappUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank');
     });
   });
   

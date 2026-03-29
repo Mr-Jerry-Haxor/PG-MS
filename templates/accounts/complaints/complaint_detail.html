@@ -246,7 +246,11 @@
                                                 <i class="bi bi-person-badge"></i>
                                                 {{ comment.user.get_full_name|default:comment.user.email }}
                                             </strong>
-                                            <small class="text-muted ms-2">PG Admin</small>
+                                            {% if comment.user_id == request.user.id %}
+                                              <small class="text-muted ms-2">You</small>
+                                            {% else %}
+                                              <small class="text-muted ms-2">PG Admin</small>
+                                            {% endif %}
                                         </div>
                                         <small class="text-muted">
                                             {{ comment.created_at|date:"M d, Y" }}
@@ -268,6 +272,20 @@
             </div>
             
             {% if complaint.status == 'open' or complaint.status == 'in_progress' %}
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h6 class="mb-2"><i class="bi bi-reply"></i> Add a Comment</h6>
+                    <form method="post" action="{% url 'complaint_add_comment' complaint.id %}">
+                        {% csrf_token %}
+                        <textarea class="form-control mb-2" name="comment" rows="3" placeholder="Add your update or follow-up details..." required></textarea>
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-send"></i> Post Comment
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
             <div class="alert alert-info mt-3">
                 <i class="bi bi-info-circle"></i>
                 Your complaint is being reviewed. You'll be notified when there are updates.

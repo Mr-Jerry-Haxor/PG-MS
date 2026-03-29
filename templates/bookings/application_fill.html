@@ -670,6 +670,7 @@
         storedSelfieBlob = null;
         storedSelfieFileName = '';
         selfieInput.value = '';
+        selfieOk = false;
         if (uploadPreview) uploadPreview.style.display = 'none';
         revokeUploadPreviewUrls();
         return;
@@ -696,23 +697,16 @@
       // Store in blob
       storedSelfieBlob = file;
       storedSelfieFileName = file.name;
-      
-      // Validate using face detection if available
-      const isValid = await validateSelfieFile(file);
-      if (!isValid) {
-        e.target.value = '';
-        storedSelfieBlob = null;
-        storedSelfieFileName = '';
-        return;
-      }
+
+      // Fallback upload mode intentionally skips face detection.
+      selfieOk = true;
       
       // Populate hidden input for form submission
       const dt = new DataTransfer();
       dt.items.add(file);
       selfieInput.files = dt.files;
-      selfieOk = true;
       
-      showToast('Selfie uploaded successfully!', 'success');
+      showToast('Selfie uploaded successfully. Face detection skipped for fallback upload.', 'success');
       
       // Show preview
       await renderSelfiePreview(file);
@@ -1311,11 +1305,11 @@
     const newSelfieSelected = !!(selfieInput?.files?.length);
     if (!hasExistingSelfie && !newSelfieSelected) {
       e.preventDefault();
-      alert('Selfie is required. Please capture a clear face photo.');
+      alert('Selfie is required. Please capture or upload a selfie image.');
       return;
     }
     // Validate selfie only when a new one is provided
-    if (newSelfieSelected && !selfieOk) { e.preventDefault(); alert('Please provide a valid face-only selfie.'); return; }
+    if (newSelfieSelected && !selfieOk) { e.preventDefault(); alert('Please provide a valid selfie image.'); return; }
     
     // Validate Aadhaar documents: at least Document 1 must be provided (either new file or existing)
     const hasExistingAadhaar = '{{ app.aadhaar_file_url|default:"" }}' !== '';

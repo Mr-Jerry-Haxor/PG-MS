@@ -24,6 +24,7 @@ from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus,
 from core.audit import log
 from core.drive import drive_delete
 from core.models import Notification
+from core.push_notifications import send_push_to_user
 from finance.models import Fees
 from django.urls import reverse
 from django.http import HttpResponse
@@ -3321,6 +3322,19 @@ def booking_approve(request, booking_id):
                 
                 log(request.user, 'daywise_booking_approved', 'Booking', booking.id, 
                     f"Approved day-wise booking for room {room.room_no} bed {share_no}")
+
+                Notification.objects.create(
+                    user=booking.user,
+                    title="Day-wise Booking Approved",
+                    message=f"Your day-wise booking has been approved and assigned to Room {room.room_no}, Bed {share_no}."
+                )
+                send_push_to_user(
+                    booking.user,
+                    title="Day-wise Booking Approved",
+                    body=f"Assigned to Room {room.room_no}, Bed {share_no}.",
+                    url=reverse('booking_detail', args=[booking.id]),
+                    extra_data={'type': 'booking_approved', 'booking_type': 'daywise', 'booking_id': booking.id},
+                )
                 
                 messages.success(request, f"Day-wise booking approved and assigned to Room {room.room_no}, Bed {share_no}.")
                 return redirect('pg_bookings_pending')
@@ -3736,6 +3750,13 @@ Thank you for your payment!
             messages.warning(request, f"Advance amount saved but payment record could not be created: {exc}")
     # Notify user
     Notification.objects.create(user=booking.user, title="Booking approved", message=f"Your booking for {booking.room} bed {booking.share_no} was approved.")
+    send_push_to_user(
+        booking.user,
+        title="Booking Approved",
+        body=f"Your booking for Room {booking.room.room_no}, Bed {booking.share_no} was approved.",
+        url=reverse('application_fill', args=[booking.id]),
+        extra_data={'type': 'booking_approved', 'booking_id': booking.id},
+    )
     try:
         from django.urls import reverse
         link = request.build_absolute_uri(reverse('application_fill', args=[booking.id]))
@@ -3794,6 +3815,18 @@ def booking_reject(request, booking_id):
             booking.application.save(update_fields=['status'])
         
         log(request.user, 'daywise_booking_rejected', 'Booking', booking.id, "Rejected day-wise booking")
+        Notification.objects.create(
+            user=booking.user,
+            title="Day-wise Booking Rejected",
+            message="Your day-wise booking request has been rejected."
+        )
+        send_push_to_user(
+            booking.user,
+            title="Day-wise Booking Rejected",
+            body="Your day-wise booking request has been rejected.",
+            url=reverse('booking_detail', args=[booking.id]),
+            extra_data={'type': 'booking_rejected', 'booking_type': 'daywise', 'booking_id': booking.id},
+        )
         messages.info(request, "Day-wise booking rejected.")
         
         if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.POST.get('ajax'):
@@ -3826,6 +3859,13 @@ def booking_reject(request, booking_id):
     share.save(update_fields=update_fields)
     log(request.user, 'booking_rejected', 'Booking', booking.id, f"Rejected for room {booking.room.room_no} bed {booking.share_no}")
     Notification.objects.create(user=booking.user, title="Booking rejected", message=f"Your booking for {booking.room} bed {booking.share_no} was rejected.")
+    send_push_to_user(
+        booking.user,
+        title="Booking Rejected",
+        body=f"Your booking for Room {booking.room.room_no}, Bed {booking.share_no} was rejected.",
+        url=reverse('booking_detail', args=[booking.id]),
+        extra_data={'type': 'booking_rejected', 'booking_id': booking.id},
+    )
     try:
         send_mail(
             subject="PG-MS: Booking Rejected",
@@ -4129,6 +4169,13 @@ def application_confirm(request, app_id):
             recipient_list=[app.user.email],
             fail_silently=True,
         )
+        send_push_to_user(
+            app.user,
+            title="Application Confirmed",
+            body="Your resident application has been confirmed.",
+            url=reverse('my_application'),
+            extra_data={'type': 'application_confirmed', 'application_id': app.id},
+        )
     except Exception:
         pass
     messages.success(request, "Application confirmed.")
@@ -4200,6 +4247,13 @@ def application_refill_request(request, app_id):
             recipient_list=[app.user.email],
             fail_silently=False,
         )
+        send_push_to_user(
+            app.user,
+            title="Application Update Requested",
+            body="PG admin requested updates on your application.",
+            url=reverse('application_fill', args=[app.booking_id]),
+            extra_data={'type': 'application_refill_requested', 'application_id': app.id},
+        )
     except Exception as e:
         messages.error(request, f"Failed to send update request email: {e}")
     messages.success(request, "Re-Fill request sent to user.")
@@ -4257,60 +4311,61 @@ def admin_application_edit(request, app_id):
                 old_values[field] = getattr(app, field, None)
             
             inst = form.save(commit=False)
+
+            from core.drive import drive_upload, drive_delete
+
+            def _replace_drive_file(uploaded_file, old_url, name_prefix, warn_prefix):
+                """Upload replacement file; delete old file only after successful upload."""
+                folder_id = getattr(app.pg, 'drive_folder_id', None) or 'root'
+                original_name = (getattr(uploaded_file, 'name', '') or '').strip()
+                ext = ''
+                if '.' in original_name:
+                    ext = '.' + original_name.rsplit('.', 1)[-1].lower()
+                    if len(ext) > 10:
+                        ext = ''
+
+                filename = f"{name_prefix}_{app.id}_{timezone.now().strftime('%Y%m%d%H%M%S%f')}{ext}"
+
+                try:
+                    uploaded = drive_upload(uploaded_file, filename, folder_id)
+                    if not uploaded:
+                        messages.warning(request, f"{warn_prefix} upload failed: Google Drive upload service unavailable.")
+                        return None
+
+                    _new_file_id, preview_url = uploaded
+
+                    # Delete old file best-effort only after replacement succeeded.
+                    if old_url:
+                        try:
+                            drive_delete(old_url)
+                        except Exception:
+                            pass
+
+                    return preview_url
+                except Exception as e:
+                    messages.warning(request, f"{warn_prefix} upload failed: {e}")
+                    return None
             
             # Handle selfie upload
             if 'selfie' in request.FILES:
-                from core.drive import drive_upload, extract_drive_file_id
                 selfie_file = request.FILES['selfie']
-                folder_id = getattr(app.pg, 'drive_folder_id', None) or 'root'
-                # Delete old selfie if exists
-                if app.selfie_url:
-                    old_file_id = extract_drive_file_id(app.selfie_url)
-                    if old_file_id:
-                        from core.drive import drive_delete
-                        drive_delete(old_file_id)
-                # Upload new selfie
-                try:
-                    new_file_id = drive_upload(selfie_file, folder=folder_id)
-                    if new_file_id:
-                        inst.selfie_url = f'https://drive.google.com/uc?id={new_file_id}'
-                except Exception as e:
-                    messages.warning(request, f"Selfie upload failed: {e}")
+                selfie_preview = _replace_drive_file(selfie_file, app.selfie_url, 'selfie', 'Selfie')
+                if selfie_preview:
+                    inst.selfie_url = selfie_preview
             
             # Handle aadhaar file upload
             if 'aadhaar_pdf' in request.FILES:
-                from core.drive import drive_upload, extract_drive_file_id
                 aadhaar_file = request.FILES['aadhaar_pdf']
-                folder_id = getattr(app.pg, 'drive_folder_id', None) or 'root'
-                # Delete old file if exists
-                if app.aadhaar_file_url:
-                    old_file_id = extract_drive_file_id(app.aadhaar_file_url)
-                    if old_file_id:
-                        from core.drive import drive_delete
-                        drive_delete(old_file_id)
-                try:
-                    new_file_id = drive_upload(aadhaar_file, folder=folder_id)
-                    if new_file_id:
-                        inst.aadhaar_file_url = f'https://drive.google.com/uc?id={new_file_id}'
-                except Exception as e:
-                    messages.warning(request, f"Document upload failed: {e}")
+                aadhaar_preview = _replace_drive_file(aadhaar_file, app.aadhaar_file_url, 'aadhaar_front', 'Document')
+                if aadhaar_preview:
+                    inst.aadhaar_file_url = aadhaar_preview
             
             # Handle aadhaar file 2 upload
             if 'aadhaar_pdf_2' in request.FILES:
-                from core.drive import drive_upload, extract_drive_file_id
                 aadhaar_file_2 = request.FILES['aadhaar_pdf_2']
-                folder_id = getattr(app.pg, 'drive_folder_id', None) or 'root'
-                if app.aadhaar_file_url_2:
-                    old_file_id = extract_drive_file_id(app.aadhaar_file_url_2)
-                    if old_file_id:
-                        from core.drive import drive_delete
-                        drive_delete(old_file_id)
-                try:
-                    new_file_id = drive_upload(aadhaar_file_2, folder=folder_id)
-                    if new_file_id:
-                        inst.aadhaar_file_url_2 = f'https://drive.google.com/uc?id={new_file_id}'
-                except Exception as e:
-                    messages.warning(request, f"Document 2 upload failed: {e}")
+                aadhaar_2_preview = _replace_drive_file(aadhaar_file_2, app.aadhaar_file_url_2, 'aadhaar_back', 'Document 2')
+                if aadhaar_2_preview:
+                    inst.aadhaar_file_url_2 = aadhaar_2_preview
             
             inst.save()
             
@@ -5618,6 +5673,13 @@ def confirm_leave(request, booking_id):
         title="Leave Request Confirmed",
         message=f"Your leave request for {booking.room.room_no}, Bed {booking.share_no} on {booking.leaving_date.strftime('%B %d, %Y')} has been confirmed."
     )
+    send_push_to_user(
+        booking.user,
+        title="Leave Request Confirmed",
+        body=f"Leave for Room {booking.room.room_no}, Bed {booking.share_no} on {booking.leaving_date.strftime('%b %d, %Y')} is confirmed.",
+        url=reverse('booking_detail', args=[booking.id]),
+        extra_data={'type': 'leave_confirmed', 'booking_id': booking.id},
+    )
     
     # Audit log
     log(
@@ -5668,6 +5730,13 @@ def reject_leave(request, booking_id):
         user=booking.user,
         title="Leave Request Rejected",
         message=f"Your leave request for {booking.room.room_no}, Bed {booking.share_no} on {old_leaving_date} has been rejected. Please contact admin for details."
+    )
+    send_push_to_user(
+        booking.user,
+        title="Leave Request Rejected",
+        body=f"Leave request for Room {booking.room.room_no}, Bed {booking.share_no} was rejected.",
+        url=reverse('booking_detail', args=[booking.id]),
+        extra_data={'type': 'leave_rejected', 'booking_id': booking.id},
     )
     
     # Audit log
@@ -5747,6 +5816,13 @@ def edit_leave_date(request, booking_id):
         user=booking.user,
         title="Leave Date Updated",
         message=f"Your leave date has been updated from {old_date} to {new_date} by PG admin."
+    )
+    send_push_to_user(
+        booking.user,
+        title="Leave Date Updated",
+        body=f"Leave date updated to {new_date} for Room {booking.room.room_no}, Bed {booking.share_no}.",
+        url=reverse('booking_detail', args=[booking.id]),
+        extra_data={'type': 'leave_date_updated', 'booking_id': booking.id},
     )
     
     # Audit log
@@ -5828,6 +5904,13 @@ def mark_advance_returned(request, booking_id):
         user=booking.user,
         title="Advance Amount Returned",
         message=f"Your advance amount of Rs.{amount} has been returned for Room {booking.room.room_no}, Bed {booking.share_no}."
+    )
+    send_push_to_user(
+        booking.user,
+        title="Advance Amount Returned",
+        body=f"Rs.{amount} returned for Room {booking.room.room_no}, Bed {booking.share_no}.",
+        url=reverse('booking_detail', args=[booking.id]),
+        extra_data={'type': 'advance_returned', 'booking_id': booking.id},
     )
     
     # Audit log
@@ -6166,6 +6249,13 @@ def re_continue_booking(request, booking_id):
                 title="Re-Continue Approved",
                 message=f"Your request to continue staying in Room {booking.room.room_no}, Bed {booking.share_no} has been approved."
             )
+            send_push_to_user(
+                booking.user,
+                title="Re-Continue Approved",
+                body=f"Continue approved for Room {booking.room.room_no}, Bed {booking.share_no}.",
+                url=reverse('booking_detail', args=[booking.id]),
+                extra_data={'type': 're_continue_approved', 'booking_id': booking.id},
+            )
             
             # Remove from Old Tenants if exists (they're coming back)
             try:
@@ -6252,6 +6342,13 @@ def re_continue_booking(request, booking_id):
                 user=booking.user,
                 title="Re-Continue with Room Change",
                 message=f"Your request to continue has been approved. You have been moved from Room {old_room_no}, Bed {old_share_no} to Room {new_room.room_no}, Bed {new_share_no}."
+            )
+            send_push_to_user(
+                booking.user,
+                title="Room Changed",
+                body=f"Moved to Room {new_room.room_no}, Bed {new_share_no}.",
+                url=reverse('booking_detail', args=[booking.id]),
+                extra_data={'type': 're_continue_room_change', 'booking_id': booking.id},
             )
             
             # Audit log
@@ -6404,6 +6501,13 @@ def create_future_swap(request, booking_id):
             title="Room Swap Scheduled",
             message=f"A future room swap has been scheduled for you from Room {booking.room.room_no}/Bed {booking.share_no} to Room {to_room.room_no}/Bed {to_share_no}, effective {effective_date}. Pending approval."
         )
+        send_push_to_user(
+            booking.user,
+            title="Room Swap Scheduled",
+            body=f"Swap to Room {to_room.room_no}, Bed {to_share_no} on {effective_date} is pending approval.",
+            url=reverse('booking_detail', args=[booking.id]),
+            extra_data={'type': 'future_swap_scheduled', 'swap_id': swap.id, 'booking_id': booking.id},
+        )
         
         # Audit log
         log(
@@ -6455,6 +6559,13 @@ def approve_future_swap(request, swap_id):
         title="Room Swap Approved",
         message=f"Your room swap from {swap.from_room.room_no}/Bed {swap.from_share_no} to {swap.to_room.room_no}/Bed {swap.to_share_no} effective {swap.effective_date} has been approved."
     )
+    send_push_to_user(
+        swap.booking.user,
+        title="Room Swap Approved",
+        body=f"Swap to Room {swap.to_room.room_no}, Bed {swap.to_share_no} is approved.",
+        url=reverse('booking_detail', args=[swap.booking_id]),
+        extra_data={'type': 'future_swap_approved', 'swap_id': swap.id, 'booking_id': swap.booking_id},
+    )
     
     # Audit log
     log(
@@ -6500,6 +6611,13 @@ def reject_future_swap(request, swap_id):
         user=swap.booking.user,
         title="Room Swap Rejected",
         message=f"Your room swap request has been rejected. Please contact admin for details."
+    )
+    send_push_to_user(
+        swap.booking.user,
+        title="Room Swap Rejected",
+        body="Your room swap request was rejected.",
+        url=reverse('booking_detail', args=[swap.booking_id]),
+        extra_data={'type': 'future_swap_rejected', 'swap_id': swap.id, 'booking_id': swap.booking_id},
     )
     
     # Audit log
@@ -6561,6 +6679,13 @@ def execute_swap(request, swap_id):
         user=swap.booking.user,
         title="Room Swap Completed",
         message=f"Your room swap is complete. You are now in Room {swap.to_room.room_no}, Bed {swap.to_share_no}."
+    )
+    send_push_to_user(
+        swap.booking.user,
+        title="Room Swap Completed",
+        body=f"You are now in Room {swap.to_room.room_no}, Bed {swap.to_share_no}.",
+        url=reverse('booking_detail', args=[swap.booking_id]),
+        extra_data={'type': 'future_swap_completed', 'swap_id': swap.id, 'booking_id': swap.booking_id},
     )
     
     # Audit log
@@ -6991,6 +7116,18 @@ def cancel_future_swap(request, swap_id):
                 dep_swap.id,
                 f"Chain-cancelled future swap for {dep_swap.booking.user.get_full_name() or dep_swap.booking.user.email} (dependent on swap #{swap.id})"
             )
+            Notification.objects.create(
+                user=dep_swap.booking.user,
+                title="Room Swap Cancelled",
+                message=f"Your scheduled room swap (ID #{dep_swap.id}) was cancelled because a dependent parent swap was cancelled by PG admin."
+            )
+            send_push_to_user(
+                dep_swap.booking.user,
+                title="Room Swap Cancelled",
+                body=f"Scheduled swap #{dep_swap.id} was cancelled by PG admin.",
+                url=reverse('booking_detail', args=[dep_swap.booking_id]),
+                extra_data={'type': 'future_swap_cancelled', 'swap_id': dep_swap.id, 'booking_id': dep_swap.booking_id},
+            )
             cancelled_swaps.append({
                 'id': dep_swap.id,
                 'user': dep_swap.booking.user.get_full_name() or dep_swap.booking.user.email
@@ -7008,6 +7145,18 @@ def cancel_future_swap(request, swap_id):
         'RoomSwap',
         swap.id,
         f"Cancelled future swap for {swap.booking.user.get_full_name() or swap.booking.user.email} from room {swap.from_room.room_no} bed {swap.from_share_no} to room {swap.to_room.room_no} bed {swap.to_share_no}"
+    )
+    Notification.objects.create(
+        user=swap.booking.user,
+        title="Room Swap Cancelled",
+        message=f"Your scheduled room swap from Room {swap.from_room.room_no}/Bed {swap.from_share_no} to Room {swap.to_room.room_no}/Bed {swap.to_share_no} has been cancelled by PG admin."
+    )
+    send_push_to_user(
+        swap.booking.user,
+        title="Room Swap Cancelled",
+        body=f"Swap from Room {swap.from_room.room_no}/Bed {swap.from_share_no} to Room {swap.to_room.room_no}/Bed {swap.to_share_no} was cancelled.",
+        url=reverse('booking_detail', args=[swap.booking_id]),
+        extra_data={'type': 'future_swap_cancelled', 'swap_id': swap.id, 'booking_id': swap.booking_id},
     )
     
     # Trigger bed status sync after cancellation

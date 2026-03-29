@@ -13,6 +13,7 @@ from accounts.models import Profile
 from core.audit import log
 from core.drive import drive_upload, drive_delete
 from core.models import Notification
+from core.push_notifications import send_push_to_users
 from django.core.mail import send_mail
 from django.db import IntegrityError
 from django.urls import reverse
@@ -52,6 +53,48 @@ def _normalize_payment_day(payment_date, anchor_date):
         else:
             month += 1
     return anchor_date
+
+
+def _next_payment_due_date(reference_date: date, payment_day: int) -> date:
+    """Return the next payment due date strictly after reference_date."""
+    day = max(1, min(31, int(payment_day or reference_date.day)))
+
+    year = reference_date.year
+    month = reference_date.month
+    last_day = _cal.monthrange(year, month)[1]
+    candidate = date(year, month, min(day, last_day))
+
+    if candidate <= reference_date:
+        if month == 12:
+            year += 1
+            month = 1
+        else:
+            month += 1
+        last_day = _cal.monthrange(year, month)[1]
+        candidate = date(year, month, min(day, last_day))
+
+    return candidate
+
+
+def _recommended_leave_date(reference_date: date, payment_day: int):
+    """
+    Compute both next due date and the suggested leave date.
+
+    Business rule:
+    - Suggested leave date is always one day before the next payment due date.
+    - For payment day=1, this naturally becomes previous month's last day
+      (28/29/30/31 depending on month length).
+    """
+    due_date = _next_payment_due_date(reference_date, payment_day)
+    day_one_adjustment = int(payment_day or 0) == 1
+    leave_date = due_date - timedelta(days=1)
+
+    # Ensure the suggested leave date is always in the future.
+    while leave_date <= reference_date:
+        due_date = _next_payment_due_date(due_date, payment_day)
+        leave_date = due_date - timedelta(days=1)
+
+    return due_date, leave_date, day_one_adjustment
 
 
 def _pg_by_slug_or_404(slug: str):
@@ -307,6 +350,14 @@ def handle_daywise_booking(request, pg, has_active):
                             f"for {start_date} to {end_date}. Review and assign room: {admin_url}"
                         ),
                     )
+
+                send_push_to_users(
+                    [ap.user for ap in admin_profiles],
+                    title="Day-Wise Booking Request",
+                    body=f"{name} requested {start_date} to {end_date}.",
+                    url=reverse('pg_booking_approve', args=[booking.id]),
+                    extra_data={'type': 'booking_request', 'booking_type': 'daywise'},
+                )
                 # Email notification
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
                 if admin_emails:
@@ -468,6 +519,13 @@ def handle_future_booking(request, pg, has_active):
                             f"joining on {joining_date}. Review: {admin_url}"
                         ),
                     )
+                send_push_to_users(
+                    [ap.user for ap in admin_profiles],
+                    title="Future Booking Request",
+                    body=f"{name} requested Room {room.room_no}, Bed {share_no} joining {joining_date}.",
+                    url=reverse('pg_booking_approve', args=[booking_obj.id]),
+                    extra_data={'type': 'booking_request', 'booking_type': 'future'},
+                )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
                 if admin_emails:
                     send_mail(
@@ -762,6 +820,13 @@ def handle_booknow_booking(request, pg, has_active, context):
                             f"Review and confirm: {admin_url}"
                         ),
                     )
+                send_push_to_users(
+                    [ap.user for ap in admin_profiles],
+                    title="Resident Application Submitted",
+                    body=f"{inst.user.email} submitted application for Room {room.room_no}, Bed {share_no}.",
+                    url=reverse('pg_admin_application_edit', args=[inst.id]),
+                    extra_data={'type': 'application_submitted', 'application_status': inst.status},
+                )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
                 if admin_emails:
                     send_mail(
@@ -1041,6 +1106,13 @@ def handle_booknow_booking(request, pg, has_active, context):
                             f"Review and confirm: {admin_url}"
                         ),
                     )
+                send_push_to_users(
+                    [ap.user for ap in admin_profiles],
+                    title="Resident Application Submitted",
+                    body=f"{inst.user.email} submitted application for Room {room.room_no}, Bed {share_no}.",
+                    url=reverse('pg_admin_application_edit', args=[inst.id]),
+                    extra_data={'type': 'application_submitted', 'application_status': inst.status},
+                )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
                 if admin_emails:
                     send_mail(
@@ -1401,6 +1473,14 @@ def request_booking(request, room_id, share_no):
                         title="New booking request",
                         message=f"{request.user.email} requested Room {room.room_no} Share {share_no} (Joining {joining_date}).",
                     )
+
+                send_push_to_users(
+                    [ap.user for ap in pg_admin_profiles],
+                    title="New Booking Request",
+                    body=f"{request.user.email} requested Room {room.room_no}, Bed {share_no}.",
+                    url=reverse('pg_booking_approve', args=[booking_obj.id]),
+                    extra_data={'type': 'booking_request', 'booking_type': 'regular'},
+                )
                 # (Optional) Site admins still receive it for oversight
                 site_admin_emails = list(
                     Profile.objects.filter(is_website_admin=True, status='active').values_list('user__email', flat=True)
@@ -1494,6 +1574,13 @@ def leaving_intimation(request, booking_id):
                 title="Leaving request",
                 message=f"{request.user.email} plans to leave on {leaving_date} (Room {booking.room.room_no}, Share {booking.share_no}).",
             )
+        send_push_to_users(
+            [ap.user for ap in admin_profiles],
+            title="Leaving Request",
+            body=f"{request.user.email} plans to leave on {leaving_date}.",
+            url=reverse('booking_detail', args=[booking.id]),
+            extra_data={'type': 'leave_requested', 'booking_id': booking.id},
+        )
         # Send single email to all admin emails (if any)
         try:
             admin_emails = [ap.user.email for ap in admin_profiles if ap.user.email]
@@ -1769,6 +1856,14 @@ def application_fill(request, booking_id):
                         f"Review and confirm: {admin_url}"
                     ),
                 )
+
+            send_push_to_users(
+                [ap.user for ap in admin_profiles],
+                title=f"Application {action}",
+                body=f"{inst.user.email} {action.lower()} application for Room {booking.room.room_no}, Bed {booking.share_no}.",
+                url=reverse('pg_admin_application_edit', args=[inst.id]),
+                extra_data={'type': 'application_submitted', 'application_status': inst.status},
+            )
             # Email
             admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
             if admin_emails:
@@ -1867,8 +1962,6 @@ def my_application(request):
 def initiate_leave_request(request, booking_id):
     """User initiates leave request with notice period validation"""
     from .forms import LeaveRequestForm
-    from dateutil.relativedelta import relativedelta
-    import calendar
     
     booking = get_object_or_404(
         Booking.objects.select_related('room', 'room__pg'),
@@ -1890,17 +1983,30 @@ def initiate_leave_request(request, booking_id):
     pg = booking.room.pg
     notice_period = getattr(pg, 'notice_period', 30)  # Default 30 days
     today = date.today()
-    
-    # Calculate next payment date
+
+    # Payment-cycle dates used by this page and server-side validation.
     payment_day = booking.payment_date.day if booking.payment_date else today.day
-    next_month = today + relativedelta(months=1)
-    # Handle month-end cases (e.g., Jan 31 -> Feb 28/29)
-    max_day = calendar.monthrange(next_month.year, next_month.month)[1]
-    next_payment_date = next_month.replace(day=min(payment_day, max_day))
-    
-    # Calculate notice period compliance for next payment date
+    next_payment_due_date, next_payment_date, day_one_adjustment = _recommended_leave_date(today, payment_day)
+    allow_custom_leave_date = bool(getattr(pg, 'allow_custom_leave_date', False))
+
+    # Calculate notice period compliance for the quick-select leave date.
     days_until_next_payment = (next_payment_date - today).days
     next_payment_eligible = days_until_next_payment >= notice_period
+
+    def _leave_context(form_obj):
+        return {
+            'form': form_obj,
+            'booking': booking,
+            'pg': pg,
+            'next_payment_date': next_payment_date,
+            'next_payment_due_date': next_payment_due_date,
+            'day_one_adjustment': day_one_adjustment,
+            'allow_custom_leave_date': allow_custom_leave_date,
+            'next_payment_eligible': next_payment_eligible,
+            'notice_period': notice_period,
+            'today': today,
+            'payment_day': payment_day,
+        }
     
     if request.method == 'POST':
         form = LeaveRequestForm(request.POST, booking=booking)
@@ -1910,25 +2016,29 @@ def initiate_leave_request(request, booking_id):
             acknowledge_no_advance = form.cleaned_data.get('acknowledge_no_advance', False)
             
             # Validate leaving date
-            if leaving_date < today:
-                messages.error(request, "Leave date cannot be in the past.")
-                return render(request, 'bookings/leave_request.html', {
-                    'form': form,
-                    'booking': booking,
-                    'next_payment_date': next_payment_date,
-                    'notice_period': notice_period,
-                    'today': today
-                })
+            if leaving_date <= today:
+                messages.error(request, "Leave date must be after today.")
+                return render(request, 'bookings/leave_request.html', _leave_context(form))
             
             if booking.joining_date and leaving_date <= booking.joining_date:
                 messages.error(request, "Leave date must be after your joining date.")
-                return render(request, 'bookings/leave_request.html', {
-                    'form': form,
-                    'booking': booking,
-                    'next_payment_date': next_payment_date,
-                    'notice_period': notice_period,
-                    'today': today
-                })
+                return render(request, 'bookings/leave_request.html', _leave_context(form))
+
+            # Server-side cap: user can never select a date after payment date - 1.
+            if leaving_date > next_payment_date:
+                messages.error(
+                    request,
+                    f"Leave date cannot be after {next_payment_date.strftime('%B %d, %Y')} (one day before your next payment date {next_payment_due_date.strftime('%B %d, %Y')}).",
+                )
+                return render(request, 'bookings/leave_request.html', _leave_context(form))
+
+            # If custom date is disabled for this PG, only the default capped date is allowed.
+            if not allow_custom_leave_date and leaving_date != next_payment_date:
+                messages.error(
+                    request,
+                    f"This booking allows only {next_payment_date.strftime('%B %d, %Y')} as leave date.",
+                )
+                return render(request, 'bookings/leave_request.html', _leave_context(form))
             
             # Calculate notice period compliance
             days_diff = (leaving_date - today).days
@@ -1937,13 +2047,7 @@ def initiate_leave_request(request, booking_id):
             # If not eligible, require acknowledgment
             if not advance_eligible and not acknowledge_no_advance:
                 messages.error(request, "You must acknowledge that no advance will be returned for early leaving.")
-                return render(request, 'bookings/leave_request.html', {
-                    'form': form,
-                    'booking': booking,
-                    'next_payment_date': next_payment_date,
-                    'notice_period': notice_period,
-                    'today': today
-                })
+                return render(request, 'bookings/leave_request.html', _leave_context(form))
             
             # Save leave request
             booking.leaving_date = leaving_date
@@ -1962,6 +2066,13 @@ def initiate_leave_request(request, booking_id):
                     title="Leave Request Received",
                     message=f"{booking.user.get_full_name()} has requested to leave Room {booking.room.room_no}, Bed {booking.share_no} on {leaving_date.strftime('%B %d, %Y')}."
                 )
+            send_push_to_users(
+                [pg_admin.user for pg_admin in pg_admins],
+                title="Leave Request Received",
+                body=f"{booking.user.get_full_name()} requested leave for Room {booking.room.room_no}, Bed {booking.share_no}.",
+                url=reverse('pg_leaving_requests'),
+                extra_data={'type': 'leave_requested', 'booking_id': booking.id},
+            )
             
             # Audit log
             log(
@@ -1980,20 +2091,9 @@ def initiate_leave_request(request, booking_id):
             messages.success(request, f"Leave request submitted successfully for {leaving_date.strftime('%B %d, %Y')}. Waiting for PG admin confirmation.")
             return redirect('dashboard')
     else:
-        form = LeaveRequestForm(booking=booking)
-    
-    context = {
-        'form': form,
-        'booking': booking,
-        'pg': pg,
-        'next_payment_date': next_payment_date,
-        'next_payment_eligible': next_payment_eligible,
-        'notice_period': notice_period,
-        'today': today,
-        'payment_day': payment_day,
-    }
-    
-    return render(request, 'bookings/leave_request.html', context)
+        form = LeaveRequestForm(booking=booking, initial={'leaving_date': next_payment_date})
+
+    return render(request, 'bookings/leave_request.html', _leave_context(form))
 
 
 @login_required
@@ -2033,6 +2133,13 @@ def cancel_leave_request(request, booking_id):
             title="Leave Request Cancelled",
             message=f"{booking.user.get_full_name()} has cancelled their leave request for Room {booking.room.room_no}, Bed {booking.share_no} (was scheduled for {old_leaving_date})."
         )
+    send_push_to_users(
+        [pg_admin.user for pg_admin in pg_admins],
+        title="Leave Request Cancelled",
+        body=f"{booking.user.get_full_name()} cancelled leave for Room {booking.room.room_no}, Bed {booking.share_no}.",
+        url=reverse('booking_detail', args=[booking.id]),
+        extra_data={'type': 'leave_cancelled', 'booking_id': booking.id},
+    )
     
     # Audit log
     log(

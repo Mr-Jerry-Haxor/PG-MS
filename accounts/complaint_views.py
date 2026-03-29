@@ -15,6 +15,8 @@ from django.utils import timezone
 from django.core.files.storage import default_storage
 from django.conf import settings
 from pgadmin.models import Complaint, ComplaintComment, ComplaintMedia
+from pgadmin.complaint_notifications import notify_new_complaint, notify_user_comment
+from core.push_notifications import send_push_to_user, send_push_to_users
 from bookings.models import Booking
 
 _logger = logging.getLogger(__name__)
@@ -146,6 +148,32 @@ def create_complaint(request):
                     file_size=media_item.get('file_size'),
                     thumbnail_url=media_item.get('thumbnail_url', '')
                 )
+
+        # Non-blocking email notifications for new complaint (tenant + PG admins)
+        try:
+            notify_new_complaint(complaint)
+        except Exception:
+            _logger.exception('Complaint notification dispatch failed for complaint %s', complaint.id)
+
+        # Push notifications with complaint deep links
+        try:
+            send_push_to_user(
+                request.user,
+                title=f"Complaint #{complaint.id} Created",
+                body=f"{complaint.title}",
+                url=f"/user/complaints/{complaint.id}/",
+                extra_data={'type': 'complaint_created', 'complaint_id': complaint.id},
+            )
+            admin_users = [a.user for a in complaint.pg.admins.select_related('user').all()]
+            send_push_to_users(
+                admin_users,
+                title=f"New Complaint #{complaint.id}",
+                body=f"{complaint.title} ({complaint.get_priority_display()})",
+                url=f"/pg/complaints/{complaint.id}/",
+                extra_data={'type': 'complaint_created', 'complaint_id': complaint.id},
+            )
+        except Exception:
+            _logger.exception('Complaint push dispatch failed for complaint %s', complaint.id)
         
         messages.success(request, f'Complaint "{complaint.title}" has been submitted successfully.')
         # Check if request came from dashboard modal
@@ -191,6 +219,57 @@ def complaint_detail(request, complaint_id):
     }
     
     return render(request, 'accounts/complaints/complaint_detail.html', context)
+
+
+@login_required
+@require_POST
+def complaint_add_comment(request, complaint_id):
+    """Allow a tenant to add a reply on their own complaint."""
+    complaint = get_object_or_404(
+        Complaint.objects.select_related('pg', 'user'),
+        id=complaint_id,
+        user=request.user,
+    )
+
+    if complaint.status == Complaint.SOLVED:
+        messages.error(request, 'This complaint is already solved and cannot be updated.')
+        return redirect('complaint_detail', complaint_id=complaint.id)
+
+    comment_text = (request.POST.get('comment') or '').strip()
+    if not comment_text:
+        messages.error(request, 'Comment text is required.')
+        return redirect('complaint_detail', complaint_id=complaint.id)
+
+    comment = ComplaintComment.objects.create(
+        complaint=complaint,
+        user=request.user,
+        comment=comment_text,
+        is_internal=False,
+    )
+
+    complaint.save(update_fields=['updated_at'])
+
+    # Notify PG admins by email (non-blocking)
+    try:
+        notify_user_comment(comment)
+    except Exception:
+        _logger.exception('Complaint user-comment notification failed for complaint %s', complaint.id)
+
+    # Push notify PG admins with complaint deep link
+    try:
+        admin_users = [a.user for a in complaint.pg.admins.select_related('user').all()]
+        send_push_to_users(
+            admin_users,
+            title=f"Tenant Replied on Complaint #{complaint.id}",
+            body=comment_text[:120],
+            url=f"/pg/complaints/{complaint.id}/",
+            extra_data={'type': 'complaint_comment', 'complaint_id': complaint.id},
+        )
+    except Exception:
+        _logger.exception('Complaint user-comment push failed for complaint %s', complaint.id)
+
+    messages.success(request, 'Your comment has been added.')
+    return redirect('complaint_detail', complaint_id=complaint.id)
 
 
 @login_required

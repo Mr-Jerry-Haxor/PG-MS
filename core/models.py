@@ -20,6 +20,34 @@ class Notification(TimeStampedModel):
 		return f"{self.user} - {self.title}"
 
 
+class UserDeviceToken(TimeStampedModel):
+	"""Stores FCM registration tokens for web devices per user."""
+	WEB = 'web'
+	ANDROID = 'android'
+	IOS = 'ios'
+	DEVICE_CHOICES = [
+		(WEB, 'Web'),
+		(ANDROID, 'Android'),
+		(IOS, 'iOS'),
+	]
+
+	user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE, related_name='device_tokens')
+	token = models.CharField(max_length=512, unique=True)
+	device_type = models.CharField(max_length=20, choices=DEVICE_CHOICES, default=WEB)
+	user_agent = models.CharField(max_length=500, blank=True)
+	is_active = models.BooleanField(default=True)
+	last_seen_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		indexes = [
+			models.Index(fields=['user', 'is_active']),
+			models.Index(fields=['last_seen_at']),
+		]
+
+	def __str__(self):
+		return f"{self.user} ({self.device_type})"
+
+
 class AuditLog(TimeStampedModel):
 	actor = models.ForeignKey(get_user_model(), on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
 	action = models.CharField(max_length=100)

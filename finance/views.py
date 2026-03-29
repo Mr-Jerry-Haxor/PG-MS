@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from pgadmin.models import PG
 from .models import Fees, Payment, Expenditure, ExpenditureCategory, MonthlyAdjustment
 from core.audit import log
+from core.push_notifications import send_push_to_user
 from .forms import FeesForm, PaymentForm, ExpenditureForm
 from bookings.models import Booking, ReferralCredit
 from django.db import transaction
@@ -364,9 +365,28 @@ def payments_edit(request, pk=None):
         form = PaymentForm(request.POST, instance=instance, user_queryset=user_qs, room_map=room_map)
         if form.is_valid():
             prev_status = instance.status if instance else None
+            is_new_payment = instance is None
             obj = form.save(commit=False)
             obj.pg = pg
             obj.save()
+
+            if is_new_payment:
+                try:
+                    send_push_to_user(
+                        obj.user,
+                        title="PG Payment Receipt",
+                        body=f"A payment of Rs.{obj.amount:.2f} was received for {obj.pg.name}.",
+                        url=reverse('my_payments'),
+                        extra_data={
+                            'type': 'payment_receipt',
+                            'payment_id': obj.id,
+                            'status': obj.status,
+                        },
+                    )
+                except Exception:
+                    # Push is best-effort and must not block payment save.
+                    pass
+
             if obj.status == 'success' and (prev_status != 'success'):
                 try:
                     from finance.signals import deliver_payment_receipt
@@ -3296,6 +3316,13 @@ def monthly_remind(request, user_id):
     try:
         from django.core.mail import send_mail
         send_mail(subject, body, None, [u.email], fail_silently=True)
+        send_push_to_user(
+            u,
+            title=f"Rent Reminder - {calendar.month_name[month]} {year}",
+            body=f"Pending: Rs.{pending:.2f} at {pg.name}",
+            url=reverse('my_payments'),
+            extra_data={'type': 'monthly_payment_reminder', 'month': month, 'year': year},
+        )
     except Exception:
         pass
     # Log reminder
@@ -3900,6 +3927,22 @@ def monthly_quick_payment(request):
             upi_amount=upi_amount_val, cash_amount=cash_amount_val,
             booking=linked_booking,
         )
+
+        try:
+            send_push_to_user(
+                u,
+                title="PG Payment Receipt",
+                body=f"A payment of Rs.{amount:.2f} was received for {pg.name}.",
+                url=reverse('my_payments'),
+                extra_data={
+                    'type': 'payment_receipt',
+                    'payment_id': payment.id,
+                    'status': payment.status,
+                },
+            )
+        except Exception:
+            # Push is best-effort and must not block payment creation.
+            pass
         
         # If payment type is 'advance', update the user's booking based on payment date
         if ptype == 'advance':
@@ -4112,7 +4155,6 @@ def monthly_quick_payment(request):
 
     # Non-AJAX: flash and redirect back with context
     messages.success(request, f'Payment of ₹{amount:.2f} added for {u.email}.')
-    from django.urls import reverse
     base = reverse('finance_monthly')
     params = []
     if year: params.append(f'year={year}')

@@ -164,28 +164,48 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Push notification support (optional for future)
+// Push notification support
 self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (e) {
+    payload = { body: event.data ? event.data.text() : 'New notification' };
+  }
+
+  const title = payload?.notification?.title || payload?.title || 'PG-MS';
+  const body = payload?.notification?.body || payload?.body || 'You have a new update.';
+  const targetUrl = payload?.data?.url || payload?.fcmOptions?.link || '/';
+
   const options = {
-    body: event.data ? event.data.text() : 'New notification',
-    icon: '/static/img/icon-192x192.png',
-    badge: '/static/img/icon-72x72.png',
+    body,
+    icon: payload?.notification?.icon || '/static/img/icon-192x192.png',
+    badge: payload?.notification?.badge || '/static/img/icon-72x72.png',
     vibrate: [100, 50, 100],
     data: {
+      url: targetUrl,
       dateOfArrival: Date.now(),
-      primaryKey: 1
     }
   };
 
-  event.waitUntil(
-    self.registration.showNotification('PG-MS', options)
-  );
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Handle notification clicks
+// Handle notification clicks with deep-link support
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+
+  const url = (event.notification && event.notification.data && event.notification.data.url) || '/';
+
   event.waitUntil(
-    clients.openWindow('/')
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client && client.url.includes(self.location.origin)) {
+          client.navigate(url);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
   );
 });

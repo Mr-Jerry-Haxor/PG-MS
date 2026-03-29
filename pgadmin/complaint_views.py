@@ -10,6 +10,8 @@ from django.utils import timezone
 from django.http import JsonResponse
 from datetime import datetime, timedelta
 from .models import PG, PGAdmin, Complaint, ComplaintComment
+from .complaint_notifications import notify_admin_comment
+from core.push_notifications import send_push_to_user
 
 
 def _require_pg_admin(user):
@@ -84,14 +86,28 @@ def admin_complaint_detail(request, complaint_id):
     
     # Get all comments (including internal)
     comments = complaint.comments.all().select_related('user').order_by('created_at')
-    
+
     # Get all media files attached to complaint
     media_files = complaint.media_files.all()
-    
+
+    # Best-effort tenant phone for WhatsApp action
+    tenant_phone = ''
+    try:
+        app = getattr(getattr(complaint, 'booking', None), 'application', None)
+        tenant_phone = (getattr(app, 'whatsapp_number', '') or getattr(app, 'phone', '') or '').strip()
+    except Exception:
+        tenant_phone = ''
+    if not tenant_phone:
+        tenant_phone = (getattr(getattr(complaint.user, 'profile', None), 'phone', '') or '').strip()
+
+    public_comments = comments.filter(is_internal=False)
+
     context = {
         'complaint': complaint,
         'comments': comments,
+        'public_comments': public_comments,
         'media_files': media_files,
+        'tenant_phone': tenant_phone,
         'status_choices': Complaint.STATUS_CHOICES,
     }
     
@@ -131,6 +147,24 @@ def admin_complaint_add_comment(request, complaint_id):
     
     # Update complaint's updated_at
     complaint.save()
+
+    # Non-blocking email notification to tenant for public admin comments
+    try:
+        notify_admin_comment(comment)
+    except Exception:
+        pass
+
+    if not is_internal:
+        try:
+            send_push_to_user(
+                complaint.user,
+                title=f"Complaint #{complaint.id} Updated",
+                body=comment_text[:120],
+                url=f"/user/complaints/{complaint.id}/",
+                extra_data={'type': 'complaint_comment', 'complaint_id': complaint.id},
+            )
+        except Exception:
+            pass
     
     messages.success(request, 'Comment added successfully.')
     

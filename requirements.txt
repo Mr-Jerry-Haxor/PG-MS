@@ -56,5 +56,6 @@ urllib3==2.5.0
 whitenoise==6.7.0
 python-dateutil
 dateutils==0.6.12
+firebase-admin==6.6.0
 pytz==2025.2
 

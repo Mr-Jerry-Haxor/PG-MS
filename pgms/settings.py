@@ -96,6 +96,7 @@ TEMPLATES = [
                 'core.context_processors.unread_counts',
                 'core.context_processors.pg_context',
                 'core.context_processors.google_client',
+                'core.context_processors.firebase_config',
             ],
         },
     },
@@ -158,13 +159,6 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
         'OPTIONS': {
             'timeout': 30,  # Increase timeout from default 5 to 30 seconds
-            'init_command': (
-                "PRAGMA journal_mode=WAL;"  # Write-Ahead Logging for better concurrency
-                "PRAGMA synchronous=NORMAL;"  # Faster writes while maintaining safety
-                "PRAGMA cache_size=-64000;"  # 64MB cache (negative = KB)
-                "PRAGMA temp_store=MEMORY;"  # Store temp tables in memory
-                "PRAGMA busy_timeout=30000;"  # 30 second busy timeout
-            ),
         },
         'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
     }
@@ -225,6 +219,23 @@ EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+
+# Firebase / FCM configuration
+FIREBASE_PUSH_ENABLED = os.getenv('FIREBASE_PUSH_ENABLED', 'True') == 'True'
+FIREBASE_SERVICE_ACCOUNT_FILE = os.getenv('FIREBASE_SERVICE_ACCOUNT_FILE', '')
+FIREBASE_VAPID_KEY = os.getenv('FIREBASE_VAPID_KEY', '')
+
+FIREBASE_WEB_API_KEY = os.getenv('FIREBASE_WEB_API_KEY', 'AIzaSyCM510vYDp1QMS1P_oXarTMl4vmkO0GJT0')
+FIREBASE_WEB_AUTH_DOMAIN = os.getenv('FIREBASE_WEB_AUTH_DOMAIN', 'pgms-b72bc.firebaseapp.com')
+FIREBASE_WEB_PROJECT_ID = os.getenv('FIREBASE_WEB_PROJECT_ID', 'pgms-b72bc')
+FIREBASE_WEB_STORAGE_BUCKET = os.getenv('FIREBASE_WEB_STORAGE_BUCKET', 'pgms-b72bc.firebasestorage.app')
+FIREBASE_WEB_MESSAGING_SENDER_ID = os.getenv('FIREBASE_WEB_MESSAGING_SENDER_ID', '633682457009')
+FIREBASE_WEB_APP_ID = os.getenv('FIREBASE_WEB_APP_ID', '1:633682457009:web:d2da668af5b253ae314d90')
+APP_BASE_URL = os.getenv('APP_BASE_URL', 'http://127.0.0.1:8000')
+
+
+DEFAULT_CHARSET = 'utf-8'
+FILE_CHARSET = 'utf-8' 
 
 # Media (for local dev; files may later sync to Google Drive)
 MEDIA_URL = '/media/'
