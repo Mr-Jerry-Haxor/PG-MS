@@ -355,7 +355,7 @@ def handle_daywise_booking(request, pg, has_active):
                     [ap.user for ap in admin_profiles],
                     title="Day-Wise Booking Request",
                     body=f"{name} requested {start_date} to {end_date}.",
-                    url=reverse('pg_booking_approve', args=[booking.id]),
+                    url=reverse('pg_bookings_pending'),
                     extra_data={'type': 'booking_request', 'booking_type': 'daywise'},
                 )
                 # Email notification
@@ -523,7 +523,7 @@ def handle_future_booking(request, pg, has_active):
                     [ap.user for ap in admin_profiles],
                     title="Future Booking Request",
                     body=f"{name} requested Room {room.room_no}, Bed {share_no} joining {joining_date}.",
-                    url=reverse('pg_booking_approve', args=[booking_obj.id]),
+                    url=reverse('pg_bookings_pending'),
                     extra_data={'type': 'booking_request', 'booking_type': 'future'},
                 )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
@@ -1478,7 +1478,7 @@ def request_booking(request, room_id, share_no):
                     [ap.user for ap in pg_admin_profiles],
                     title="New Booking Request",
                     body=f"{request.user.email} requested Room {room.room_no}, Bed {share_no}.",
-                    url=reverse('pg_booking_approve', args=[booking_obj.id]),
+                    url=reverse('pg_bookings_pending'),
                     extra_data={'type': 'booking_request', 'booking_type': 'regular'},
                 )
                 # (Optional) Site admins still receive it for oversight
