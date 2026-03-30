@@ -3758,7 +3758,6 @@ Thank you for your payment!
         extra_data={'type': 'booking_approved', 'booking_id': booking.id},
     )
     try:
-        from django.urls import reverse
         link = request.build_absolute_uri(reverse('application_fill', args=[booking.id]))
         send_mail(
             subject="PG-MS: Booking Approved",
