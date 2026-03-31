@@ -532,8 +532,9 @@
     {% if FIREBASE_PUSH_ENABLED and user.is_authenticated %}
       {{ FIREBASE_WEB_CONFIG|json_script:"firebase-web-config" }}
       <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-        import { getMessaging, getToken, onMessage, isSupported } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-messaging.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+        import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-messaging.js";
+        import { getAnalytics, isSupported as isAnalyticsSupported } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
 
         function getCookie(name) {
           let cookieValue = null;
@@ -594,13 +595,6 @@
         }
 
         async function initFirebasePush() {
-          if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-            return;
-          }
-          if (!await isSupported()) {
-            return;
-          }
-
           const cfgEl = document.getElementById('firebase-web-config');
           if (!cfgEl) return;
 
@@ -611,13 +605,35 @@
             return;
           }
 
+          // Firebase Analytics config (measurementId fallback from provided snippet)
+          if (!firebaseConfig.measurementId) {
+            firebaseConfig.measurementId = "G-QM41R4DS8M";
+          }
+
+          const app = initializeApp(firebaseConfig);
+
+          // Initialize Analytics without breaking FCM flow on unsupported environments.
+          try {
+            if (await isAnalyticsSupported()) {
+              getAnalytics(app);
+            }
+          } catch (err) {
+            console.warn('Firebase analytics init failed:', err);
+          }
+
+          if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+            return;
+          }
+          if (!await isMessagingSupported()) {
+            return;
+          }
+
           const vapidKey = "{{ FIREBASE_VAPID_KEY|default:''|escapejs }}";
           if (!vapidKey) {
             console.info('FCM VAPID key missing. Skipping web token registration.');
             return;
           }
 
-          const app = initializeApp(firebaseConfig);
           const messaging = getMessaging(app);
 
           const registerToken = async () => {
