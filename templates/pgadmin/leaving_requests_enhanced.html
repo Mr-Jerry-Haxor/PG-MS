@@ -495,6 +495,7 @@
                     <div class="d-flex align-items-center gap-1 mt-1">
                       {% if whatsapp_phone %}
                       <button type="button" class="btn btn-sm btn-outline-success whatsapp-leave-btn"
+                              data-booking-id="{{ booking.id }}"
                               data-phone="{{ whatsapp_phone }}"
                               data-full-name="{{ booking.user.get_full_name }}"
                               data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
@@ -521,26 +522,6 @@
                 </div>
               </td>
             </tr>
-            
-            <!-- Reason Modal -->
-            {% if booking.leaving_reason %}
-            <div class="modal fade" id="reasonModal{{ booking.id }}" tabindex="-1" data-bs-backdrop="true" data-bs-keyboard="true">
-              <div class="modal-dialog">
-                <div class="modal-content">
-                  <div class="modal-header">
-                    <h5 class="modal-title">Leave Reason - {{ booking.user.get_full_name }}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                  </div>
-                  <div class="modal-body">
-                    <p>{{ booking.leaving_reason }}</p>
-                  </div>
-                  <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            {% endif %}
 
             {% endfor %}
           </tbody>
@@ -697,6 +678,7 @@
             <div class="d-flex align-items-center gap-1 flex-wrap">
               {% if whatsapp_phone %}
               <button type="button" class="btn btn-sm btn-outline-success whatsapp-leave-btn"
+                      data-booking-id="{{ booking.id }}"
                       data-phone="{{ whatsapp_phone }}"
                       data-full-name="{{ booking.user.get_full_name }}"
                       data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
@@ -753,6 +735,28 @@
   {% for booking in leave_requests %}
     {% if booking.application %}
       {% include 'pgadmin/_application_modal.html' with booking=booking pg=pg %}
+    {% endif %}
+  {% endfor %}
+
+  {# Reason modals are rendered outside view containers so they work in both table/card layouts #}
+  {% for booking in leave_requests %}
+    {% if booking.leaving_reason %}
+    <div class="modal fade" id="reasonModal{{ booking.id }}" tabindex="-1" data-bs-backdrop="true" data-bs-keyboard="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Leave Reason - {{ booking.user.get_full_name }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>{{ booking.leaving_reason }}</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
     {% endif %}
   {% endfor %}
 </div>
@@ -1340,12 +1344,64 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // WhatsApp buttons for confirmed leave notifications
+  const WHATSAPP_CLICK_STORAGE_KEY = 'pgms_leave_whatsapp_click_counts';
+
+  function loadWhatsappClickMap() {
+    try {
+      const raw = localStorage.getItem(WHATSAPP_CLICK_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveWhatsappClickMap(map) {
+    try {
+      localStorage.setItem(WHATSAPP_CLICK_STORAGE_KEY, JSON.stringify(map));
+    } catch (e) {
+      // Ignore storage errors (private mode / quota).
+    }
+  }
+
+  function renderWhatsappButtonState(buttonEl, clickCount) {
+    const normalizedCount = Math.max(0, Math.min(2, parseInt(clickCount, 10) || 0));
+    const tickText = normalizedCount === 1 ? ' ✓' : (normalizedCount >= 2 ? ' ✓✓' : '');
+    buttonEl.classList.toggle('btn-success', normalizedCount > 0);
+    buttonEl.classList.toggle('btn-outline-success', normalizedCount === 0);
+    buttonEl.innerHTML = `<i class="bi bi-whatsapp me-1"></i>WhatsApp${tickText}`;
+    buttonEl.dataset.clickCount = String(normalizedCount);
+  }
+
+  function renderWhatsappButtonsForBooking(bookingId, clickCount) {
+    if (!bookingId) return;
+    document.querySelectorAll(`.whatsapp-leave-btn[data-booking-id="${bookingId}"]`).forEach(btn => {
+      renderWhatsappButtonState(btn, clickCount);
+    });
+  }
+
+  const whatsappClickMap = loadWhatsappClickMap();
   document.querySelectorAll('.whatsapp-leave-btn').forEach(btn => {
+    const bookingId = btn.dataset.bookingId || '';
+    const savedCount = bookingId ? whatsappClickMap[bookingId] : 0;
+    renderWhatsappButtonState(btn, savedCount);
+
     btn.addEventListener('click', function() {
       const rawPhone = (this.dataset.phone || '').replace(/\D/g, '');
       if (!rawPhone) {
         alert('Phone number not available for this tenant.');
         return;
+      }
+
+      const targetBookingId = this.dataset.bookingId || '';
+      const currentCount = Math.max(0, Math.min(2, parseInt(this.dataset.clickCount, 10) || 0));
+      const nextCount = Math.min(2, currentCount + 1);
+      if (targetBookingId) {
+        whatsappClickMap[targetBookingId] = nextCount;
+        saveWhatsappClickMap(whatsappClickMap);
+        renderWhatsappButtonsForBooking(targetBookingId, nextCount);
+      } else {
+        renderWhatsappButtonState(this, nextCount);
       }
 
       const tenantName = this.dataset.fullName || 'Tenant';

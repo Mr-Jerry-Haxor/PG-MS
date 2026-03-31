@@ -753,9 +753,9 @@
         <div class="d-flex gap-2 align-items-center flex-wrap">
           <label class="small mb-0">Sort:</label>
           <select id="cardSortSelect" class="form-select form-select-sm" style="width: auto;">
+            <option value="room_asc" selected>Room ↑</option>
             <option value="name_asc">Resident A–Z</option>
             <option value="name_desc">Resident Z–A</option>
-            <option value="room_asc">Room ↑</option>
             <option value="room_desc">Room ↓</option>
             <option value="joining_asc">Joining Date ↑</option>
             <option value="joining_desc">Joining Date ↓</option>
@@ -2370,7 +2370,7 @@
 
       // Apply sorting
       var sortSelect = document.getElementById('cardSortSelect');
-      var sortVal = sortSelect ? sortSelect.value : 'name_asc';
+      var sortVal = sortSelect ? sortSelect.value : 'room_asc';
       var parts = sortVal.split('_');
       var sortKey = parts[0];
       var sortDir = parts[1] || 'asc';
