@@ -484,7 +484,7 @@ def register_fcm_token(request):
 	if device_type not in {UserDeviceToken.WEB, UserDeviceToken.ANDROID, UserDeviceToken.IOS}:
 		device_type = UserDeviceToken.WEB
 
-	obj, _created = UserDeviceToken.objects.update_or_create(
+	_obj, _created = UserDeviceToken.objects.update_or_create(
 		token=token,
 		defaults={
 			'user': request.user,
@@ -494,8 +494,7 @@ def register_fcm_token(request):
 		},
 	)
 
-	# Keep one latest active token per user/device in this browser family to avoid duplicates.
-	UserDeviceToken.objects.filter(user=request.user, device_type=device_type).exclude(id=obj.id).update(is_active=False)
+	# Keep all active tokens for this user so notifications fan out to every signed-in device.
 
 	return JsonResponse({'ok': True})
 

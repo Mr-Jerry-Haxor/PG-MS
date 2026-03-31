@@ -341,7 +341,8 @@ def handle_daywise_booking(request, pg, has_active):
             # Notify PG admins
             try:
                 admin_profiles = list(pg.admins.select_related('user').all())
-                admin_url = request.build_absolute_uri(reverse('pg_bookings_pending'))
+                pending_path = f"{reverse('pg_bookings_pending')}?{urlencode({'pg': pg.id})}"
+                admin_url = request.build_absolute_uri(pending_path)
                 for ap in admin_profiles:
                     Notification.objects.create(
                         user=ap.user,
@@ -356,8 +357,8 @@ def handle_daywise_booking(request, pg, has_active):
                     [ap.user for ap in admin_profiles],
                     title="Day-Wise Booking Request",
                     body=f"{name} requested {start_date} to {end_date}.",
-                    url=reverse('pg_bookings_pending'),
-                    extra_data={'type': 'booking_request', 'booking_type': 'daywise'},
+                    url=pending_path,
+                    extra_data={'type': 'booking_request', 'booking_type': 'daywise', 'pg_id': pg.id},
                 )
                 # Email notification
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
@@ -509,7 +510,8 @@ def handle_future_booking(request, pg, has_active):
             
             # Notify admins
             try:
-                admin_url = request.build_absolute_uri(reverse('pg_resident_applications'))
+                pending_path = f"{reverse('pg_bookings_pending')}?{urlencode({'pg': pg.id})}"
+                admin_url = request.build_absolute_uri(pending_path)
                 admin_profiles = list(pg.admins.select_related('user').all())
                 for ap in admin_profiles:
                     Notification.objects.create(
@@ -524,8 +526,8 @@ def handle_future_booking(request, pg, has_active):
                     [ap.user for ap in admin_profiles],
                     title="Future Booking Request",
                     body=f"{name} requested Room {room.room_no}, Bed {share_no} joining {joining_date}.",
-                    url=reverse('pg_bookings_pending'),
-                    extra_data={'type': 'booking_request', 'booking_type': 'future'},
+                    url=pending_path,
+                    extra_data={'type': 'booking_request', 'booking_type': 'future', 'pg_id': pg.id},
                 )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
                 if admin_emails:
@@ -810,7 +812,8 @@ def handle_booknow_booking(request, pg, has_active, context):
 
             # Notify admins (best-effort)
             try:
-                admin_url = request.build_absolute_uri(reverse('pg_resident_applications'))
+                admin_path = f"{reverse('pg_resident_applications')}?{urlencode({'pg': pg.id, 'email': inst.user.email or ''})}"
+                admin_url = request.build_absolute_uri(admin_path)
                 admin_profiles = list(pg.admins.select_related('user').all())
                 for ap in admin_profiles:
                     Notification.objects.create(
@@ -825,8 +828,8 @@ def handle_booknow_booking(request, pg, has_active, context):
                     [ap.user for ap in admin_profiles],
                     title="Resident Application Submitted",
                     body=f"{inst.user.email} submitted application for Room {room.room_no}, Bed {share_no}.",
-                    url=f"{reverse('pg_resident_applications')}?{urlencode({'pg': pg.id, 'email': inst.user.email or ''})}",
-                    extra_data={'type': 'application_submitted', 'application_status': inst.status},
+                    url=admin_path,
+                    extra_data={'type': 'application_submitted', 'application_status': inst.status, 'pg_id': pg.id},
                 )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
                 if admin_emails:
@@ -1096,7 +1099,8 @@ def handle_booknow_booking(request, pg, has_active, context):
 
             # Notify admins (best-effort)
             try:
-                admin_url = request.build_absolute_uri(reverse('pg_resident_applications'))
+                admin_path = f"{reverse('pg_resident_applications')}?{urlencode({'pg': pg.id, 'email': inst.user.email or ''})}"
+                admin_url = request.build_absolute_uri(admin_path)
                 admin_profiles = list(pg.admins.select_related('user').all())
                 for ap in admin_profiles:
                     Notification.objects.create(
@@ -1111,8 +1115,8 @@ def handle_booknow_booking(request, pg, has_active, context):
                     [ap.user for ap in admin_profiles],
                     title="Resident Application Submitted",
                     body=f"{inst.user.email} submitted application for Room {room.room_no}, Bed {share_no}.",
-                    url=f"{reverse('pg_resident_applications')}?{urlencode({'pg': pg.id, 'email': inst.user.email or ''})}",
-                    extra_data={'type': 'application_submitted', 'application_status': inst.status},
+                    url=admin_path,
+                    extra_data={'type': 'application_submitted', 'application_status': inst.status, 'pg_id': pg.id},
                 )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
                 if admin_emails:
@@ -1463,7 +1467,8 @@ def request_booking(request, room_id, share_no):
 
             # Notify PG admins (all admins of this PG) + optionally site admins
             try:
-                pending_link = request.build_absolute_uri(reverse('pg_bookings_pending'))
+                pending_path = f"{reverse('pg_bookings_pending')}?{urlencode({'pg': room.pg_id})}"
+                pending_link = request.build_absolute_uri(pending_path)
                 # PG admins
                 pg_admin_profiles = list(room.pg.admins.select_related('user').all())
                 pg_admin_emails = [ap.user.email for ap in pg_admin_profiles if ap.user.email]
@@ -1479,8 +1484,8 @@ def request_booking(request, room_id, share_no):
                     [ap.user for ap in pg_admin_profiles],
                     title="New Booking Request",
                     body=f"{request.user.email} requested Room {room.room_no}, Bed {share_no}.",
-                    url=reverse('pg_bookings_pending'),
-                    extra_data={'type': 'booking_request', 'booking_type': 'regular'},
+                    url=pending_path,
+                    extra_data={'type': 'booking_request', 'booking_type': 'regular', 'pg_id': room.pg_id},
                 )
                 # (Optional) Site admins still receive it for oversight
                 site_admin_emails = list(
@@ -1567,6 +1572,7 @@ def leaving_intimation(request, booking_id):
             pass
         # Notify PG Admins (simple: all admins of this PG)
         pg = booking.room.pg
+        booking_path = f"{reverse('booking_detail', args=[booking.id])}?{urlencode({'pg': pg.id})}"
         admin_profiles = list(pg.admins.select_related('user').all())
         # Create in-app notifications for each admin
         for ap in admin_profiles:
@@ -1579,8 +1585,8 @@ def leaving_intimation(request, booking_id):
             [ap.user for ap in admin_profiles],
             title="Leaving Request",
             body=f"{request.user.email} plans to leave on {leaving_date}.",
-            url=reverse('booking_detail', args=[booking.id]),
-            extra_data={'type': 'leave_requested', 'booking_id': booking.id},
+            url=booking_path,
+            extra_data={'type': 'leave_requested', 'booking_id': booking.id, 'pg_id': pg.id},
         )
         # Send single email to all admin emails (if any)
         try:
@@ -1608,6 +1614,7 @@ def leaving_intimation(request, booking_id):
 @login_required
 def booking_detail(request, booking_id):
     booking = get_object_or_404(Booking, pk=booking_id)
+    booking_pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
     # Authorization: only the booking owner, superuser/site-admin, or a PG Admin of this booking's PG can view
     can_view = False
     can_delete = False
@@ -1620,9 +1627,8 @@ def booking_detail(request, booking_id):
         can_delete = True  # Superusers and website admins can always delete
         is_admin = True
     else:
-        pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
-        if pg_id:
-            pg_admin = PGAdmin.objects.filter(user=request.user, pg_id=pg_id).first()
+        if booking_pg_id:
+            pg_admin = PGAdmin.objects.filter(user=request.user, pg_id=booking_pg_id).first()
             if pg_admin:
                 can_view = True
                 is_admin = True
@@ -1638,6 +1644,11 @@ def booking_detail(request, booking_id):
     if not can_view:
         messages.error(request, "You do not have permission to view this booking.")
         return redirect('dashboard')
+
+    # Keep admin PG context aligned when opening booking details from deep links.
+    if is_admin and booking_pg_id:
+        request.session['active_pg_id'] = booking_pg_id
+
     from core.models import AuditLog
     from django.db.models import Q
     # Get logs for both the booking and its application (if any)
@@ -1844,7 +1855,8 @@ def application_fill(request, booking_id):
 
         # Notify PG Admins via in-app notification and email with a link to review/confirm
         try:
-            admin_url = request.build_absolute_uri(reverse('pg_resident_applications'))
+            admin_path = f"{reverse('pg_resident_applications')}?{urlencode({'pg': inst.pg_id, 'email': inst.user.email or ''})}"
+            admin_url = request.build_absolute_uri(admin_path)
             action = 'Submitted' if inst.status == ResidentApplication.SUBMITTED else ('Re-submitted' if inst.status == ResidentApplication.RESUBMITTED else 'Updated')
             # In-app notifications
             admin_profiles = list(inst.pg.admins.select_related('user').all())
@@ -1862,8 +1874,8 @@ def application_fill(request, booking_id):
                 [ap.user for ap in admin_profiles],
                 title=f"Application {action}",
                 body=f"{inst.user.email} {action.lower()} application for Room {booking.room.room_no}, Bed {booking.share_no}.",
-                url=f"{reverse('pg_resident_applications')}?{urlencode({'pg': inst.pg_id, 'email': inst.user.email or ''})}",
-                extra_data={'type': 'application_submitted', 'application_status': inst.status},
+                url=admin_path,
+                extra_data={'type': 'application_submitted', 'application_status': inst.status, 'pg_id': inst.pg_id},
             )
             # Email
             admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
@@ -2061,6 +2073,7 @@ def initiate_leave_request(request, booking_id):
             
             # Create notification for PG admin
             pg_admins = PGAdmin.objects.filter(pg=pg).select_related('user')
+            leave_requests_path = f"{reverse('pg_leaving_requests')}?{urlencode({'pg': pg.id})}"
             for pg_admin in pg_admins:
                 Notification.objects.create(
                     user=pg_admin.user,
@@ -2071,8 +2084,8 @@ def initiate_leave_request(request, booking_id):
                 [pg_admin.user for pg_admin in pg_admins],
                 title="Leave Request Received",
                 body=f"{booking.user.get_full_name()} requested leave for Room {booking.room.room_no}, Bed {booking.share_no}.",
-                url=reverse('pg_leaving_requests'),
-                extra_data={'type': 'leave_requested', 'booking_id': booking.id},
+                url=leave_requests_path,
+                extra_data={'type': 'leave_requested', 'booking_id': booking.id, 'pg_id': pg.id},
             )
             
             # Audit log
@@ -2128,6 +2141,7 @@ def cancel_leave_request(request, booking_id):
     
     # Notify PG admin
     pg_admins = PGAdmin.objects.filter(pg=booking.room.pg).select_related('user')
+    booking_path = f"{reverse('booking_detail', args=[booking.id])}?{urlencode({'pg': booking.room.pg_id})}"
     for pg_admin in pg_admins:
         Notification.objects.create(
             user=pg_admin.user,
@@ -2138,8 +2152,8 @@ def cancel_leave_request(request, booking_id):
         [pg_admin.user for pg_admin in pg_admins],
         title="Leave Request Cancelled",
         body=f"{booking.user.get_full_name()} cancelled leave for Room {booking.room.room_no}, Bed {booking.share_no}.",
-        url=reverse('booking_detail', args=[booking.id]),
-        extra_data={'type': 'leave_cancelled', 'booking_id': booking.id},
+        url=booking_path,
+        extra_data={'type': 'leave_cancelled', 'booking_id': booking.id, 'pg_id': booking.room.pg_id},
     )
     
     # Audit log

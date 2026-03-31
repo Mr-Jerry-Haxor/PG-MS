@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from datetime import date, timedelta
+from urllib.parse import urlencode
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -186,12 +187,13 @@ def create_complaint(request):
                 extra_data={'type': 'complaint_created', 'complaint_id': complaint.id},
             )
             admin_users = [a.user for a in complaint.pg.admins.select_related('user').all()]
+            admin_detail_url = f"/pg/complaints/{complaint.id}/?{urlencode({'pg': complaint.pg_id})}"
             send_push_to_users(
                 admin_users,
                 title=f"New Complaint #{complaint.id}",
                 body=f"{complaint.title} ({complaint.get_priority_display()})",
-                url=f"/pg/complaints/{complaint.id}/",
-                extra_data={'type': 'complaint_created', 'complaint_id': complaint.id},
+                url=admin_detail_url,
+                extra_data={'type': 'complaint_created', 'complaint_id': complaint.id, 'pg_id': complaint.pg_id},
             )
         except Exception:
             _logger.exception('Complaint push dispatch failed for complaint %s', complaint.id)
@@ -279,12 +281,13 @@ def complaint_add_comment(request, complaint_id):
     # Push notify PG admins with complaint deep link
     try:
         admin_users = [a.user for a in complaint.pg.admins.select_related('user').all()]
+        admin_detail_url = f"/pg/complaints/{complaint.id}/?{urlencode({'pg': complaint.pg_id})}"
         send_push_to_users(
             admin_users,
             title=f"Tenant Replied on Complaint #{complaint.id}",
             body=comment_text[:120],
-            url=f"/pg/complaints/{complaint.id}/",
-            extra_data={'type': 'complaint_comment', 'complaint_id': complaint.id},
+            url=admin_detail_url,
+            extra_data={'type': 'complaint_comment', 'complaint_id': complaint.id, 'pg_id': complaint.pg_id},
         )
     except Exception:
         _logger.exception('Complaint user-comment push failed for complaint %s', complaint.id)

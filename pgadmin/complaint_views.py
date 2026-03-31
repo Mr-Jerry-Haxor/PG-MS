@@ -24,6 +24,17 @@ def _admin_pgs(user):
     return PG.objects.filter(admins__user=user)
 
 
+def _sync_active_pg_session(request, pg_id):
+    """Persist active PG in session when request provides a valid admin PG context."""
+    try:
+        pg_id_int = int(pg_id)
+    except (TypeError, ValueError):
+        return
+
+    if _admin_pgs(request.user).filter(id=pg_id_int).exists():
+        request.session['active_pg_id'] = pg_id_int
+
+
 @login_required
 def admin_complaints(request):
     """
@@ -36,6 +47,7 @@ def admin_complaints(request):
     
     # Get admin's PGs
     admin_pgs = _admin_pgs(request.user)
+    _sync_active_pg_session(request, request.GET.get('pg'))
     
     # Load ALL complaints from admin's PGs (no server-side filtering)
     complaints = Complaint.objects.filter(pg__in=admin_pgs).select_related(
@@ -83,6 +95,8 @@ def admin_complaint_detail(request, complaint_id):
     if complaint.pg not in admin_pgs:
         messages.error(request, 'You do not have access to this complaint.')
         return redirect('admin_complaints')
+
+    _sync_active_pg_session(request, complaint.pg_id)
     
     # Get all comments (including internal)
     comments = complaint.comments.all().select_related('user').order_by('created_at')
