@@ -1,5 +1,6 @@
 import io
 import calendar as _cal
+from urllib.parse import urlencode
 from datetime import timedelta, date
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
@@ -824,7 +825,7 @@ def handle_booknow_booking(request, pg, has_active, context):
                     [ap.user for ap in admin_profiles],
                     title="Resident Application Submitted",
                     body=f"{inst.user.email} submitted application for Room {room.room_no}, Bed {share_no}.",
-                    url=reverse('pg_admin_application_edit', args=[inst.id]),
+                    url=f"{reverse('pg_resident_applications')}?{urlencode({'pg': pg.id, 'email': inst.user.email or ''})}",
                     extra_data={'type': 'application_submitted', 'application_status': inst.status},
                 )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
@@ -1110,7 +1111,7 @@ def handle_booknow_booking(request, pg, has_active, context):
                     [ap.user for ap in admin_profiles],
                     title="Resident Application Submitted",
                     body=f"{inst.user.email} submitted application for Room {room.room_no}, Bed {share_no}.",
-                    url=reverse('pg_admin_application_edit', args=[inst.id]),
+                    url=f"{reverse('pg_resident_applications')}?{urlencode({'pg': pg.id, 'email': inst.user.email or ''})}",
                     extra_data={'type': 'application_submitted', 'application_status': inst.status},
                 )
                 admin_emails = [ap.user.email for ap in admin_profiles if getattr(ap.user, 'email', None)]
@@ -1861,7 +1862,7 @@ def application_fill(request, booking_id):
                 [ap.user for ap in admin_profiles],
                 title=f"Application {action}",
                 body=f"{inst.user.email} {action.lower()} application for Room {booking.room.room_no}, Bed {booking.share_no}.",
-                url=reverse('pg_admin_application_edit', args=[inst.id]),
+                url=f"{reverse('pg_resident_applications')}?{urlencode({'pg': inst.pg_id, 'email': inst.user.email or ''})}",
                 extra_data={'type': 'application_submitted', 'application_status': inst.status},
             )
             # Email

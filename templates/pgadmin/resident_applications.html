@@ -459,6 +459,12 @@
     if (!container) return;
     const cards = container.querySelectorAll('.app-card');
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const deepLinkSearch = (urlParams.get('email') || urlParams.get('search') || '').trim();
+    if (input && deepLinkSearch && !input.value) {
+      input.value = deepLinkSearch;
+    }
+
     function applyFilters() {
       const q = (input && input.value || '').trim().toLowerCase();
       const status = (statusSel && statusSel.value) || 'all';

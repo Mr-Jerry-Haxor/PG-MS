@@ -1925,6 +1925,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 // Media Upload for Dashboard Complaint Modal
 document.addEventListener('DOMContentLoaded', function() {
+  const raiseComplaintForm = document.getElementById('raiseComplaintForm');
     const modalDropZone = document.getElementById('modalMediaDropZone');
     const modalFileInput = document.getElementById('modalMediaFileInput');
     const modalPreviewGrid = document.getElementById('modalMediaPreviewGrid');
@@ -1935,6 +1936,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const modalCaptureVideoBtn = document.getElementById('modalCaptureVideoBtn');
     const modalCameraPhotoInput = document.getElementById('modalCameraPhotoInput');
     const modalCameraVideoInput = document.getElementById('modalCameraVideoInput');
+    let isModalSubmitting = false;
     
     if (!modalDropZone) return; // Exit if modal not present
     
@@ -2191,6 +2193,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function updateModalSubmitButton() {
         if (!modalSubmitBtn) return;
+
+      if (isModalSubmitting) {
+        modalSubmitBtn.disabled = true;
+        modalSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Submitting...';
+        return;
+      }
         
         const uploading = document.querySelectorAll('#modalMediaPreviewGrid .upload-status.uploading');
         if (uploading.length > 0) {
@@ -2200,6 +2208,25 @@ document.addEventListener('DOMContentLoaded', function() {
             modalSubmitBtn.disabled = false;
             modalSubmitBtn.innerHTML = '<i class="bi bi-send"></i> Submit Complaint';
         }
+    }
+
+    if (raiseComplaintForm) {
+      raiseComplaintForm.addEventListener('submit', function (e) {
+        if (isModalSubmitting) {
+          e.preventDefault();
+          return;
+        }
+
+        const uploading = document.querySelectorAll('#modalMediaPreviewGrid .upload-status.uploading');
+        if (uploading.length > 0) {
+          e.preventDefault();
+          alert('Please wait until media uploads complete before submitting.');
+          return;
+        }
+
+        isModalSubmitting = true;
+        updateModalSubmitButton();
+      });
     }
     
     setInterval(updateModalSubmitButton, 500);
@@ -2231,6 +2258,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 modalSubmitBtn.disabled = false;
                 modalSubmitBtn.innerHTML = '<i class="bi bi-send"></i> Submit Complaint';
             }
+            isModalSubmitting = false;
         });
     }
 });

@@ -5,6 +5,7 @@ Users can view their complaints, create new ones, and view details
 import json
 import logging
 import os
+from datetime import date, timedelta
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -68,9 +69,6 @@ def create_complaint(request):
     """
     Create a new complaint - only if user has active booking (without leaving date or leaving date in future)
     """
-    from django.utils import timezone
-    from datetime import date
-    
     # Check if user has any active booking (approved and not left)
     # Filter: status=approved AND (no leaving_date OR leaving_date >= today)
     today = date.today()
@@ -91,8 +89,8 @@ def create_complaint(request):
     if request.method == 'POST':
         # Get form data
         booking_id = request.POST.get('booking')
-        title = request.POST.get('title', '').strip()
-        description = request.POST.get('description', '').strip()
+        title = ' '.join(request.POST.get('title', '').split())
+        description = ' '.join(request.POST.get('description', '').split())
         category = request.POST.get('category', 'other')
         priority = request.POST.get('priority', 'medium')
         
@@ -124,6 +122,29 @@ def create_complaint(request):
             if request.META.get('HTTP_REFERER') and 'dashboard' in request.META.get('HTTP_REFERER'):
                 return redirect('dashboard')
             return redirect('create_complaint')
+
+        # Guard against rapid duplicate submissions (double-click/retry within short window)
+        duplicate_window_start = timezone.now() - timedelta(minutes=2)
+        existing_complaint = (
+            Complaint.objects
+            .filter(
+                user=request.user,
+                pg=booking.pg,
+                booking=booking,
+                title__iexact=title,
+                description__iexact=description,
+                category=category,
+                priority=priority,
+                created_at__gte=duplicate_window_start,
+            )
+            .order_by('-created_at')
+            .first()
+        )
+        if existing_complaint:
+            messages.info(request, 'This complaint was already submitted recently. Opening the existing complaint.')
+            if request.META.get('HTTP_REFERER') and 'dashboard' in request.META.get('HTTP_REFERER'):
+                return redirect('dashboard')
+            return redirect('complaint_detail', complaint_id=existing_complaint.id)
         
         # Create complaint
         complaint = Complaint.objects.create(

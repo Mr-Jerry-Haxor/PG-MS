@@ -363,6 +363,7 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const complaintForm = document.getElementById('complaintForm');
     const dropZone = document.getElementById('mediaDropZone');
     const fileInput = document.getElementById('mediaFileInput');
     const previewGrid = document.getElementById('mediaPreviewGrid');
@@ -373,6 +374,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const captureVideoBtn = document.getElementById('captureVideoBtn');
     const cameraPhotoInput = document.getElementById('cameraPhotoInput');
     const cameraVideoInput = document.getElementById('cameraVideoInput');
+    let isSubmitting = false;
     
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
     const MAX_FILES = 10;
@@ -628,6 +630,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateSubmitButton() {
+        if (isSubmitting) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Submitting...';
+            return;
+        }
+
         // Check if any uploads are still in progress
         const uploading = document.querySelectorAll('.upload-status.uploading');
         if (uploading.length > 0) {
@@ -637,6 +645,25 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="bi bi-send"></i> Submit Complaint';
         }
+    }
+
+    if (complaintForm) {
+        complaintForm.addEventListener('submit', function (e) {
+            if (isSubmitting) {
+                e.preventDefault();
+                return;
+            }
+
+            const uploading = document.querySelectorAll('.upload-status.uploading');
+            if (uploading.length > 0) {
+                e.preventDefault();
+                alert('Please wait until media uploads complete before submitting.');
+                return;
+            }
+
+            isSubmitting = true;
+            updateSubmitButton();
+        });
     }
     
     // Periodically check for ongoing uploads
