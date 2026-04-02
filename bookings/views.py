@@ -102,6 +102,46 @@ def _pg_by_slug_or_404(slug: str):
     from django.shortcuts import get_object_or_404
     return get_object_or_404(PG, slug=slug)
 
+
+def _pg_admin_users(pg):
+    """Return unique user objects for all admins of the PG."""
+    users_by_id = {}
+    for admin_profile in pg.admins.select_related('user').all():
+        admin_user = getattr(admin_profile, 'user', None)
+        if admin_user and getattr(admin_user, 'id', None):
+            users_by_id[admin_user.id] = admin_user
+    return list(users_by_id.values())
+
+
+def _leave_admin_path_and_payload(pg_id, booking):
+    """Build leave-page deep link and push payload with PG+user filters."""
+    user_obj = getattr(booking, 'user', None)
+    search_value = (
+        (getattr(user_obj, 'email', '') or '').strip()
+        or ((user_obj.get_full_name() or '').strip() if user_obj and hasattr(user_obj, 'get_full_name') else '')
+    )
+    params = {
+        'pg': pg_id,
+        'booking_id': booking.id,
+        'user_id': getattr(booking, 'user_id', ''),
+    }
+    if search_value:
+        params['search'] = search_value
+
+    path = f"{reverse('pg_leaving_requests_enhanced')}?{urlencode(params)}"
+
+    payload = {
+        'booking_id': booking.id,
+        'pg_id': pg_id,
+        'user_id': getattr(booking, 'user_id', ''),
+    }
+    if search_value:
+        payload['search'] = search_value
+    if getattr(user_obj, 'email', None):
+        payload['user_email'] = user_obj.email
+
+    return path, payload
+
 @login_required
 def pg_quick_booking(request, pgslug):
     """
@@ -1572,25 +1612,25 @@ def leaving_intimation(request, booking_id):
             pass
         # Notify PG Admins (simple: all admins of this PG)
         pg = booking.room.pg
-        booking_path = f"{reverse('booking_detail', args=[booking.id])}?{urlencode({'pg': pg.id})}"
-        admin_profiles = list(pg.admins.select_related('user').all())
+        admin_users = _pg_admin_users(pg)
+        leave_requests_path, leave_payload = _leave_admin_path_and_payload(pg.id, booking)
         # Create in-app notifications for each admin
-        for ap in admin_profiles:
+        for admin_user in admin_users:
             Notification.objects.create(
-                user=ap.user,
+                user=admin_user,
                 title="Leaving request",
                 message=f"{request.user.email} plans to leave on {leaving_date} (Room {booking.room.room_no}, Share {booking.share_no}).",
             )
         send_push_to_users(
-            [ap.user for ap in admin_profiles],
+            admin_users,
             title="Leaving Request",
             body=f"{request.user.email} plans to leave on {leaving_date}.",
-            url=booking_path,
-            extra_data={'type': 'leave_requested', 'booking_id': booking.id, 'pg_id': pg.id},
+            url=leave_requests_path,
+            extra_data={**leave_payload, 'type': 'leave_requested', 'source': 'leaving_intimation'},
         )
         # Send single email to all admin emails (if any)
         try:
-            admin_emails = [ap.user.email for ap in admin_profiles if ap.user.email]
+            admin_emails = [admin_user.email for admin_user in admin_users if getattr(admin_user, 'email', None)]
             if admin_emails:
                 send_mail(
                     subject="PG-MS: Leaving Request",
@@ -2072,20 +2112,20 @@ def initiate_leave_request(request, booking_id):
             ])
             
             # Create notification for PG admin
-            pg_admins = PGAdmin.objects.filter(pg=pg).select_related('user')
-            leave_requests_path = f"{reverse('pg_leaving_requests')}?{urlencode({'pg': pg.id})}"
-            for pg_admin in pg_admins:
+            admin_users = _pg_admin_users(pg)
+            leave_requests_path, leave_payload = _leave_admin_path_and_payload(pg.id, booking)
+            for admin_user in admin_users:
                 Notification.objects.create(
-                    user=pg_admin.user,
+                    user=admin_user,
                     title="Leave Request Received",
                     message=f"{booking.user.get_full_name()} has requested to leave Room {booking.room.room_no}, Bed {booking.share_no} on {leaving_date.strftime('%B %d, %Y')}."
                 )
             send_push_to_users(
-                [pg_admin.user for pg_admin in pg_admins],
+                admin_users,
                 title="Leave Request Received",
                 body=f"{booking.user.get_full_name()} requested leave for Room {booking.room.room_no}, Bed {booking.share_no}.",
                 url=leave_requests_path,
-                extra_data={'type': 'leave_requested', 'booking_id': booking.id, 'pg_id': pg.id},
+                extra_data={**leave_payload, 'type': 'leave_requested', 'source': 'leave_request'},
             )
             
             # Audit log
@@ -2140,20 +2180,20 @@ def cancel_leave_request(request, booking_id):
     ])
     
     # Notify PG admin
-    pg_admins = PGAdmin.objects.filter(pg=booking.room.pg).select_related('user')
-    booking_path = f"{reverse('booking_detail', args=[booking.id])}?{urlencode({'pg': booking.room.pg_id})}"
-    for pg_admin in pg_admins:
+    admin_users = _pg_admin_users(booking.room.pg)
+    leave_requests_path, leave_payload = _leave_admin_path_and_payload(booking.room.pg_id, booking)
+    for admin_user in admin_users:
         Notification.objects.create(
-            user=pg_admin.user,
+            user=admin_user,
             title="Leave Request Cancelled",
             message=f"{booking.user.get_full_name()} has cancelled their leave request for Room {booking.room.room_no}, Bed {booking.share_no} (was scheduled for {old_leaving_date})."
         )
     send_push_to_users(
-        [pg_admin.user for pg_admin in pg_admins],
+        admin_users,
         title="Leave Request Cancelled",
         body=f"{booking.user.get_full_name()} cancelled leave for Room {booking.room.room_no}, Bed {booking.share_no}.",
-        url=booking_path,
-        extra_data={'type': 'leave_cancelled', 'booking_id': booking.id, 'pg_id': booking.room.pg_id},
+        url=leave_requests_path,
+        extra_data={**leave_payload, 'type': 'leave_cancelled'},
     )
     
     # Audit log

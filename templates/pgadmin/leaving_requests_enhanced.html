@@ -382,6 +382,7 @@
           <tbody>
             {% for booking in leave_requests %}
             <tr id="leaveRow{{ booking.id }}" class="leave-row" 
+              data-booking-id="{{ booking.id }}"
                 data-status="{% if not booking.leaving_confirmed_date %}pending{% elif booking.leaving_date < today %}vacated{% else %}scheduled{% endif %}"
                 data-advance="{% if booking.advance_returned %}returned{% elif not booking.advance_eligible %}not-eligible{% elif booking.advance_eligible and booking.leaving_confirmed_date %}pending{% else %}eligible{% endif %}"
                 data-advance-eligibility="{% if booking.advance_eligible %}eligible{% else %}not-eligible{% endif %}"
@@ -480,7 +481,11 @@
               <td>
                 <div class="d-flex flex-column gap-1">
                   {% if not booking.leaving_confirmed_date %}
-                    <button class="btn btn-sm btn-success confirm-leave-btn" data-booking-id="{{ booking.id }}">
+                    <button class="btn btn-sm btn-success confirm-leave-btn"
+                            data-booking-id="{{ booking.id }}"
+                            data-full-name="{{ booking.user.get_full_name }}"
+                            data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                            data-phone="{% firstof booking.user.profile.phone booking.application.whatsapp_number '' %}">
                       <i class="bi bi-check-circle me-1"></i>Confirm
                     </button>
                     <button class="btn btn-sm btn-outline-danger reject-leave-btn" data-booking-id="{{ booking.id }}">
@@ -663,7 +668,11 @@
         <!-- Card Actions -->
         <div class="leave-card-actions">
           {% if not booking.leaving_confirmed_date %}
-            <button class="btn btn-sm btn-success confirm-leave-btn" data-booking-id="{{ booking.id }}">
+            <button class="btn btn-sm btn-success confirm-leave-btn"
+                    data-booking-id="{{ booking.id }}"
+                    data-full-name="{{ booking.user.get_full_name }}"
+                    data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                    data-phone="{% firstof booking.user.profile.phone booking.application.whatsapp_number '' %}">
               <i class="bi bi-check-circle me-1"></i>Confirm
             </button>
             <button class="btn btn-sm btn-outline-danger reject-leave-btn" data-booking-id="{{ booking.id }}">
@@ -841,12 +850,88 @@
   </div>
 </div>
 
+<!-- Post-Confirm WhatsApp Modal -->
+<div class="modal fade" id="confirmWhatsappModal" tabindex="-1" data-bs-backdrop="true" data-bs-keyboard="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-whatsapp me-2 text-success"></i>Send Leave Confirmation WhatsApp</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="confirmWhatsappBookingId">
+        <input type="hidden" id="confirmWhatsappPhone">
+        <div class="alert alert-warning d-none" id="confirmWhatsappPhoneWarning">
+          Phone number is not available for this tenant. Please update phone details and try again.
+        </div>
+        <label class="form-label" for="confirmWhatsappMessage">Message</label>
+        <textarea class="form-control" id="confirmWhatsappMessage" rows="8" placeholder="Edit WhatsApp message before sending..."></textarea>
+        <div class="form-text">You can edit this message or send it as-is.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" id="sendConfirmWhatsappBtn">
+          <i class="bi bi-whatsapp me-1"></i>Send WhatsApp Message
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 function getCsrfToken() {
   return document.querySelector('[name=csrfmiddlewaretoken]').value;
 }
 
-function confirmLeave(bookingId) {
+function buildLeaveWhatsappMessage(tenantName, checkoutDate) {
+  const pgName = "{{ pg.name|escapejs }}" || 'PG Management';
+  return `Hello ${tenantName},
+This is a reminder that your checkout date is confirmed as ${checkoutDate}. Kindly ensure that you vacate the PG by this date and take all your belongings with you.
+
+We truly appreciate having you stay with us and hope you had a pleasant experience. You are always welcome back whenever you need accommodation in the future.
+
+Thank you, and we wish you all the very best ahead!
+- ${pgName}`;
+}
+
+function showConfirmWhatsappModal(bookingId, fullName, leaveDate, phone) {
+  const modalEl = document.getElementById('confirmWhatsappModal');
+  if (!modalEl) return;
+
+  const tenantName = fullName || 'Tenant';
+  const checkoutDate = leaveDate || 'the confirmed date';
+  const normalizedPhone = (phone || '').replace(/\D/g, '');
+
+  document.getElementById('confirmWhatsappBookingId').value = bookingId || '';
+  document.getElementById('confirmWhatsappPhone').value = normalizedPhone;
+  document.getElementById('confirmWhatsappMessage').value = buildLeaveWhatsappMessage(tenantName, checkoutDate);
+
+  const sendBtn = document.getElementById('sendConfirmWhatsappBtn');
+  const warning = document.getElementById('confirmWhatsappPhoneWarning');
+  const hasPhone = !!normalizedPhone;
+  if (sendBtn) sendBtn.disabled = !hasPhone;
+  if (warning) warning.classList.toggle('d-none', hasPhone);
+
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+}
+
+function markLeaveConfirmedUI(bookingId) {
+  if (!bookingId) return;
+  document.querySelectorAll(`.confirm-leave-btn[data-booking-id="${bookingId}"]`).forEach(btn => {
+    btn.disabled = true;
+    btn.classList.remove('btn-success');
+    btn.classList.add('btn-outline-success');
+    btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Confirmed';
+  });
+  document.querySelectorAll(`.reject-leave-btn[data-booking-id="${bookingId}"]`).forEach(btn => {
+    btn.style.display = 'none';
+  });
+}
+
+function confirmLeave(sourceButton) {
+  const bookingId = sourceButton && sourceButton.dataset ? sourceButton.dataset.bookingId : null;
+  if (!bookingId) return;
   if (!confirm('Confirm this leave request?')) return;
   
   fetch(`/pg/leave/${bookingId}/confirm/`, {
@@ -859,7 +944,13 @@ function confirmLeave(bookingId) {
   .then(response => response.json())
   .then(data => {
     if (data.success) {
-      location.reload();
+      markLeaveConfirmedUI(bookingId);
+      showConfirmWhatsappModal(
+        bookingId,
+        (sourceButton.dataset.fullName || '').trim(),
+        (sourceButton.dataset.leaveDate || '').trim(),
+        (sourceButton.dataset.phone || '').trim(),
+      );
     } else {
       alert('Error: ' + (data.error || 'Unknown error'));
     }
@@ -1311,7 +1402,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Confirm leave buttons
   document.querySelectorAll('.confirm-leave-btn').forEach(btn => {
     btn.addEventListener('click', function() {
-      confirmLeave(this.dataset.bookingId);
+      confirmLeave(this);
     });
   });
   
@@ -1407,18 +1498,47 @@ document.addEventListener('DOMContentLoaded', function() {
       const tenantName = this.dataset.fullName || 'Tenant';
       const leaveDate = this.dataset.leaveDate || '';
       const checkoutDate = leaveDate || 'the confirmed date';
-      const pgName = "{{ pg.name|escapejs }}" || 'PG Management';
-      const message = `Hello ${tenantName},
-    This is a reminder that your checkout date is confirmed as ${checkoutDate}. Kindly ensure that you vacate the PG by this date and take all your belongings with you.
-
-    We truly appreciate having you stay with us and hope you had a pleasant experience. You are always welcome back whenever you need accommodation in the future.
-
-    Thank you, and we wish you all the very best ahead!
-    - ${pgName}`;
+      const message = buildLeaveWhatsappMessage(tenantName, checkoutDate);
       const whatsappUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, '_blank');
     });
   });
+
+  const sendConfirmWhatsappBtn = document.getElementById('sendConfirmWhatsappBtn');
+  if (sendConfirmWhatsappBtn) {
+    sendConfirmWhatsappBtn.addEventListener('click', function() {
+      const bookingId = (document.getElementById('confirmWhatsappBookingId')?.value || '').trim();
+      const rawPhone = (document.getElementById('confirmWhatsappPhone')?.value || '').replace(/\D/g, '');
+      const message = (document.getElementById('confirmWhatsappMessage')?.value || '').trim();
+
+      if (!rawPhone) {
+        alert('Phone number not available for this tenant.');
+        return;
+      }
+      if (!message) {
+        alert('Message cannot be empty.');
+        return;
+      }
+
+      const whatsappUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank');
+
+      // Capture send from confirm-modal as first tick.
+      if (bookingId) {
+        const currentCount = Math.max(0, Math.min(2, parseInt(whatsappClickMap[bookingId], 10) || 0));
+        const nextCount = Math.max(1, currentCount);
+        whatsappClickMap[bookingId] = nextCount;
+        saveWhatsappClickMap(whatsappClickMap);
+        renderWhatsappButtonsForBooking(bookingId, nextCount);
+      }
+
+      const modalEl = document.getElementById('confirmWhatsappModal');
+      if (modalEl) {
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.hide();
+      }
+    });
+  }
   
   // Client-side filtering with pagination
   const filterState = {
@@ -1426,6 +1546,7 @@ document.addEventListener('DOMContentLoaded', function() {
     'advance-eligibility': 'all',
     'advance-return': 'all',
     'booking-type': 'all',
+    bookingId: '',
     search: '',
     currentPage: 1,
     itemsPerPage: 10
@@ -1443,6 +1564,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const rowAdvanceEligibility = row.dataset.advanceEligibility;
       const rowAdvanceReturn = row.dataset.advanceReturn;
       const rowBookingType = row.dataset.bookingType;
+      const rowBookingId = row.dataset.bookingId || '';
       
       // Get searchable text from the row
       const rowText = row.textContent.toLowerCase();
@@ -1451,9 +1573,10 @@ document.addEventListener('DOMContentLoaded', function() {
       const advanceEligibilityMatch = filterState['advance-eligibility'] === 'all' || rowAdvanceEligibility === filterState['advance-eligibility'];
       const advanceReturnMatch = filterState['advance-return'] === 'all' || rowAdvanceReturn === filterState['advance-return'];
       const bookingTypeMatch = filterState['booking-type'] === 'all' || rowBookingType === filterState['booking-type'];
+      const bookingIdMatch = !filterState.bookingId || rowBookingId === filterState.bookingId;
       const searchMatch = !searchTerm || rowText.includes(searchTerm);
       
-      if (statusMatch && advanceEligibilityMatch && advanceReturnMatch && bookingTypeMatch && searchMatch) {
+      if (statusMatch && advanceEligibilityMatch && advanceReturnMatch && bookingTypeMatch && bookingIdMatch && searchMatch) {
         matchedRows.push(row);
       }
     });
@@ -1610,6 +1733,23 @@ document.addEventListener('DOMContentLoaded', function() {
   // Search input handler
   const searchInput = document.getElementById('searchInput');
   const clearSearchBtn = document.getElementById('clearSearch');
+
+  // Apply notification deep-link filters (?search=...&booking_id=...) on initial load.
+  try {
+    const urlParams = new URLSearchParams(window.location.search || '');
+    const initialSearch = (urlParams.get('search') || urlParams.get('email') || '').trim();
+    const initialBookingId = (urlParams.get('booking_id') || urlParams.get('booking') || '').trim();
+    if (initialSearch) {
+      searchInput.value = initialSearch;
+      filterState.search = initialSearch;
+      clearSearchBtn.style.display = 'block';
+    }
+    if (initialBookingId) {
+      filterState.bookingId = initialBookingId;
+    }
+  } catch (e) {
+    // Ignore malformed query strings.
+  }
   
   searchInput.addEventListener('input', function() {
     filterState.search = this.value;
@@ -1663,6 +1803,7 @@ document.addEventListener('DOMContentLoaded', function() {
     filterState['advance-eligibility'] = 'all';
     filterState['advance-return'] = 'all';
     filterState['booking-type'] = 'all';
+    filterState.bookingId = '';
     filterState.search = '';
     filterState.currentPage = 1;
     // Reset per-page to default
@@ -1783,15 +1924,17 @@ document.addEventListener('DOMContentLoaded', function() {
       var cardAdvElig = card.dataset.advanceEligibility || '';
       var cardAdvRet = card.dataset.advanceReturn || '';
       var cardBookingType = card.dataset.bookingType || '';
+      var cardBookingId = card.dataset.bookingId || '';
       var cardText = card.textContent.toLowerCase();
 
       var statusMatch = filterState.status === 'all' || cardStatus === filterState.status;
       var advEligMatch = filterState['advance-eligibility'] === 'all' || cardAdvElig === filterState['advance-eligibility'];
       var advRetMatch = filterState['advance-return'] === 'all' || cardAdvRet === filterState['advance-return'];
       var bookingTypeMatch = filterState['booking-type'] === 'all' || cardBookingType === filterState['booking-type'];
+      var bookingIdMatch = !filterState.bookingId || cardBookingId === filterState.bookingId;
       var searchMatch = !searchTerm || cardText.indexOf(searchTerm) !== -1;
 
-      return statusMatch && advEligMatch && advRetMatch && bookingTypeMatch && searchMatch;
+      return statusMatch && advEligMatch && advRetMatch && bookingTypeMatch && bookingIdMatch && searchMatch;
     });
 
     // Apply card sorting

@@ -675,7 +675,7 @@ def _get_payment_cycle_for_month(booking, m_first: date) -> tuple[date, date, da
         cycle_start: datetime.date - nominal cycle start for this month
         cycle_end: datetime.date - nominal cycle end (payment day - 1 of next month)
         effective_start: datetime.date | None - actual start after joining/availability
-        effective_end: datetime.date | None - actual end before leaving (if any)
+        effective_end: datetime.date | None - actual end including leaving date (if any)
         effective_days: int - number of chargeable days within this cycle (>= 0)
         cycle_days: int - total days in the nominal cycle (>= 0)
 
@@ -721,11 +721,9 @@ def _get_payment_cycle_for_month(booking, m_first: date) -> tuple[date, date, da
         effective_start = joining_date
 
     effective_end = cycle_end
-    if leaving_date:
-        # When there's a leaving date, calculate until leaving_date - 1
-        adjusted_leaving = leaving_date - timedelta(days=1)
-        if adjusted_leaving < effective_end:
-            effective_end = adjusted_leaving
+    if leaving_date and leaving_date < effective_end:
+        # Leaving date is chargeable and must be included in expected amount.
+        effective_end = leaving_date
 
     if effective_end < cycle_start or (joining_date and joining_date > cycle_end):
         # No overlap with this cycle

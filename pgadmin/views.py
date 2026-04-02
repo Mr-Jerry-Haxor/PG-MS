@@ -14,6 +14,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from urllib.parse import urlencode
 
 try:
     from allauth.account.models import EmailAddress
@@ -24,7 +25,7 @@ from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus,
 from core.audit import log
 from core.drive import drive_delete
 from core.models import Notification
-from core.push_notifications import send_push_to_user
+from core.push_notifications import send_push_to_user, send_push_to_users
 from finance.models import Fees
 from django.urls import reverse
 from django.http import HttpResponse
@@ -522,6 +523,41 @@ def booking_leave_direct(request, booking_id: int) -> JsonResponse:
         booking.id,
         f"Leave requested for room {booking.room.room_no} bed {booking.share_no} on {leaving_date}",
     )
+
+    # Notify all PG admins (including those managing multiple PGs) with a filtered deep link,
+    # and notify tenant that the leave request is now pending confirmation.
+    try:
+        admin_path, admin_payload = _leave_admin_path_and_payload(booking)
+        admin_users = _pg_admin_users_for_pg(pg_id)
+        tenant_name = booking.user.get_full_name() or booking.user.email
+
+        for admin_user in admin_users:
+            Notification.objects.create(
+                user=admin_user,
+                title="Leave Request Received",
+                message=(
+                    f"{tenant_name} requested leave for Room {booking.room.room_no}, "
+                    f"Bed {booking.share_no} on {leaving_date}."
+                ),
+            )
+
+        send_push_to_users(
+            admin_users,
+            title="Leave Request Received",
+            body=f"{tenant_name} requested leave for Room {booking.room.room_no}, Bed {booking.share_no}.",
+            url=admin_path,
+            extra_data={**admin_payload, 'type': 'leave_requested', 'source': 'pg_admin_direct_leave'},
+        )
+
+        send_push_to_user(
+            booking.user,
+            title="Leave Request Created",
+            body=f"Leave request for Room {booking.room.room_no}, Bed {booking.share_no} is pending admin confirmation.",
+            url=reverse('booking_detail', args=[booking.id]),
+            extra_data={'type': 'leave_requested', 'booking_id': booking.id, 'pg_id': pg_id},
+        )
+    except Exception:
+        _logger.exception('Leave request notification dispatch failed for booking %s', booking.id)
 
     return JsonResponse({
         'ok': True,
@@ -1274,6 +1310,48 @@ def _require_pg_admin(user):
 def _admin_pgs(user):
     # All users (including superusers/website admins) only see PGs they have explicit PGAdmin access to
     return PG.objects.filter(admins__user=user).order_by('name')
+
+
+def _pg_admin_users_for_pg(pg_id):
+    """Return unique user objects for all admins assigned to the given PG."""
+    users_by_id = {}
+    for admin_rec in PGAdmin.objects.filter(pg_id=pg_id).select_related('user'):
+        admin_user = getattr(admin_rec, 'user', None)
+        if admin_user and getattr(admin_user, 'id', None):
+            users_by_id[admin_user.id] = admin_user
+    return list(users_by_id.values())
+
+
+def _leave_admin_path_and_payload(booking):
+    """Build leave-page deep link and push payload with PG and user filters."""
+    pg_id = getattr(booking, 'pg_id', None) or getattr(getattr(booking, 'room', None), 'pg_id', None)
+    user_obj = getattr(booking, 'user', None)
+    search_value = (
+        (getattr(user_obj, 'email', '') or '').strip()
+        or ((user_obj.get_full_name() or '').strip() if user_obj and hasattr(user_obj, 'get_full_name') else '')
+    )
+
+    params = {
+        'pg': pg_id,
+        'booking_id': booking.id,
+        'user_id': getattr(booking, 'user_id', ''),
+    }
+    if search_value:
+        params['search'] = search_value
+
+    path = f"{reverse('pg_leaving_requests_enhanced')}?{urlencode(params)}"
+
+    payload = {
+        'pg_id': pg_id,
+        'booking_id': booking.id,
+        'user_id': getattr(booking, 'user_id', ''),
+    }
+    if search_value:
+        payload['search'] = search_value
+    if getattr(user_obj, 'email', None):
+        payload['user_email'] = user_obj.email
+
+    return path, payload
 
 
 def _active_pg(request):
@@ -3963,6 +4041,42 @@ def leaving_confirm(request, booking_id):
     except Exception:
         pass
     log(request.user, 'leaving_confirmed', 'Booking', booking.id, f"Leaving confirmed; booking closed for room {booking.room.room_no} bed {booking.share_no}")
+
+    try:
+        admin_path, admin_payload = _leave_admin_path_and_payload(booking)
+        admin_users = _pg_admin_users_for_pg(booking.room.pg_id)
+        tenant_name = booking.user.get_full_name() or booking.user.email
+        user_detail_path = f"{reverse('booking_detail', args=[booking.id])}?{urlencode({'pg': booking.room.pg_id})}"
+
+        Notification.objects.create(
+            user=booking.user,
+            title="Leave Request Confirmed",
+            message=f"Your leave request for Room {booking.room.room_no}, Bed {booking.share_no} has been confirmed.",
+        )
+        send_push_to_user(
+            booking.user,
+            title="Leave Request Confirmed",
+            body=f"Leave for Room {booking.room.room_no}, Bed {booking.share_no} is confirmed.",
+            url=user_detail_path,
+            extra_data={'type': 'leave_confirmed', 'booking_id': booking.id, 'pg_id': booking.room.pg_id},
+        )
+
+        for admin_user in admin_users:
+            Notification.objects.create(
+                user=admin_user,
+                title="Leave Request Confirmed",
+                message=f"{tenant_name}'s leave request for Room {booking.room.room_no}, Bed {booking.share_no} has been confirmed.",
+            )
+        send_push_to_users(
+            admin_users,
+            title="Leave Request Confirmed",
+            body=f"{tenant_name} leave confirmed for Room {booking.room.room_no}, Bed {booking.share_no}.",
+            url=admin_path,
+            extra_data={**admin_payload, 'type': 'leave_confirmed', 'source': 'legacy_leave_confirm'},
+        )
+    except Exception:
+        _logger.exception('Legacy leave confirm notification dispatch failed for booking %s', booking.id)
+
     if share.status == RoomShareStatus.VACANT:
         messages.success(request, f"Leaving confirmed and bed freed for room {booking.room.room_no}.")
     else:
@@ -4020,6 +4134,7 @@ def leaving_reject(request, booking_id):
     if booking.leaving_confirmed_date:
         messages.error(request, "Leaving request already confirmed. Use delete to remove resident data if needed.")
         return redirect('pg_leaving_requests')
+    old_leaving_date = booking.leaving_date
     booking.leaving_date = None
     booking.save(update_fields=['leaving_date'])
     try:
@@ -4030,6 +4145,42 @@ def leaving_reject(request, booking_id):
     except RoomShareStatus.DoesNotExist:
         pass
     log(request.user, 'booking_leave_rejected', 'Booking', booking.id, f"Leave request rejected for room {booking.room.room_no} bed {booking.share_no}")
+
+    try:
+        admin_path, admin_payload = _leave_admin_path_and_payload(booking)
+        admin_users = _pg_admin_users_for_pg(booking.room.pg_id)
+        tenant_name = booking.user.get_full_name() or booking.user.email
+        user_detail_path = f"{reverse('booking_detail', args=[booking.id])}?{urlencode({'pg': booking.room.pg_id})}"
+
+        Notification.objects.create(
+            user=booking.user,
+            title="Leave Request Rejected",
+            message=f"Your leave request for Room {booking.room.room_no}, Bed {booking.share_no} was rejected.",
+        )
+        send_push_to_user(
+            booking.user,
+            title="Leave Request Rejected",
+            body=f"Leave request for Room {booking.room.room_no}, Bed {booking.share_no} was rejected.",
+            url=user_detail_path,
+            extra_data={'type': 'leave_rejected', 'booking_id': booking.id, 'pg_id': booking.room.pg_id},
+        )
+
+        for admin_user in admin_users:
+            Notification.objects.create(
+                user=admin_user,
+                title="Leave Request Rejected",
+                message=f"{tenant_name}'s leave request for Room {booking.room.room_no}, Bed {booking.share_no} was rejected.",
+            )
+        send_push_to_users(
+            admin_users,
+            title="Leave Request Rejected",
+            body=f"{tenant_name} leave request rejected for Room {booking.room.room_no}, Bed {booking.share_no}.",
+            url=admin_path,
+            extra_data={**admin_payload, 'type': 'leave_rejected', 'source': 'legacy_leave_reject'},
+        )
+    except Exception:
+        _logger.exception('Legacy leave reject notification dispatch failed for booking %s', booking.id)
+
     messages.success(request, "Leave request rejected and cleared.")
     return redirect('pg_leaving_requests')
 from django.shortcuts import render
@@ -5666,7 +5817,8 @@ def confirm_leave(request, booking_id):
         share.vacant_from = booking.leaving_date
         share.save(update_fields=['status', 'vacant_from'])
     
-    # Notify user
+    # Notify tenant and all PG admins.
+    user_detail_path = f"{reverse('booking_detail', args=[booking.id])}?{urlencode({'pg': booking.room.pg_id})}"
     Notification.objects.create(
         user=booking.user,
         title="Leave Request Confirmed",
@@ -5676,9 +5828,34 @@ def confirm_leave(request, booking_id):
         booking.user,
         title="Leave Request Confirmed",
         body=f"Leave for Room {booking.room.room_no}, Bed {booking.share_no} on {booking.leaving_date.strftime('%b %d, %Y')} is confirmed.",
-        url=reverse('booking_detail', args=[booking.id]),
-        extra_data={'type': 'leave_confirmed', 'booking_id': booking.id},
+        url=user_detail_path,
+        extra_data={'type': 'leave_confirmed', 'booking_id': booking.id, 'pg_id': booking.room.pg_id},
     )
+
+    try:
+        admin_path, admin_payload = _leave_admin_path_and_payload(booking)
+        admin_users = _pg_admin_users_for_pg(booking.room.pg_id)
+        tenant_name = booking.user.get_full_name() or booking.user.email
+
+        for admin_user in admin_users:
+            Notification.objects.create(
+                user=admin_user,
+                title="Leave Request Confirmed",
+                message=(
+                    f"{tenant_name}'s leave request for Room {booking.room.room_no}, "
+                    f"Bed {booking.share_no} has been confirmed."
+                ),
+            )
+
+        send_push_to_users(
+            admin_users,
+            title="Leave Request Confirmed",
+            body=f"{tenant_name} leave confirmed for Room {booking.room.room_no}, Bed {booking.share_no}.",
+            url=admin_path,
+            extra_data={**admin_payload, 'type': 'leave_confirmed', 'source': 'pg_leave_confirm'},
+        )
+    except Exception:
+        _logger.exception('Leave confirm admin notification dispatch failed for booking %s', booking.id)
     
     # Audit log
     log(
@@ -5724,7 +5901,8 @@ def reject_leave(request, booking_id):
         'leaving_date', 'leaving_reason', 'leaving_initiated_at', 'advance_eligible'
     ])
     
-    # Notify user
+    # Notify tenant and all PG admins.
+    user_detail_path = f"{reverse('booking_detail', args=[booking.id])}?{urlencode({'pg': booking.room.pg_id})}"
     Notification.objects.create(
         user=booking.user,
         title="Leave Request Rejected",
@@ -5734,9 +5912,34 @@ def reject_leave(request, booking_id):
         booking.user,
         title="Leave Request Rejected",
         body=f"Leave request for Room {booking.room.room_no}, Bed {booking.share_no} was rejected.",
-        url=reverse('booking_detail', args=[booking.id]),
-        extra_data={'type': 'leave_rejected', 'booking_id': booking.id},
+        url=user_detail_path,
+        extra_data={'type': 'leave_rejected', 'booking_id': booking.id, 'pg_id': booking.room.pg_id},
     )
+
+    try:
+        admin_path, admin_payload = _leave_admin_path_and_payload(booking)
+        admin_users = _pg_admin_users_for_pg(booking.room.pg_id)
+        tenant_name = booking.user.get_full_name() or booking.user.email
+
+        for admin_user in admin_users:
+            Notification.objects.create(
+                user=admin_user,
+                title="Leave Request Rejected",
+                message=(
+                    f"{tenant_name}'s leave request for Room {booking.room.room_no}, "
+                    f"Bed {booking.share_no} was rejected."
+                ),
+            )
+
+        send_push_to_users(
+            admin_users,
+            title="Leave Request Rejected",
+            body=f"{tenant_name} leave request rejected for Room {booking.room.room_no}, Bed {booking.share_no}.",
+            url=admin_path,
+            extra_data={**admin_payload, 'type': 'leave_rejected', 'source': 'pg_leave_reject'},
+        )
+    except Exception:
+        _logger.exception('Leave reject admin notification dispatch failed for booking %s', booking.id)
     
     # Audit log
     log(
