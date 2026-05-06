@@ -2040,11 +2040,15 @@ def initiate_leave_request(request, booking_id):
     # Payment-cycle dates used by this page and server-side validation.
     payment_day = booking.payment_date.day if booking.payment_date else today.day
     next_payment_due_date, next_payment_date, day_one_adjustment = _recommended_leave_date(today, payment_day)
+    following_payment_due_date, following_payment_date, _ = _recommended_leave_date(next_payment_due_date, payment_day)
     allow_custom_leave_date = bool(getattr(pg, 'allow_custom_leave_date', False))
 
-    # Calculate notice period compliance for the quick-select leave date.
+    # Calculate notice period compliance for the quick-select leave dates.
     days_until_next_payment = (next_payment_date - today).days
     next_payment_eligible = days_until_next_payment >= notice_period
+    
+    days_until_following_payment = (following_payment_date - today).days
+    following_payment_eligible = days_until_following_payment >= notice_period
 
     def _leave_context(form_obj):
         return {
@@ -2053,9 +2057,12 @@ def initiate_leave_request(request, booking_id):
             'pg': pg,
             'next_payment_date': next_payment_date,
             'next_payment_due_date': next_payment_due_date,
+            'following_payment_date': following_payment_date,
+            'following_payment_due_date': following_payment_due_date,
             'day_one_adjustment': day_one_adjustment,
             'allow_custom_leave_date': allow_custom_leave_date,
             'next_payment_eligible': next_payment_eligible,
+            'following_payment_eligible': following_payment_eligible,
             'notice_period': notice_period,
             'today': today,
             'payment_day': payment_day,
@@ -2077,19 +2084,19 @@ def initiate_leave_request(request, booking_id):
                 messages.error(request, "Leave date must be after your joining date.")
                 return render(request, 'bookings/leave_request.html', _leave_context(form))
 
-            # Server-side cap: user can never select a date after payment date - 1.
-            if leaving_date > next_payment_date:
+            # Server-side cap: user can never select a date after the following payment date - 1.
+            if leaving_date > following_payment_date:
                 messages.error(
                     request,
-                    f"Leave date cannot be after {next_payment_date.strftime('%B %d, %Y')} (one day before your next payment date {next_payment_due_date.strftime('%B %d, %Y')}).",
+                    f"Leave date cannot be after {following_payment_date.strftime('%B %d, %Y')}."
                 )
                 return render(request, 'bookings/leave_request.html', _leave_context(form))
 
-            # If custom date is disabled for this PG, only the default capped date is allowed.
-            if not allow_custom_leave_date and leaving_date != next_payment_date:
+            # If custom date is disabled for this PG, only allow the two default capped dates.
+            if not allow_custom_leave_date and leaving_date not in (next_payment_date, following_payment_date):
                 messages.error(
                     request,
-                    f"This booking allows only {next_payment_date.strftime('%B %d, %Y')} as leave date.",
+                    f"This booking allows only {next_payment_date.strftime('%B %d, %Y')} or {following_payment_date.strftime('%B %d, %Y')} as a leave date.",
                 )
                 return render(request, 'bookings/leave_request.html', _leave_context(form))
             
@@ -2127,6 +2134,41 @@ def initiate_leave_request(request, booking_id):
                 url=leave_requests_path,
                 extra_data={**leave_payload, 'type': 'leave_requested', 'source': 'leave_request'},
             )
+            
+            # Send emails
+            try:
+                from django.core.mail import send_mail
+                from django.conf import settings
+                subject = f"Leave Request Received - {pg.name}"
+                message_body = (
+                    f"A leave request has been initiated.\n\n"
+                    f"PG Name: {pg.name}\n"
+                    f"Room Number: {booking.room.room_no}\n"
+                    f"Bed: {booking.share_no}\n"
+                    f"Joining Date: {booking.joining_date}\n"
+                    f"Leave Initiation Time: {timezone.localtime(booking.leaving_initiated_at).strftime('%I:%M %p')}\n"
+                    f"Leave Date: {leaving_date}\n"
+                )
+                admin_emails = [a.email for a in admin_users if a.email]
+                if booking.user.email:
+                    send_mail(
+                        subject,
+                        message_body,
+                        settings.DEFAULT_FROM_EMAIL,
+                        [booking.user.email] + admin_emails,
+                        fail_silently=True,
+                    )
+                elif admin_emails:
+                    send_mail(
+                        subject,
+                        message_body,
+                        settings.DEFAULT_FROM_EMAIL,
+                        admin_emails,
+                        fail_silently=True,
+                    )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Failed to send leave raised emails: {e}")
             
             # Audit log
             log(

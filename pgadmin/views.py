@@ -1690,6 +1690,24 @@ def _cleanup_booking_after_leave(booking: Booking, actor=None, origin: str = 'ma
                     original_user=booking.user,
                     original_booking_id=booking.id,
                     archived_by=actor,
+                    dob=app.dob if app else None,
+                    age=app.age if app else None,
+                    father_phone=app.father_phone if app else '',
+                    mother_phone=app.mother_phone if app else '',
+                    emergency_contact=app.emergency_contact if app else '',
+                    food_pref=app.food_pref if app else '',
+                    marital_status=app.marital_status if app else '',
+                    education=app.education if app else '',
+                    occupation=app.occupation if app else '',
+                    org_name=app.org_name if app else '',
+                    org_address=app.org_address if app else '',
+                    has_vehicle=app.has_vehicle if app else False,
+                    vehicle_number=app.vehicle_number if app else '',
+                    vehicle_model=app.vehicle_model if app else '',
+                    aadhaar_number=app.aadhaar_number if app else '',
+                    selfie_url=app.selfie_url if app else getattr(booking.user, 'profile', None).selfie_url if hasattr(booking.user, 'profile') else '',
+                    aadhaar_file_url=app.aadhaar_file_url if app else getattr(booking.user, 'profile', None).aadhaar_file_url if hasattr(booking.user, 'profile') else '',
+                    aadhaar_file_url_2=app.aadhaar_file_url_2 if app else getattr(booking.user, 'profile', None).aadhaar_file_url_2 if hasattr(booking.user, 'profile') else '',
                 )
                 old_tenant_created = True
     except Exception as e:
@@ -1712,7 +1730,7 @@ def _cleanup_booking_after_leave(booking: Booking, actor=None, origin: str = 'ma
         profile.is_pg_user = False
         profile_updates.append('is_pg_user')
 
-    drive_urls = _booking_drive_urls(booking)
+    drive_urls = [] # do not delete drive urls to keep them for 6 months
     deleted_urls: list[str] = []
     failed_urls: list[str] = []
     for url in drive_urls:
@@ -5854,6 +5872,42 @@ def confirm_leave(request, booking_id):
             url=admin_path,
             extra_data={**admin_payload, 'type': 'leave_confirmed', 'source': 'pg_leave_confirm'},
         )
+        
+        # Send emails
+        from django.core.mail import send_mail
+        from django.conf import settings
+        from django.utils import timezone
+        
+        subject = f"Leave Request Confirmed - {booking.room.pg.name}"
+        eligibility = "Eligible" if booking.advance_eligible else "Not Eligible"
+        message_body = (
+            f"A leave request has been confirmed.\n\n"
+            f"PG Name: {booking.room.pg.name}\n"
+            f"Room Number: {booking.room.room_no}\n"
+            f"Bed: {booking.share_no}\n"
+            f"Joining Date: {booking.joining_date}\n"
+            f"Leave Initiation Time: {timezone.localtime(booking.leaving_initiated_at).strftime('%I:%M %p') if booking.leaving_initiated_at else 'N/A'}\n"
+            f"Confirmed Leave Date: {booking.leaving_date}\n"
+            f"Advance Refund Eligibility: {eligibility}\n"
+        )
+        admin_emails = [a.email for a in admin_users if getattr(a, 'email', None)]
+        if booking.user and booking.user.email:
+            send_mail(
+                subject,
+                message_body,
+                settings.DEFAULT_FROM_EMAIL,
+                [booking.user.email] + admin_emails,
+                fail_silently=True,
+            )
+        elif admin_emails:
+            send_mail(
+                subject,
+                message_body,
+                settings.DEFAULT_FROM_EMAIL,
+                admin_emails,
+                fail_silently=True,
+            )
+
     except Exception:
         _logger.exception('Leave confirm admin notification dispatch failed for booking %s', booking.id)
     

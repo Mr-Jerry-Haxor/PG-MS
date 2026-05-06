@@ -485,6 +485,7 @@
                             data-booking-id="{{ booking.id }}"
                             data-full-name="{{ booking.user.get_full_name }}"
                             data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                            data-advance-eligible="{% if booking.advance_eligible %}Yes{% else %}No{% endif %}"
                             data-phone="{% firstof booking.user.profile.phone booking.application.whatsapp_number '' %}">
                       <i class="bi bi-check-circle me-1"></i>Confirm
                     </button>
@@ -504,6 +505,7 @@
                               data-phone="{{ whatsapp_phone }}"
                               data-full-name="{{ booking.user.get_full_name }}"
                               data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                              data-advance-eligible="{% if booking.advance_eligible %}Yes{% else %}No{% endif %}"
                               title="Send WhatsApp message">
                         <i class="bi bi-whatsapp me-1"></i>WhatsApp
                       </button>
@@ -672,6 +674,7 @@
                     data-booking-id="{{ booking.id }}"
                     data-full-name="{{ booking.user.get_full_name }}"
                     data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                    data-advance-eligible="{% if booking.advance_eligible %}Yes{% else %}No{% endif %}"
                     data-phone="{% firstof booking.user.profile.phone booking.application.whatsapp_number '' %}">
               <i class="bi bi-check-circle me-1"></i>Confirm
             </button>
@@ -691,6 +694,7 @@
                       data-phone="{{ whatsapp_phone }}"
                       data-full-name="{{ booking.user.get_full_name }}"
                       data-leave-date="{{ booking.leaving_date|date:'M d, Y' }}"
+                      data-advance-eligible="{% if booking.advance_eligible %}Yes{% else %}No{% endif %}"
                       title="Send WhatsApp message">
                 <i class="bi bi-whatsapp me-1"></i>WhatsApp
               </button>
@@ -883,10 +887,12 @@ function getCsrfToken() {
   return document.querySelector('[name=csrfmiddlewaretoken]').value;
 }
 
-function buildLeaveWhatsappMessage(tenantName, checkoutDate) {
+function buildLeaveWhatsappMessage(tenantName, checkoutDate, advanceEligible) {
   const pgName = "{{ pg.name|escapejs }}" || 'PG Management';
+  const refundLine = advanceEligible ? `\nAdvance Refund Eligibility: ${advanceEligible}` : '';
   return `Hello ${tenantName},
-This is a reminder that your checkout date is confirmed as ${checkoutDate}. Kindly ensure that you vacate the PG by this date and take all your belongings with you.
+This is a reminder that your checkout date is confirmed as ${checkoutDate}.${refundLine}
+Kindly ensure that you vacate the PG by this date and take all your belongings with you.
 
 We truly appreciate having you stay with us and hope you had a pleasant experience. You are always welcome back whenever you need accommodation in the future.
 
@@ -894,7 +900,7 @@ Thank you, and we wish you all the very best ahead!
 - ${pgName}`;
 }
 
-function showConfirmWhatsappModal(bookingId, fullName, leaveDate, phone) {
+function showConfirmWhatsappModal(bookingId, fullName, leaveDate, phone, advanceEligible) {
   const modalEl = document.getElementById('confirmWhatsappModal');
   if (!modalEl) return;
 
@@ -904,7 +910,7 @@ function showConfirmWhatsappModal(bookingId, fullName, leaveDate, phone) {
 
   document.getElementById('confirmWhatsappBookingId').value = bookingId || '';
   document.getElementById('confirmWhatsappPhone').value = normalizedPhone;
-  document.getElementById('confirmWhatsappMessage').value = buildLeaveWhatsappMessage(tenantName, checkoutDate);
+  document.getElementById('confirmWhatsappMessage').value = buildLeaveWhatsappMessage(tenantName, checkoutDate, advanceEligible);
 
   const sendBtn = document.getElementById('sendConfirmWhatsappBtn');
   const warning = document.getElementById('confirmWhatsappPhoneWarning');
@@ -950,6 +956,7 @@ function confirmLeave(sourceButton) {
         (sourceButton.dataset.fullName || '').trim(),
         (sourceButton.dataset.leaveDate || '').trim(),
         (sourceButton.dataset.phone || '').trim(),
+        (sourceButton.dataset.advanceEligible || 'No').trim()
       );
     } else {
       alert('Error: ' + (data.error || 'Unknown error'));
@@ -1498,7 +1505,8 @@ document.addEventListener('DOMContentLoaded', function() {
       const tenantName = this.dataset.fullName || 'Tenant';
       const leaveDate = this.dataset.leaveDate || '';
       const checkoutDate = leaveDate || 'the confirmed date';
-      const message = buildLeaveWhatsappMessage(tenantName, checkoutDate);
+      const advanceEligible = this.dataset.advanceEligible || 'No';
+      const message = buildLeaveWhatsappMessage(tenantName, checkoutDate, advanceEligible);
       const whatsappUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, '_blank');
     });

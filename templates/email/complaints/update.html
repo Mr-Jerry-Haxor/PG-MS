@@ -33,6 +33,10 @@
         <p><strong>Complaint #:</strong> {{ complaint.id }}</p>
         <p><strong>Title:</strong> {{ complaint.title }}</p>
         <p><strong>PG Name:</strong> {{ complaint.pg.name }}</p>
+        {% if complaint.booking %}
+        <p><strong>Room / Bed:</strong> Room {{ complaint.booking.room.room_no }}, Bed {{ complaint.booking.share_no }}</p>
+        {% endif %}
+        <p><strong>Raised On:</strong> {{ complaint.created_at|date:"d M Y, h:i A" }}</p>
         <p>
           <span class="badge status">Status: {{ complaint.get_status_display }}</span>
           <span class="badge priority">Priority: {{ complaint.get_priority_display }}</span>

@@ -162,6 +162,10 @@ def _execute_future_swap_silent(swap, executor):
         return {'success': False, 'error': str(e)}
 
 
+from django.utils import timezone
+from dateutil.relativedelta import relativedelta
+from core.drive import drive_delete
+
 @login_required
 def dashboard(request):
 	# Load top unread notifications to display on dashboard
@@ -170,6 +174,31 @@ def dashboard(request):
 	notes = list(notes_qs)
 	ctx = {"notifications": notes}
 	
+	try:
+		if getattr(request.user, 'profile', None) and not request.user.profile.is_pg_user:
+			from pgadmin.models import OldTenant
+			# Auto-clean 6 months old documents in OldTenant
+			six_months_ago = timezone.now().date() - relativedelta(months=6)
+			old_records_to_clean = OldTenant.objects.filter(
+				created_at__date__lt=six_months_ago
+			).exclude(
+				selfie_url='', aadhaar_file_url='', aadhaar_file_url_2=''
+			)
+			for rec in old_records_to_clean:
+				if rec.selfie_url:
+					drive_delete(rec.selfie_url)
+					rec.selfie_url = ''
+				if rec.aadhaar_file_url:
+					drive_delete(rec.aadhaar_file_url)
+					rec.aadhaar_file_url = ''
+				if rec.aadhaar_file_url_2:
+					drive_delete(rec.aadhaar_file_url_2)
+					rec.aadhaar_file_url_2 = ''
+				rec.save(update_fields=['selfie_url', 'aadhaar_file_url', 'aadhaar_file_url_2'])
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"Error auto-syncing old tenants docs: {e}")
+		
 	# Load advertisements for regular PG users (non-admin)
 	# Get the user's current PG from their active booking
 	try:

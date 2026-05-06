@@ -298,16 +298,27 @@ class OldTenant(TimeStampedModel):
 	
 	# Personal details
 	full_name = models.CharField(max_length=255, help_text='Full name of the tenant')
+	dob = models.DateField(null=True, blank=True)
+	age = models.PositiveSmallIntegerField(null=True, blank=True)
 	father_name = models.CharField(max_length=255, blank=True, help_text="Father's name")
+	father_phone = models.CharField(max_length=20, blank=True)
 	mother_name = models.CharField(max_length=255, blank=True, help_text="Mother's name")
+	mother_phone = models.CharField(max_length=20, blank=True)
 	
 	# Contact details
 	email = models.EmailField(help_text='Email address')
 	phone = models.CharField(max_length=20, blank=True, help_text='Phone number')
+	emergency_contact = models.CharField(max_length=20, blank=True, help_text="Emergency contact number")
 	whatsapp_number = models.CharField(max_length=20, blank=True, help_text='WhatsApp number')
 	
-	# Address
+	# Address & Demographics
 	address = models.TextField(blank=True, help_text='Permanent address')
+	food_pref = models.CharField(max_length=10, choices=[('veg','Veg'),('nonveg','Non-Veg')], blank=True)
+	marital_status = models.CharField(max_length=10, choices=[('single','Single'),('married','Married')], blank=True)
+	education = models.CharField(max_length=255, blank=True)
+	occupation = models.CharField(max_length=20, choices=[('student','Student'),('employee','Employee')], blank=True)
+	org_name = models.CharField(max_length=255, blank=True)
+	org_address = models.TextField(blank=True)
 	
 	# Stay details
 	room_no = models.CharField(max_length=20, blank=True, help_text='Room number during stay')
@@ -315,6 +326,17 @@ class OldTenant(TimeStampedModel):
 	joining_date = models.DateField(null=True, blank=True, help_text='Date when tenant joined')
 	leaving_date = models.DateField(null=True, blank=True, help_text='Date when tenant left')
 	leaving_reason = models.TextField(blank=True, help_text='Reason for leaving')
+	
+	# Documents & Media
+	aadhaar_number = models.CharField(max_length=20, blank=True)
+	selfie_url = models.URLField(blank=True)
+	aadhaar_file_url = models.URLField(blank=True)
+	aadhaar_file_url_2 = models.URLField(blank=True)
+	
+	# Vehicle details
+	has_vehicle = models.BooleanField(default=False)
+	vehicle_number = models.CharField(max_length=32, blank=True)
+	vehicle_model = models.CharField(max_length=100, blank=True)
 	
 	# Financial info
 	advance_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text='Advance amount paid')
