@@ -870,7 +870,7 @@
     </div>
   </div>
   <div class="offcanvas-footer p-3 border-top bg-white d-flex justify-content-between align-items-center">
-    <div class="small text-muted"><i class="bi bi-clock-history me-1"></i>Archived by: {{ tenant.archived_by.get_full_name|default:tenant.archived_by.username }}</div>
+    <div class="small text-muted"><i class="bi bi-clock-history me-1"></i>Archived by: {% if tenant.archived_by %}{{ tenant.archived_by.get_full_name|default:tenant.archived_by.username }}{% else %}System{% endif %}</div>
   </div>
 </div>
 {% endfor %}
