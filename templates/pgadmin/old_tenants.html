@@ -617,6 +617,7 @@
               <th data-sort="duration">Duration <i class="bi bi-arrow-down-up sort-icon"></i></th>
               <th data-sort="reason">Reason <i class="bi bi-arrow-down-up sort-icon"></i></th>
               <th data-sort="archived">Archived <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                <th class="text-center">Actions</th>
             </tr>
           </thead>
           <tbody id="tenantsTableBody">
@@ -706,10 +707,174 @@
                 <div class="small">{{ tenant.archived_at|date:"M d, Y" }}</div>
                 <div class="small text-muted">{{ tenant.archived_at|time:"H:i" }}</div>
               </td>
-            </tr>
+            
+                <td class="text-center">
+                  <button class="btn btn-sm btn-outline-primary shadow-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasTenant{{ tenant.id }}" aria-controls="offcanvasTenant{{ tenant.id }}">
+                    <i class="bi bi-eye"></i> View
+                  </button>
+                </td>
+</tr>
+
             {% endfor %}
           </tbody>
-        </table>
+        
+</table>
+
+<!-- Offcanvas Modals for Tenant Details -->
+{% for tenant in old_tenants %}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasTenant{{ tenant.id }}" aria-labelledby="offcanvasTenantLabel{{ tenant.id }}">
+  <div class="offcanvas-header bg-light border-bottom">
+    <h5 class="offcanvas-title" id="offcanvasTenantLabel{{ tenant.id }}">
+      <i class="bi bi-person-badge me-2 text-primary"></i>Archive Profile
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body p-0">
+    <!-- Header info -->
+    <div class="p-3 border-bottom bg-white">
+      <div class="d-flex align-items-center gap-3">
+        {% if tenant.selfie_url %}
+          <img src="{{ tenant.selfie_url }}" alt="Profile" class="rounded-circle object-fit-cover shadow-sm" width="64" height="64">
+        {% else %}
+          <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center shadow-sm" style="width:64px; height:64px; font-size:1.5rem;">
+            {{ tenant.full_name|make_list|first|upper }}
+          </div>
+        {% endif %}
+        <div>
+          <h5 class="mb-1 text-dark">{{ tenant.full_name }}</h5>
+          <div class="text-muted small"><i class="bi bi-calendar-check me-1"></i>{{ tenant.joining_date|date:"j M Y"|default:"N/A" }} - {{ tenant.leaving_date|date:"j M Y"|default:"N/A" }}</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Accordion Details -->
+    <div class="accordion accordion-flush" id="accordionTenant{{ tenant.id }}">
+      
+      <!-- Personal Details -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#personal{{ tenant.id }}">
+            <i class="bi bi-person-lines-fill me-2 text-secondary"></i>Personal & Demographics
+          </button>
+        </h2>
+        <div id="personal{{ tenant.id }}" class="accordion-collapse collapse show" data-bs-parent="#accordionTenant{{ tenant.id }}">
+          <div class="accordion-body bg-light small pt-3 pb-3">
+            <dl class="row mb-0 gy-2">
+              <dt class="col-sm-5 text-muted fw-normal">D.O.B / Age</dt>
+              <dd class="col-sm-7 fw-medium text-dark">{% if tenant.dob %}{{ tenant.dob|date:"d M Y" }}{% else %}-{% endif %} / {% if tenant.age %}{{ tenant.age }} yrs{% else %}-{% endif %}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Father's Name</dt>
+              <dd class="col-sm-7 fw-medium text-dark">{{ tenant.father_name|default:"-" }} {% if tenant.father_phone %}<br><i class="bi bi-telephone ms-1"></i> {{ tenant.father_phone }}{% endif %}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Mother's Name</dt>
+              <dd class="col-sm-7 fw-medium text-dark">{{ tenant.mother_name|default:"-" }} {% if tenant.mother_phone %}<br><i class="bi bi-telephone ms-1"></i> {{ tenant.mother_phone }}{% endif %}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Emergency Contact</dt>
+              <dd class="col-sm-7 fw-medium text-danger">{{ tenant.emergency_contact|default:"-" }}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Permanent Address</dt>
+              <dd class="col-sm-7 fw-medium text-dark mb-0">{{ tenant.address|default:"-" }}</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Work / Education -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#work{{ tenant.id }}">
+            <i class="bi bi-briefcase me-2 text-secondary"></i>Current Profession
+          </button>
+        </h2>
+        <div id="work{{ tenant.id }}" class="accordion-collapse collapse" data-bs-parent="#accordionTenant{{ tenant.id }}">
+          <div class="accordion-body bg-light small pt-3 pb-3">
+            <dl class="row mb-0 gy-2">
+              <dt class="col-sm-5 text-muted fw-normal">Occupation</dt>
+              <dd class="col-sm-7 fw-medium text-dark">{{ tenant.get_occupation_display|default:"-" }}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Organization</dt>
+              <dd class="col-sm-7 fw-medium text-dark">{{ tenant.org_name|default:"-" }}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Org Address</dt>
+              <dd class="col-sm-7 fw-medium text-dark">{{ tenant.org_address|default:"-" }}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Education</dt>
+              <dd class="col-sm-7 fw-medium text-dark mb-0">{{ tenant.education|default:"-" }}</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Stay & Finance Info -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#stay{{ tenant.id }}">
+            <i class="bi bi-house-door me-2 text-secondary"></i>Stay & Accounting
+          </button>
+        </h2>
+        <div id="stay{{ tenant.id }}" class="accordion-collapse collapse" data-bs-parent="#accordionTenant{{ tenant.id }}">
+          <div class="accordion-body bg-light small pt-3 pb-3">
+            <dl class="row mb-0 gy-2">
+              <dt class="col-sm-5 text-muted fw-normal">Advance Paid</dt>
+              <dd class="col-sm-7 fw-medium text-success">₹{{ tenant.advance_paid|default:"0.00" }}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Deposit Returned</dt>
+              <dd class="col-sm-7 fw-medium text-primary">₹{{ tenant.advance_returned|default:"0.00" }}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Reason to leave</dt>
+              <dd class="col-sm-7 fw-medium text-dark">{{ tenant.leaving_reason|default:"-" }}</dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Food Pref.</dt>
+              <dd class="col-sm-7 fw-medium text-dark mb-0">{{ tenant.get_food_pref_display|default:"-" }}</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+      
+      <!-- IDs & Vehicle -->
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#docs{{ tenant.id }}">
+            <i class="bi bi-card-heading me-2 text-secondary"></i>Identity & Vehicle
+          </button>
+        </h2>
+        <div id="docs{{ tenant.id }}" class="accordion-collapse collapse" data-bs-parent="#accordionTenant{{ tenant.id }}">
+          <div class="accordion-body bg-light small pt-3 pb-3">
+            <dl class="row mb-0 gy-2">
+              <dt class="col-sm-5 text-muted fw-normal">Aadhaar No</dt>
+              <dd class="col-sm-7 fw-medium text-dark">
+                {{ tenant.aadhaar_number|default:"-" }}
+                {% if tenant.aadhaar_file_url %}
+                <br><a href="{{ tenant.aadhaar_file_url }}" target="_blank" class="text-decoration-none small"><i class="bi bi-box-arrow-up-right me-1"></i>View Front</a>
+                {% endif %}
+                {% if tenant.aadhaar_file_url_2 %}
+                <br><a href="{{ tenant.aadhaar_file_url_2 }}" target="_blank" class="text-decoration-none small"><i class="bi bi-box-arrow-up-right me-1"></i>View Back</a>
+                {% endif %}
+              </dd>
+              
+              <dt class="col-sm-5 text-muted fw-normal">Vehicle</dt>
+              <dd class="col-sm-7 fw-medium text-dark mb-0">
+                {% if tenant.has_vehicle %}
+                  <span class="badge bg-info text-dark mb-1"><i class="bi bi-car-front-fill me-1"></i>Has Vehicle</span><br>
+                  {{ tenant.vehicle_number|default:"" }}<br>
+                  <span class="text-muted">{{ tenant.vehicle_model|default:"" }}</span>
+                {% else %}
+                  -
+                {% endif %}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <div class="offcanvas-footer p-3 border-top bg-white d-flex justify-content-between align-items-center">
+    <div class="small text-muted"><i class="bi bi-clock-history me-1"></i>Archived by: {{ tenant.archived_by.get_full_name|default:tenant.archived_by.username }}</div>
+  </div>
+</div>
+{% endfor %}
+
       </div>
     </div>
   </div>

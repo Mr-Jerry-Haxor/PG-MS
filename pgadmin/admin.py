@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import PG, PGAdmin, PGAdminPermission, Complaint, ComplaintComment, ComplaintMedia
+from .models import PG, PGAdmin, PGAdminPermission, Complaint, ComplaintComment, ComplaintMedia, OldTenant
 
 
 @admin.register(PG)
@@ -85,3 +85,53 @@ class ComplaintMediaAdmin(admin.ModelAdmin):
 	list_filter = ("media_type", "created_at")
 	search_fields = ("file_name", "complaint__title")
 	readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(OldTenant)
+class OldTenantAdmin(admin.ModelAdmin):
+	list_display = ("full_name", "pg", "room_no", "joining_date", "leaving_date", "archived_at")
+	list_filter = ("pg", "archived_at", "occupation", "food_pref")
+	search_fields = ("full_name", "email", "phone", "whatsapp_number", "room_no", "aadhaar_number")
+	readonly_fields = ("archived_at", "archived_by", "stay_duration_days")
+	date_hierarchy = "archived_at"
+	
+	fieldsets = (
+		("Tenant Information", {
+			"fields": ("full_name", "email", "phone", "whatsapp_number", "original_user", "original_booking_id")
+		}),
+		("Personal Details", {
+			"fields": ("dob", "age", "marital_status", "education", "food_pref"),
+			"classes": ("collapse",)
+		}),
+		("Family Contact", {
+			"fields": ("father_name", "father_phone", "mother_name", "mother_phone", "emergency_contact"),
+			"classes": ("collapse",)
+		}),
+		("Address & Residence", {
+			"fields": ("address", "pg", "room_no", "bed_no"),
+			"classes": ("collapse",)
+		}),
+		("Work Information", {
+			"fields": ("occupation", "org_name", "org_address"),
+			"classes": ("collapse",)
+		}),
+		("Stay Duration", {
+			"fields": ("joining_date", "leaving_date", "leaving_reason", "stay_duration_days")
+		}),
+		("Documents & ID", {
+			"fields": ("aadhaar_number", "selfie_url", "aadhaar_file_url", "aadhaar_file_url_2"),
+			"classes": ("collapse",)
+		}),
+		("Vehicle Information", {
+			"fields": ("has_vehicle", "vehicle_number", "vehicle_model"),
+			"classes": ("collapse",)
+		}),
+		("Financial", {
+			"fields": ("advance_paid", "advance_returned")
+		}),
+		("Archive Metadata", {
+			"fields": ("archived_at", "archived_by"),
+			"classes": ("collapse",)
+		}),
+	)
+
