@@ -1632,10 +1632,11 @@ def leaving_intimation(request, booking_id):
         try:
             admin_emails = [admin_user.email for admin_user in admin_users if getattr(admin_user, 'email', None)]
             if admin_emails:
+                tenant_name = request.user.get_full_name() or request.user.email
                 send_mail(
                     subject="PG-MS: Leaving Request",
                     message=(
-                        f"Tenant {request.user.email} plans to leave on {leaving_date}.\n"
+                        f"Tenant {tenant_name} plans to leave on {leaving_date}.\n"
                         f"PG: {pg.name}\nRoom: {booking.room.room_no} | Share: {booking.share_no}\n"
                         "Review and confirm in Leaving Requests page."
                     ),
@@ -2139,10 +2140,12 @@ def initiate_leave_request(request, booking_id):
             try:
                 from django.core.mail import send_mail
                 from django.conf import settings
+                tenant_name = booking.user.get_full_name() or booking.user.email
                 subject = f"Leave Request Received - {pg.name}"
                 message_body = (
                     f"A leave request has been initiated.\n\n"
                     f"PG Name: {pg.name}\n"
+                    f"Tenant: {tenant_name}\n"
                     f"Room Number: {booking.room.room_no}\n"
                     f"Bed: {booking.share_no}\n"
                     f"Joining Date: {booking.joining_date}\n"
