@@ -5897,9 +5897,12 @@ def confirm_leave(request, booking_id):
         from django.utils import timezone
         
         subject = f"Leave Request Confirmed - {booking.room.pg.name}"
+        tenant_name = booking.user.get_full_name() or booking.user.email
         eligibility = "Eligible" if booking.advance_eligible else "Not Eligible"
         message_body = (
             f"A leave request has been confirmed.\n\n"
+            f"Tenant Name: {tenant_name}\n"
+            f"Tenant Email: {booking.user.email}\n"
             f"PG Name: {booking.room.pg.name}\n"
             f"Room Number: {booking.room.room_no}\n"
             f"Bed: {booking.share_no}\n"

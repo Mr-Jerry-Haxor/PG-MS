@@ -1614,17 +1614,18 @@ def leaving_intimation(request, booking_id):
         pg = booking.room.pg
         admin_users = _pg_admin_users(pg)
         leave_requests_path, leave_payload = _leave_admin_path_and_payload(pg.id, booking)
+        tenant_name = request.user.get_full_name() or request.user.email
         # Create in-app notifications for each admin
         for admin_user in admin_users:
             Notification.objects.create(
                 user=admin_user,
                 title="Leaving request",
-                message=f"{request.user.email} plans to leave on {leaving_date} (Room {booking.room.room_no}, Share {booking.share_no}).",
+                message=f"{tenant_name} ({request.user.email}) plans to leave on {leaving_date} (Room {booking.room.room_no}, Share {booking.share_no}).",
             )
         send_push_to_users(
             admin_users,
             title="Leaving Request",
-            body=f"{request.user.email} plans to leave on {leaving_date}.",
+            body=f"{tenant_name} ({request.user.email}) plans to leave on {leaving_date}.",
             url=leave_requests_path,
             extra_data={**leave_payload, 'type': 'leave_requested', 'source': 'leaving_intimation'},
         )
@@ -1635,7 +1636,9 @@ def leaving_intimation(request, booking_id):
                 send_mail(
                     subject="PG-MS: Leaving Request",
                     message=(
-                        f"Tenant {request.user.email} plans to leave on {leaving_date}.\n"
+                        f"Tenant Name: {tenant_name}\n"
+                        f"Tenant Email: {request.user.email}\n"
+                        f"Plans to leave on: {leaving_date}\n"
                         f"PG: {pg.name}\nRoom: {booking.room.room_no} | Share: {booking.share_no}\n"
                         "Review and confirm in Leaving Requests page."
                     ),
