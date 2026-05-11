@@ -31,6 +31,7 @@ from django.urls import reverse
 from django.http import HttpResponse
 import calendar
 from io import BytesIO
+from bookings.utils import pending_booking_share_keys
 
 try:
     import openpyxl
@@ -3483,6 +3484,7 @@ def booking_approve(request, booking_id):
             # Also exclude shares that have overlapping bookings (PENDING/APPROVED)
             # Also exclude shares that have pending future swaps
             from bookings.models import Booking as BookingModel, RoomSwap
+            pending_booking_keys = pending_booking_share_keys(pg=pg)
             
             # Get all beds with pending/approved future swaps
             beds_with_future_swaps = set(
@@ -3496,6 +3498,9 @@ def booking_approve(request, booking_id):
             vacant_shares = []
             for room in vacant_rooms:
                 for share in room.shares.filter(status__in=[RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]):
+                    if (room.id, share.share_no) in pending_booking_keys:
+                        continue
+
                     # Skip if this bed has a pending future swap
                     if (room.id, share.share_no) in beds_with_future_swaps:
                         continue
@@ -6419,9 +6424,12 @@ def re_continue_booking(request, booking_id):
         
         vacant_rooms = []
         all_rooms = Room.objects.filter(pg=booking.room.pg).prefetch_related('shares')
+        pending_booking_keys = pending_booking_share_keys(pg=booking.room.pg)
         for room in all_rooms:
             for share in room.shares.all():
                 if share.status == RoomShareStatus.VACANT:
+                    if (room.id, share.share_no) in pending_booking_keys:
+                        continue
                     # Skip beds that have pending/approved future swaps
                     if (room.id, share.share_no) in beds_with_future_swaps:
                         continue
@@ -6672,11 +6680,14 @@ def create_future_swap(request, booking_id):
         
         # Get all rooms in PG
         all_rooms = Room.objects.filter(pg=booking.room.pg).prefetch_related('shares')
+        pending_booking_keys = pending_booking_share_keys(pg=booking.room.pg)
         
         for room in all_rooms:
             for share in room.shares.all():
                 # Skip current bed
                 if room.id == booking.room.id and share.share_no == booking.share_no:
+                    continue
+                if (room.id, share.share_no) in pending_booking_keys:
                     continue
                 
                 # Check if vacant

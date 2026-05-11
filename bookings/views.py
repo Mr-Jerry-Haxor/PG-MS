@@ -25,6 +25,7 @@ from pgadmin.models import PG, PGAdmin
 from .application_forms import ResidentApplicationForm
 from .forms import AadhaarForm, BookingRequestForm
 from .models import Room, RoomShareStatus, Booking, RoomSwap
+from .utils import pending_booking_share_keys, share_has_pending_booking
 
 
 def _normalize_payment_day(payment_date, anchor_date):
@@ -473,6 +474,8 @@ def handle_future_booking(request, pg, has_active):
         rs = RoomShareStatus.objects.filter(room=room, share_no=share_no).first()
         if not rs:
             errors.append('Share not found for room.')
+        elif share_has_pending_booking(room, share_no):
+            errors.append('This bed has a pending booking and is not available for booking.')
     
     # Validate joining date
     today = timezone.now().date()
@@ -633,6 +636,8 @@ def handle_booknow_booking(request, pg, has_active, context):
         rs = RoomShareStatus.objects.filter(room=room, share_no=share_no).first()
         if not rs:
             errors.append('Share not found for room.')
+        elif share_has_pending_booking(room, share_no):
+            errors.append('This bed has a pending booking and is not available for booking.')
 
     today = timezone.now().date()
     if not joining_raw:
@@ -1215,10 +1220,13 @@ def pg_quick_rooms(request, pgslug):
             status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
         ).values_list('to_room_id', 'to_share_no')
     )
+    pending_booking_keys = pending_booking_share_keys(pg=pg)
     
     def share_is_available(rs: RoomShareStatus):
         # Check if this bed has a pending future swap
         if (rs.room_id, rs.share_no) in beds_with_future_swaps:
+            return False
+        if (rs.room_id, rs.share_no) in pending_booking_keys:
             return False
         if rs.status == RoomShareStatus.VACANT:
             return True
@@ -1260,11 +1268,14 @@ def pg_quick_shares(request, pgslug, room_id):
             status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
         ).values_list('to_share_no', flat=True)
     )
+    pending_booking_keys = pending_booking_share_keys(room=room)
     
     result = []
     for s in shares:
         # Check if this bed has a pending future swap - if so, skip it entirely
         if s.share_no in beds_with_future_swaps:
+            continue
+        if (room.id, s.share_no) in pending_booking_keys:
             continue
         
         # Include based on include_vacant_from parameter
@@ -1331,6 +1342,7 @@ def availability(request):
                 status__in=[RoomSwap.PENDING, RoomSwap.APPROVED]
             ).values_list('to_room_id', 'to_share_no')
         )
+        pending_booking_keys = pending_booking_share_keys(pg=pg)
     
     if pg:
         qs = (
@@ -1354,6 +1366,7 @@ def availability(request):
                 key = f"{room_obj.id}:{share.share_no}"
                 setattr(share, 'leaving_data', leaving_map.get(key))
                 setattr(share, 'has_future_swap', (room_obj.id, share.share_no) in beds_with_future_swaps)
+                setattr(share, 'has_pending_booking', (room_obj.id, share.share_no) in pending_booking_keys)
     return render(request, 'bookings/availability.html', {"pg": pg, "pgs": list(pgs), "rooms": rooms, "leaving_map": leaving_map, "today": today})
 
 
@@ -1408,6 +1421,11 @@ def request_booking(request, room_id, share_no):
         messages.error(request, "You already have an active booking in this PG. You can book in another PG, but only one booking per PG is allowed.")
         return redirect('dashboard')
     
+    # Check if this bed already has a pending booking - if so, don't allow booking
+    if share_has_pending_booking(room, share_no):
+        messages.error(request, "This bed has a pending booking and is not available for booking.")
+        return redirect('availability')
+
     # Check if this bed has a pending future swap - if so, don't allow booking
     has_future_swap = RoomSwap.objects.filter(
         to_room=room,

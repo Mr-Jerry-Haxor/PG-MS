@@ -4,6 +4,21 @@ from django.db.models import Q
 from .models import Booking, RoomShareStatus, RoomSwap
 
 
+def pending_booking_share_keys(pg=None, room=None):
+    """Return a set of (room_id, share_no) pairs for pending bookings."""
+    qs = Booking.objects.filter(status=Booking.PENDING)
+    if pg is not None:
+        qs = qs.filter(room__pg=pg)
+    if room is not None:
+        qs = qs.filter(room=room)
+    return set(qs.values_list('room_id', 'share_no'))
+
+
+def share_has_pending_booking(room, share_no):
+    """Return True when the given room/share already has a pending booking."""
+    return Booking.objects.filter(room=room, share_no=share_no, status=Booking.PENDING).exists()
+
+
 def sync_room_share_statuses(pg=None):
     """
     Sync RoomShareStatus records based on actual Booking data AND pending future swaps.
