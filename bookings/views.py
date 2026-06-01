@@ -2160,9 +2160,12 @@ def initiate_leave_request(request, booking_id):
             try:
                 from django.core.mail import send_mail
                 from django.conf import settings
+                tenant_name = booking.user.get_full_name() or booking.user.email
                 subject = f"Leave Request Received - {pg.name}"
                 message_body = (
                     f"A leave request has been initiated.\n\n"
+                    f"Tenant Name: {tenant_name}\n"
+                    f"Tenant Email: {booking.user.email}\n"
                     f"PG Name: {pg.name}\n"
                     f"Room Number: {booking.room.room_no}\n"
                     f"Bed: {booking.share_no}\n"
