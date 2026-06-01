@@ -301,6 +301,26 @@
                 <button type="button" class="btn btn-outline-warning filter-btn" style="font-size: 0.75rem;" data-filter-type="booking-type" data-filter-value="daywise">Day-wise</button>
               </div>
             </div>
+
+            <!-- Leave Initiated Date Range -->
+            <div>
+              <label class="small text-muted fw-semibold mb-1 d-block">INITIATED DATE RANGE</label>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <input type="date" class="form-control form-control-sm" id="initiatedDateFrom" style="width: 150px;">
+                <span class="small text-muted">to</span>
+                <input type="date" class="form-control form-control-sm" id="initiatedDateTo" style="width: 150px;">
+              </div>
+            </div>
+
+            <!-- Vacating Date Range -->
+            <div>
+              <label class="small text-muted fw-semibold mb-1 d-block">VACATING DATE RANGE</label>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <input type="date" class="form-control form-control-sm" id="vacatingDateFrom" style="width: 150px;">
+                <span class="small text-muted">to</span>
+                <input type="date" class="form-control form-control-sm" id="vacatingDateTo" style="width: 150px;">
+              </div>
+            </div>
             
             <!-- Reset Button -->
             <div class="ms-auto">
@@ -387,7 +407,9 @@
                 data-advance="{% if booking.advance_returned %}returned{% elif not booking.advance_eligible %}not-eligible{% elif booking.advance_eligible and booking.leaving_confirmed_date %}pending{% else %}eligible{% endif %}"
                 data-advance-eligibility="{% if booking.advance_eligible %}eligible{% else %}not-eligible{% endif %}"
                 data-advance-return="{% if booking.advance_returned %}returned{% else %}pending{% endif %}"
-                data-booking-type="{% if booking.booking_type == 'daywise' %}daywise{% else %}regular{% endif %}">
+                data-booking-type="{% if booking.booking_type == 'daywise' %}daywise{% else %}regular{% endif %}"
+                data-initiated-date="{% if booking.leaving_initiated_at %}{{ booking.leaving_initiated_at|date:'Y-m-d' }}{% endif %}"
+                data-leaving-date="{% if booking.leaving_date %}{{ booking.leaving_date|date:'Y-m-d' }}{% endif %}">
               <td>
                 <div class="d-flex align-items-center gap-2">
                   <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#appModal{{ booking.id }}" aria-label="View application for {{ booking.user.get_full_name }}">
@@ -1554,11 +1576,22 @@ document.addEventListener('DOMContentLoaded', function() {
     'advance-eligibility': 'all',
     'advance-return': 'all',
     'booking-type': 'all',
+    initiatedDateFrom: '',
+    initiatedDateTo: '',
+    vacatingDateFrom: '',
+    vacatingDateTo: '',
     bookingId: '',
     search: '',
     currentPage: 1,
     itemsPerPage: 10
   };
+
+  function isDateWithinRange(dateValue, fromValue, toValue) {
+    if (!dateValue) return !fromValue && !toValue;
+    if (fromValue && dateValue < fromValue) return false;
+    if (toValue && dateValue > toValue) return false;
+    return true;
+  }
   
   function applyFilters() {
     const rows = document.querySelectorAll('.leave-row');
@@ -1573,6 +1606,8 @@ document.addEventListener('DOMContentLoaded', function() {
       const rowAdvanceReturn = row.dataset.advanceReturn;
       const rowBookingType = row.dataset.bookingType;
       const rowBookingId = row.dataset.bookingId || '';
+      const rowInitiatedDate = row.dataset.initiatedDate || '';
+      const rowLeavingDate = row.dataset.leavingDate || '';
       
       // Get searchable text from the row
       const rowText = row.textContent.toLowerCase();
@@ -1582,9 +1617,11 @@ document.addEventListener('DOMContentLoaded', function() {
       const advanceReturnMatch = filterState['advance-return'] === 'all' || rowAdvanceReturn === filterState['advance-return'];
       const bookingTypeMatch = filterState['booking-type'] === 'all' || rowBookingType === filterState['booking-type'];
       const bookingIdMatch = !filterState.bookingId || rowBookingId === filterState.bookingId;
+      const initiatedDateMatch = isDateWithinRange(rowInitiatedDate, filterState.initiatedDateFrom, filterState.initiatedDateTo);
+      const vacatingDateMatch = isDateWithinRange(rowLeavingDate, filterState.vacatingDateFrom, filterState.vacatingDateTo);
       const searchMatch = !searchTerm || rowText.includes(searchTerm);
       
-      if (statusMatch && advanceEligibilityMatch && advanceReturnMatch && bookingTypeMatch && bookingIdMatch && searchMatch) {
+      if (statusMatch && advanceEligibilityMatch && advanceReturnMatch && bookingTypeMatch && bookingIdMatch && initiatedDateMatch && vacatingDateMatch && searchMatch) {
         matchedRows.push(row);
       }
     });
@@ -1637,6 +1674,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Update pagination
     updatePagination(totalMatched, totalPages, startIndex, endIndex);
+
+    // Keep the card view filtered with the same state.
+    applyLeaveCardFilters();
   }
   
   function updatePagination(totalMatched, totalPages, startIndex, endIndex) {
@@ -1811,6 +1851,10 @@ document.addEventListener('DOMContentLoaded', function() {
     filterState['advance-eligibility'] = 'all';
     filterState['advance-return'] = 'all';
     filterState['booking-type'] = 'all';
+    filterState.initiatedDateFrom = '';
+    filterState.initiatedDateTo = '';
+    filterState.vacatingDateFrom = '';
+    filterState.vacatingDateTo = '';
     filterState.bookingId = '';
     filterState.search = '';
     filterState.currentPage = 1;
@@ -1822,6 +1866,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Reset search input
     searchInput.value = '';
     clearSearchBtn.style.display = 'none';
+
+    const initiatedDateFrom = document.getElementById('initiatedDateFrom');
+    const initiatedDateTo = document.getElementById('initiatedDateTo');
+    const vacatingDateFrom = document.getElementById('vacatingDateFrom');
+    const vacatingDateTo = document.getElementById('vacatingDateTo');
+    if (initiatedDateFrom) initiatedDateFrom.value = '';
+    if (initiatedDateTo) initiatedDateTo.value = '';
+    if (vacatingDateFrom) vacatingDateFrom.value = '';
+    if (vacatingDateTo) vacatingDateTo.value = '';
     
     // Reset active buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -1851,6 +1904,25 @@ document.addEventListener('DOMContentLoaded', function() {
       applyFilters();
     });
   }
+
+  const initiatedDateFromInput = document.getElementById('initiatedDateFrom');
+  const initiatedDateToInput = document.getElementById('initiatedDateTo');
+  const vacatingDateFromInput = document.getElementById('vacatingDateFrom');
+  const vacatingDateToInput = document.getElementById('vacatingDateTo');
+
+  function bindDateRangeFilter(input, stateKey) {
+    if (!input) return;
+    input.addEventListener('change', function() {
+      filterState[stateKey] = this.value || '';
+      filterState.currentPage = 1;
+      applyFilters();
+    });
+  }
+
+  bindDateRangeFilter(initiatedDateFromInput, 'initiatedDateFrom');
+  bindDateRangeFilter(initiatedDateToInput, 'initiatedDateTo');
+  bindDateRangeFilter(vacatingDateFromInput, 'vacatingDateFrom');
+  bindDateRangeFilter(vacatingDateToInput, 'vacatingDateTo');
   
   // Initial count update
   applyFilters();
@@ -1933,6 +2005,8 @@ document.addEventListener('DOMContentLoaded', function() {
       var cardAdvRet = card.dataset.advanceReturn || '';
       var cardBookingType = card.dataset.bookingType || '';
       var cardBookingId = card.dataset.bookingId || '';
+      var cardInitiatedDate = card.dataset.initiatedDate || '';
+      var cardLeavingDate = card.dataset.leavingDate || '';
       var cardText = card.textContent.toLowerCase();
 
       var statusMatch = filterState.status === 'all' || cardStatus === filterState.status;
@@ -1940,9 +2014,11 @@ document.addEventListener('DOMContentLoaded', function() {
       var advRetMatch = filterState['advance-return'] === 'all' || cardAdvRet === filterState['advance-return'];
       var bookingTypeMatch = filterState['booking-type'] === 'all' || cardBookingType === filterState['booking-type'];
       var bookingIdMatch = !filterState.bookingId || cardBookingId === filterState.bookingId;
+      var initiatedDateMatch = isDateWithinRange(cardInitiatedDate, filterState.initiatedDateFrom, filterState.initiatedDateTo);
+      var vacatingDateMatch = isDateWithinRange(cardLeavingDate, filterState.vacatingDateFrom, filterState.vacatingDateTo);
       var searchMatch = !searchTerm || cardText.indexOf(searchTerm) !== -1;
 
-      return statusMatch && advEligMatch && advRetMatch && bookingTypeMatch && bookingIdMatch && searchMatch;
+      return statusMatch && advEligMatch && advRetMatch && bookingTypeMatch && bookingIdMatch && initiatedDateMatch && vacatingDateMatch && searchMatch;
     });
 
     // Apply card sorting

@@ -56,20 +56,35 @@
             </select>
           </div>
           
-          <!-- From Date -->
+          <!-- Joining Date Range -->
           <div class="col-6 col-md-3 col-lg-2">
             <label class="form-label small fw-semibold text-muted">
-              <i class="bi bi-calendar-event"></i> From Date
+              <i class="bi bi-calendar-event"></i> Joining From
             </label>
             <input id="bcFrom" type="date" class="form-control" />
           </div>
           
-          <!-- To Date -->
+          <!-- Joining Date Range -->
           <div class="col-6 col-md-3 col-lg-2">
             <label class="form-label small fw-semibold text-muted">
-              <i class="bi bi-calendar-event"></i> To Date
+              <i class="bi bi-calendar-event"></i> Joining To
             </label>
             <input id="bcTo" type="date" class="form-control" />
+          </div>
+
+          <!-- Leaving Date Range -->
+          <div class="col-6 col-md-3 col-lg-2">
+            <label class="form-label small fw-semibold text-muted">
+              <i class="bi bi-calendar-x"></i> Leaving From
+            </label>
+            <input id="bcLeavingFrom" type="date" class="form-control" />
+          </div>
+
+          <div class="col-6 col-md-3 col-lg-2">
+            <label class="form-label small fw-semibold text-muted">
+              <i class="bi bi-calendar-x"></i> Leaving To
+            </label>
+            <input id="bcLeavingTo" type="date" class="form-control" />
           </div>
           
           <!-- Reset Button -->
@@ -295,6 +310,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const bookingTypeEl = document.getElementById('bcBookingType');
   const fromEl = document.getElementById('bcFrom');
   const toEl = document.getElementById('bcTo');
+  const leavingFromEl = document.getElementById('bcLeavingFrom');
+  const leavingToEl = document.getElementById('bcLeavingTo');
   const resetEl = document.getElementById('bcReset');
   const totalCountEl = document.getElementById('bcTotalCount');
   const activeFiltersEl = document.getElementById('activeFiltersCount');
@@ -311,6 +328,22 @@ document.addEventListener('DOMContentLoaded', function() {
   const todayOnly = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
   
   function normalize(s){ return (s||'').toString().toLowerCase().trim(); }
+
+  function parseDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (isNaN(date)) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  function dateInRange(value, fromValue, toValue) {
+    const date = parseDate(value);
+    const fromDate = parseDate(fromValue);
+    const toDate = parseDate(toValue);
+    if (fromDate && (!date || date < fromDate)) return false;
+    if (toDate && (!date || date > toDate)) return false;
+    return true;
+  }
 
   // Determine booking type based on joining date and booking_type field
   function determineBookingType(row) {
@@ -398,6 +431,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const phone = normalize(row.querySelector('.bc-phone, .bc-mobile-phone')?.textContent);
     const room = normalize(row.dataset.room);
     const joiningDate = row.dataset.joining || '';
+    const leavingDate = row.dataset.leaving || '';
     
     // Search filter
     const q = normalize(searchEl.value);
@@ -418,15 +452,14 @@ document.addEventListener('DOMContentLoaded', function() {
       if (rowType !== typeFilter) return false;
     }
 
-    // Date range filter (using joining date)
+    // Date range filters
     const f = fromEl.value;
     const t = toEl.value;
-    if (f) {
-      if (!joiningDate || joiningDate < f) return false;
-    }
-    if (t) {
-      if (!joiningDate || joiningDate > t) return false;
-    }
+    if (!dateInRange(joiningDate, f, t)) return false;
+
+    const lf = leavingFromEl ? leavingFromEl.value : '';
+    const lt = leavingToEl ? leavingToEl.value : '';
+    if (!dateInRange(leavingDate, lf, lt)) return false;
 
     return true;
   }
@@ -439,6 +472,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (bookingTypeEl.value) count++;
     if (fromEl.value) count++;
     if (toEl.value) count++;
+    if (leavingFromEl && leavingFromEl.value) count++;
+    if (leavingToEl && leavingToEl.value) count++;
     
     activeFiltersEl.textContent = count;
     activeFiltersEl.className = count > 0 ? 'badge bg-warning text-dark ms-2' : 'badge bg-secondary ms-2';
@@ -563,6 +598,19 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }
   });
+
+  [leavingFromEl, leavingToEl].forEach(el => {
+    if (el) {
+      el.addEventListener('input', function() {
+        currentPage = 1;
+        applyFiltersAndPaginate();
+      });
+      el.addEventListener('change', function() {
+        currentPage = 1;
+        applyFiltersAndPaginate();
+      });
+    }
+  });
   
   // Reset button
   if (resetEl) {
@@ -573,6 +621,8 @@ document.addEventListener('DOMContentLoaded', function() {
       bookingTypeEl.value = '';
       fromEl.value = ''; 
       toEl.value = ''; 
+      if (leavingFromEl) leavingFromEl.value = '';
+      if (leavingToEl) leavingToEl.value = '';
       currentPage = 1; 
       applyFiltersAndPaginate(); 
     });
