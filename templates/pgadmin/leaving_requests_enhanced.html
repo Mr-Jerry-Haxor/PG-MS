@@ -1675,8 +1675,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Update pagination
     updatePagination(totalMatched, totalPages, startIndex, endIndex);
 
-    // Keep the card view filtered with the same state.
-    applyLeaveCardFilters();
+    // Keep the card view filtered with the same state only after card data is initialized.
+    if (typeof leaveCardInitialized !== 'undefined' && leaveCardInitialized) {
+      applyLeaveCardFilters();
+    }
   }
   
   function updatePagination(totalMatched, totalPages, startIndex, endIndex) {
@@ -1990,6 +1992,22 @@ document.addEventListener('DOMContentLoaded', function() {
   var filteredLeaveCards = [];
   var leaveCardInitialized = false;
 
+  function safeGetStorageItem(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function safeSetStorageItem(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      // Ignore storage failures (private mode / quota / blocked storage).
+    }
+  }
+
   function initLeaveCardData() {
     allLeaveCards = Array.from(document.querySelectorAll('#leaveCardsContainer .leave-card'));
     leaveCardInitialized = true;
@@ -2195,19 +2213,19 @@ document.addEventListener('DOMContentLoaded', function() {
       if (leaveCardContainer) leaveCardContainer.style.display = 'block';
       if (btnLeaveTable) btnLeaveTable.classList.remove('active');
       if (btnLeaveCard) btnLeaveCard.classList.add('active');
-      localStorage.setItem(LEAVE_VIEW_PREF_KEY, 'card');
       if (!leaveCardInitialized) {
         initLeaveCardData();
       } else {
         applyLeaveCardFilters();
       }
+      safeSetStorageItem(LEAVE_VIEW_PREF_KEY, 'card');
     } else {
       if (leaveTableContainer) leaveTableContainer.style.display = '';
       if (leaveCardContainer) leaveCardContainer.style.display = 'none';
       if (btnLeaveTable) btnLeaveTable.classList.add('active');
       if (btnLeaveCard) btnLeaveCard.classList.remove('active');
-      localStorage.setItem(LEAVE_VIEW_PREF_KEY, 'table');
       applyFilters();
+      safeSetStorageItem(LEAVE_VIEW_PREF_KEY, 'table');
     }
   }
 
@@ -2215,7 +2233,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (btnLeaveCard) btnLeaveCard.addEventListener('click', function() { setLeaveView('card'); });
 
   // Load saved preference
-  var savedLeaveView = localStorage.getItem(LEAVE_VIEW_PREF_KEY);
+  var savedLeaveView = safeGetStorageItem(LEAVE_VIEW_PREF_KEY);
   if (savedLeaveView === 'card') {
     setLeaveView('card');
   }
