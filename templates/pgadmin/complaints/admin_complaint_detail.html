@@ -511,6 +511,9 @@ function sendComplaintWhatsApp() {
         return;
     }
 
+    // Add country code 91 if phone number doesn't have it (10 digits = no country code)
+    const finalPhone = phone.length === 10 ? '91' + phone : phone;
+
     const latestComment = (document.getElementById('commentInput')?.value || '').trim();
     const emoji = {
         pin: '\u{1F4CC}',     // 📌
@@ -554,7 +557,7 @@ function sendComplaintWhatsApp() {
     lines.push(`${emoji.thanks} Thank you. We are working on this.`);
 
     const text = encodeURIComponent(lines.join('\n').normalize('NFC'));
-    const waUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${text}`;
+    const waUrl = `https://api.whatsapp.com/send?phone=${finalPhone}&text=${text}`;
     window.open(waUrl, '_blank', 'noopener');
 }
 
