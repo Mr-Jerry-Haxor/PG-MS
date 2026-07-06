@@ -445,11 +445,32 @@
   <input type="hidden" name="year" value="{{ summary.year }}">
   <input type="hidden" name="month" value="{{ summary.month }}">
   <div class="card border-0 shadow-sm">
-    <!-- Search Box Above Table -->
+    <!-- Search and active view tools -->
     <div class="card-body border-bottom">
-      <div class="input-group input-group-sm" style="max-width:350px;">
-        <span class="input-group-text"><i class="bi bi-search"></i></span>
-        <input id="searchBox" type="text" class="form-control" placeholder="Search by Name / Email / Room...">
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <div class="input-group input-group-sm" style="max-width:350px;">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input id="searchBox" type="text" class="form-control" placeholder="Search by Name / Email / Room...">
+        </div>
+        <div class="d-flex gap-2 align-items-center" id="cardSortControls" style="display:none !important;">
+          <label class="small mb-0">Sort:</label>
+          <select id="cardSortSelect" class="form-select form-select-sm" style="width: auto;">
+            <option value="room_asc" selected>Room ↑</option>
+            <option value="name_asc">Resident A–Z</option>
+            <option value="name_desc">Resident Z–A</option>
+            <option value="room_desc">Room ↓</option>
+            <option value="joining_asc">Joining Date ↑</option>
+            <option value="joining_desc">Joining Date ↓</option>
+            <option value="payment_asc">Payment Date ↑</option>
+            <option value="payment_desc">Payment Date ↓</option>
+            <option value="leaving_asc">Leave Date ↑</option>
+            <option value="leaving_desc">Leave Date ↓</option>
+            <option value="status_asc">Status A–Z</option>
+            <option value="status_desc">Status Z–A</option>
+            <option value="pending_desc">Pending ↓</option>
+            <option value="pending_asc">Pending ↑</option>
+          </select>
+        </div>
       </div>
     </div>
     
@@ -745,43 +766,6 @@
     
     <!-- CARD VIEW -->
     <div class="monthly-cards-view p-3" id="cardViewContainer">
-      <!-- Card Pagination Controls -->
-      <div class="card-pagination-bar d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <div class="pagination-info small text-muted">
-          Showing <span id="cardPageStart">0</span> to <span id="cardPageEnd">0</span> of <span id="cardTotalRecords">0</span> residents
-        </div>
-        <div class="d-flex gap-2 align-items-center flex-wrap">
-          <label class="small mb-0">Sort:</label>
-          <select id="cardSortSelect" class="form-select form-select-sm" style="width: auto;">
-            <option value="room_asc" selected>Room ↑</option>
-            <option value="name_asc">Resident A–Z</option>
-            <option value="name_desc">Resident Z–A</option>
-            <option value="room_desc">Room ↓</option>
-            <option value="joining_asc">Joining Date ↑</option>
-            <option value="joining_desc">Joining Date ↓</option>
-            <option value="payment_asc">Payment Date ↑</option>
-            <option value="payment_desc">Payment Date ↓</option>
-            <option value="leaving_asc">Leave Date ↑</option>
-            <option value="leaving_desc">Leave Date ↓</option>
-            <option value="status_asc">Status A–Z</option>
-            <option value="status_desc">Status Z–A</option>
-            <option value="pending_desc">Pending ↓</option>
-            <option value="pending_asc">Pending ↑</option>
-          </select>
-          <label class="small mb-0 ms-2">Per page:</label>
-          <select id="cardPageSize" class="form-select form-select-sm" style="width: auto;">
-            <option value="10">10</option>
-            <option value="25" selected>25</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-            <option value="999999">All</option>
-          </select>
-        </div>
-      </div>
-      <nav class="mb-3">
-        <ul class="pagination pagination-sm mb-0 justify-content-center" id="cardPagination"></ul>
-      </nav>
-
       <!-- Cards Container -->
       <div id="cardsContainer">
         {% for r in rows %}
@@ -1064,6 +1048,17 @@
               <i class="bi bi-whatsapp text-success"></i> Send WhatsApp confirmation
             </label>
           </div>
+          <!-- Custom WhatsApp Message -->
+          <div class="d-flex align-items-center gap-2 ms-3" title="Append a saved custom message to WhatsApp templates">
+            <span class="small fw-semibold text-nowrap">Custom WhatsApp Message</span>
+            <div class="form-check form-switch mb-0">
+              <input class="form-check-input" type="checkbox" role="switch" id="customWhatsappToggle">
+              <label class="visually-hidden" for="customWhatsappToggle">Enable custom WhatsApp message</label>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="customWhatsappEditBtn" title="Edit custom WhatsApp message" aria-label="Edit custom WhatsApp message">
+              <i class="bi bi-pencil-square"></i>
+            </button>
+          </div>
         </div>
         <div class="d-flex gap-2 align-items-center" id="tablePaginationControls">
           <div class="pagination-info small text-muted">
@@ -1080,9 +1075,27 @@
             </select>
           </div>
         </div>
+        <div class="d-flex gap-2 align-items-center flex-wrap" id="cardPaginationControls" style="display:none !important;">
+          <div class="pagination-info small text-muted">
+            Showing <span id="cardPageStart">0</span> to <span id="cardPageEnd">0</span> of <span id="cardTotalRecords">0</span> residents
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <label class="small mb-0">Per page:</label>
+            <select id="cardPageSize" class="form-select form-select-sm" style="width: auto;">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="999999">All</option>
+            </select>
+          </div>
+        </div>
       </div>
       <nav class="mt-2" id="tablePaginationNav">
         <ul class="pagination pagination-sm mb-0 justify-content-center" id="pagination"></ul>
+      </nav>
+      <nav class="mt-2" id="cardPaginationNav" style="display:none !important;">
+        <ul class="pagination pagination-sm mb-0 justify-content-center" id="cardPagination"></ul>
       </nav>
     </div>
   </div>
@@ -2310,6 +2323,10 @@
         message += 'Please pay the rent.\n';
         message += 'Thank you.';
         
+        if (typeof window.getWhatsappMessageWithCustom === 'function') {
+          message = window.getWhatsappMessageWithCustom(message);
+        }
+
         // Build WhatsApp URL
         var url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(message);
         window.open(url, '_blank');
@@ -2546,6 +2563,12 @@
     function setView(view) {
       var tablePagCtrl = document.getElementById('tablePaginationControls');
       var tablePagNav = document.getElementById('tablePaginationNav');
+      var cardPagCtrl = document.getElementById('cardPaginationControls');
+      var cardPagNav = document.getElementById('cardPaginationNav');
+      var cardSortControls = document.getElementById('cardSortControls');
+      function setDisplay(el, displayValue) {
+        if (el) el.style.setProperty('display', displayValue, 'important');
+      }
       if (view === 'card') {
         // Hide table view completely
         tableViewContainer.style.display = 'none';
@@ -2557,8 +2580,11 @@
         btnCardView.classList.add('active');
         localStorage.setItem(VIEW_PREF_KEY, 'card');
         // Hide table pagination controls
-        if (tablePagCtrl) tablePagCtrl.style.display = 'none';
-        if (tablePagNav) tablePagNav.style.display = 'none';
+        setDisplay(tablePagCtrl, 'none');
+        setDisplay(tablePagNav, 'none');
+        setDisplay(cardPagCtrl, 'flex');
+        setDisplay(cardPagNav, 'block');
+        setDisplay(cardSortControls, 'flex');
         // Initialize card pagination
         if (!cardPaginationInitialized) {
           initializeCardPaginationData();
@@ -2578,8 +2604,11 @@
         btnCardView.classList.remove('active');
         localStorage.setItem(VIEW_PREF_KEY, 'table');
         // Show table pagination controls
-        if (tablePagCtrl) tablePagCtrl.style.display = '';
-        if (tablePagNav) tablePagNav.style.display = '';
+        setDisplay(tablePagCtrl, 'flex');
+        setDisplay(tablePagNav, 'block');
+        setDisplay(cardPagCtrl, 'none');
+        setDisplay(cardPagNav, 'none');
+        setDisplay(cardSortControls, 'none');
       }
     }
     
@@ -2671,13 +2700,88 @@
   </div>
 </div>
 
+<!-- Custom WhatsApp Message Modal -->
+<div class="modal fade" id="customWhatsappMessageModal" tabindex="-1" aria-labelledby="customWhatsappMessageModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="customWhatsappMessageModalLabel"><i class="bi bi-pencil-square me-2"></i>Custom WhatsApp Message</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small" for="customWhatsappMessageText">Message to append</label>
+        <textarea class="form-control" id="customWhatsappMessageText" rows="7" style="font-size: 0.9rem;" placeholder="Write your custom WhatsApp message here..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" id="customWhatsappMessageSaveBtn">Save Message</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // WhatsApp Payment Confirmation - Complete Implementation
 (function() {
   console.log('Initializing WhatsApp Payment Confirmation module');
   
   var WA_CONFIRM_KEY = 'pgms_whatsapp_payment_confirmation';
+  var WA_CUSTOM_ENABLED_KEY = 'pgms_custom_whatsapp_message_enabled';
+  var WA_CUSTOM_TEXT_KEY = 'pgms_custom_whatsapp_message_text';
   var waPhoneStore = '';
+
+  function getSavedCustomWhatsappMessage() {
+    return (localStorage.getItem(WA_CUSTOM_TEXT_KEY) || '').trim();
+  }
+
+  function isCustomWhatsappMessageEnabled() {
+    return localStorage.getItem(WA_CUSTOM_ENABLED_KEY) === 'true';
+  }
+
+  window.getWhatsappMessageWithCustom = function(baseMessage) {
+    var message = baseMessage || '';
+    var customMessage = getSavedCustomWhatsappMessage();
+    if (!isCustomWhatsappMessageEnabled() || !customMessage) {
+      return message;
+    }
+    return message + '\n\n\n' + customMessage;
+  };
+
+  // Initialize custom WhatsApp message controls
+  var customToggle = document.getElementById('customWhatsappToggle');
+  var customEditBtn = document.getElementById('customWhatsappEditBtn');
+  var customMessageText = document.getElementById('customWhatsappMessageText');
+  var customSaveBtn = document.getElementById('customWhatsappMessageSaveBtn');
+  var customModalEl = document.getElementById('customWhatsappMessageModal');
+
+  if (customToggle) {
+    customToggle.checked = isCustomWhatsappMessageEnabled();
+    customToggle.addEventListener('change', function() {
+      localStorage.setItem(WA_CUSTOM_ENABLED_KEY, this.checked ? 'true' : 'false');
+    });
+  }
+
+  if (customEditBtn && customModalEl && customMessageText) {
+    customEditBtn.addEventListener('click', function() {
+      customMessageText.value = localStorage.getItem(WA_CUSTOM_TEXT_KEY) || '';
+      var customModal = bootstrap.Modal.getInstance(customModalEl) || new bootstrap.Modal(customModalEl);
+      customModal.show();
+    });
+  }
+
+  if (customSaveBtn && customModalEl && customMessageText) {
+    customSaveBtn.addEventListener('click', function() {
+      localStorage.setItem(WA_CUSTOM_TEXT_KEY, customMessageText.value || '');
+      if (customToggle) {
+        customToggle.checked = true;
+        localStorage.setItem(WA_CUSTOM_ENABLED_KEY, 'true');
+      }
+      var customModal = bootstrap.Modal.getInstance(customModalEl);
+      if (customModal) {
+        customModal.hide();
+      }
+    });
+  }
   
   // Initialize toggle
   var toggle = document.getElementById('whatsappConfirmToggle');
@@ -2822,7 +2926,7 @@
       console.error('FAILED: Message textarea #whatsappConfirmMessage not found');
       return;
     }
-    msgTextarea.value = message;
+    msgTextarea.value = window.getWhatsappMessageWithCustom(message);
     console.log('Message set in textarea');
 
     // Step 5: Show modal - create fresh instance
