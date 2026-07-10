@@ -66,6 +66,21 @@ def sync_room_share_statuses(pg=None):
     # Second pass: sync based on bookings (existing logic)
     for share in shares:
         stats['total_processed'] += 1
+
+        # A pending booking already claims the bed.  Treat it as reserved before
+        # considering approved bookings so the admin status and all room pickers
+        # agree about its availability.
+        if Booking.objects.filter(
+            room=share.room,
+            share_no=share.share_no,
+            status=Booking.PENDING,
+        ).exists():
+            if share.status != RoomShareStatus.RESERVED or share.vacant_from is not None:
+                share.status = RoomShareStatus.RESERVED
+                share.vacant_from = None
+                share.save(update_fields=['status', 'vacant_from'])
+                stats['reserved'] += 1
+            continue
         
         # Find all APPROVED bookings for this share (only APPROVED, not COMPLETED)
         all_bookings = list(Booking.objects.filter(

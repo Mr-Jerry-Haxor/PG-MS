@@ -977,18 +977,41 @@ def booking_swap_rooms_api(request, booking_id: int) -> JsonResponse:
             .order_by('room_no')
         )
 
+    pending_booking_keys = set(
+        Booking.objects.filter(room__pg_id=pg_id, status=Booking.PENDING)
+        .values_list('room_id', 'share_no')
+    )
+    incoming_swap_keys = set(
+        RoomSwap.objects.filter(
+            to_room__pg_id=pg_id,
+            is_future_swap=True,
+            status__in=[RoomSwap.PENDING, RoomSwap.APPROVED],
+        ).values_list('to_room_id', 'to_share_no')
+    )
+
     room_data = []
     for room in rooms:
+        selectable_statuses = [RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM]
+        if include_occupied:
+            selectable_statuses.append(RoomShareStatus.OCCUPIED)
+        selectable_shares = [
+            share for share in room.shares.filter(status__in=selectable_statuses)
+            if (room.id, share.share_no) not in pending_booking_keys
+            and (room.id, share.share_no) not in incoming_swap_keys
+        ]
+        vacant_count = sum(share.status == RoomShareStatus.VACANT for share in selectable_shares)
+        vacant_from_count = sum(share.status == RoomShareStatus.VACANT_FROM for share in selectable_shares)
         data = {
             'id': room.id,
             'room_no': room.room_no,
-            'vacant_count': room.vacant_count,
-            'vacant_from_count': room.vacant_from_count,
+            'vacant_count': vacant_count,
+            'vacant_from_count': vacant_from_count,
             'total_beds': room.total_shares,
         }
         if include_occupied:
-            data['occupied_count'] = room.occupied_count
-        room_data.append(data)
+            data['occupied_count'] = sum(share.status == RoomShareStatus.OCCUPIED for share in selectable_shares)
+        if selectable_shares:
+            room_data.append(data)
 
     return JsonResponse({
         'ok': True,
@@ -1155,6 +1178,19 @@ def booking_swap_shares_api(request, booking_id: int, room_id: int) -> JsonRespo
             room=booking.room,
             share_no=booking.share_no
         ).order_by('share_no')
+
+    claimed_share_numbers = set(
+        Booking.objects.filter(room=room, status=Booking.PENDING)
+        .values_list('share_no', flat=True)
+    )
+    claimed_share_numbers.update(
+        RoomSwap.objects.filter(
+            to_room=room,
+            is_future_swap=True,
+            status__in=[RoomSwap.PENDING, RoomSwap.APPROVED],
+        ).values_list('to_share_no', flat=True)
+    )
+    shares = shares.exclude(share_no__in=claimed_share_numbers)
 
     data = []
     for share in shares:
