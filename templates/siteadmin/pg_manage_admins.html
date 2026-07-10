@@ -32,6 +32,17 @@
   /* Permission badges wrap nicely */
   .perm-badges { min-width: 150px; }
   .perm-badges .badge { margin-bottom: 2px; }
+  .user-picker { position: relative; }
+  .user-picker-results {
+    position: absolute; z-index: 1050; top: calc(100% + .35rem); left: 0; right: 0;
+    max-height: 19rem; overflow-y: auto; background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+    border-radius: .6rem; box-shadow: 0 .75rem 2rem rgba(15, 23, 42, .14);
+  }
+  .user-picker-option { width: 100%; border: 0; border-bottom: 1px solid var(--bs-border-color); background: transparent; padding: .7rem .85rem; text-align: left; }
+  .user-picker-option:last-child { border-bottom: 0; }
+  .user-picker-option:hover, .user-picker-option.active { background: var(--bs-primary-bg-subtle); }
+  .user-picker-avatar { width: 2.25rem; height: 2.25rem; flex: 0 0 2.25rem; display: inline-flex; align-items: center; justify-content: center; }
+  .selected-user { border: 1px solid var(--bs-primary-border-subtle); background: var(--bs-primary-bg-subtle); border-radius: .6rem; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3 page-header">
@@ -42,21 +53,39 @@
   <div class="card-body">
     <form method="post" class="assign-form">
       {% csrf_token %}
-      <div class="row g-2 align-items-end">
-        <div class="col-md-6">
-          <label class="form-label">Select User</label>
-          <div class="input-group mb-2">
-            <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input id="userSearch" type="search" class="form-control" placeholder="Search users by email" />
+      <div class="row g-2 align-items-start">
+        <div class="col-md-8 col-lg-7">
+          <label class="form-label fw-semibold" for="userSearch">Select User</label>
+          <div class="user-picker" id="userPicker">
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input id="userSearch" type="search" class="form-control" placeholder="Search by name, email, or phone" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="userPickerResults" />
+              <button type="button" class="btn btn-outline-secondary d-none" id="clearUserSearch" aria-label="Clear selected user"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <input type="hidden" id="userId" name="user_id" value="">
+            <div id="userPickerResults" class="user-picker-results d-none" role="listbox">
+              {% for u in users %}
+              <button type="button" class="user-picker-option" role="option" data-user-id="{{ u.id }}" data-name="{{ u.get_full_name }}" data-email="{{ u.email }}" data-phone="{{ u.profile.phone|default:'' }}">
+                <span class="d-flex align-items-center gap-2">
+                  <span class="user-picker-avatar rounded-circle bg-primary-subtle text-primary"><i class="bi bi-person"></i></span>
+                  <span class="min-w-0">
+                    <span class="d-block fw-semibold text-truncate">{{ u.get_full_name|default:u.email }}</span>
+                    {% if u.get_full_name %}<span class="d-block small text-secondary text-truncate">{{ u.email }}</span>{% endif %}
+                    {% if u.profile.phone %}<span class="d-block small text-secondary"><i class="bi bi-telephone me-1"></i>{{ u.profile.phone }}</span>{% endif %}
+                  </span>
+                </span>
+              </button>
+              {% empty %}
+              <div class="p-3 text-secondary text-center">All users are already assigned to this PG.</div>
+              {% endfor %}
+              <div id="userPickerNoResults" class="p-3 text-secondary text-center d-none">No matching users found.</div>
+            </div>
           </div>
-          <select id="userSelect" name="user_id" class="form-select">
-            {% for u in users %}
-              <option value="{{ u.id }}" data-name="{{ u.first_name }} {{ u.last_name }}" data-email="{{ u.email }}" data-phone="{{ u.profile.phone|default:'' }}">{{ u.email }}{% if u.first_name or u.last_name %} — {{ u.first_name }} {{ u.last_name }}{% endif %}{% if u.profile.phone %} ({{ u.profile.phone }}){% endif %}</option>
-            {% endfor %}
-          </select>
+          <div id="selectedUser" class="selected-user p-2 mt-2 d-none" aria-live="polite"></div>
+          <div class="form-text">Only users who are not already admins of this PG are shown.</div>
         </div>
-        <div class="col-md-auto">
-          <button class="btn btn-primary" type="submit">Assign</button>
+        <div class="col-md-auto pt-md-4">
+          <button class="btn btn-primary" id="assignUserButton" type="submit" disabled><i class="bi bi-person-plus me-1"></i>Assign</button>
         </div>
       </div>
     </form>
@@ -465,38 +494,124 @@
     badgeCell.innerHTML = badges.join('');
   }
 
-  // User search functionality
+  // Searchable user combobox
   (function(){
+    const picker = document.getElementById('userPicker');
     const search = document.getElementById('userSearch');
-    const select = document.getElementById('userSelect');
-    if (!search || !select) return;
-    const cache = Array.from(select.options).map(o => ({
-      value: o.value,
-      text: o.text,
-      name: (o.dataset.name || ''),
-      email: (o.dataset.email || ''),
-      phone: (o.dataset.phone || ''),
-    }));
-    function render(list) {
-      const current = select.value;
-      select.innerHTML = '';
-      list.forEach(item => {
-        const opt = document.createElement('option');
-        opt.value = item.value;
-        opt.textContent = item.text;
-        select.appendChild(opt);
-      });
-      if (list.some(i => i.value === current)) select.value = current;
+    const results = document.getElementById('userPickerResults');
+    const noResults = document.getElementById('userPickerNoResults');
+    const userId = document.getElementById('userId');
+    const selectedUser = document.getElementById('selectedUser');
+    const clearButton = document.getElementById('clearUserSearch');
+    const assignButton = document.getElementById('assignUserButton');
+    if (!picker || !search || !results || !userId) return;
+
+    const options = Array.from(results.querySelectorAll('.user-picker-option'));
+    let visibleOptions = options.slice();
+    let activeIndex = -1;
+
+    function openResults() {
+      results.classList.remove('d-none');
+      search.setAttribute('aria-expanded', 'true');
     }
-    search.addEventListener('input', function(){
-      const q = (this.value || '').toLowerCase().trim();
-      if (!q) { render(cache); return; }
-      const tokens = q.split(/\s+/).filter(Boolean);
-      const filtered = cache.filter(item => {
-        const hay = (item.text + ' ' + item.name + ' ' + item.email + ' ' + item.phone).toLowerCase();
-        return tokens.every(t => hay.includes(t));
+
+    function closeResults() {
+      results.classList.add('d-none');
+      search.setAttribute('aria-expanded', 'false');
+      setActive(-1);
+    }
+
+    function setActive(index) {
+      options.forEach(option => option.classList.remove('active'));
+      activeIndex = index;
+      if (activeIndex >= 0 && visibleOptions[activeIndex]) {
+        visibleOptions[activeIndex].classList.add('active');
+        visibleOptions[activeIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+
+    function filterOptions() {
+      const tokens = search.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      visibleOptions = options.filter(option => {
+        const haystack = [option.dataset.name, option.dataset.email, option.dataset.phone].join(' ').toLowerCase();
+        const matches = tokens.every(token => haystack.includes(token));
+        option.classList.toggle('d-none', !matches);
+        return matches;
       });
-      render(filtered);
+      if (noResults) noResults.classList.toggle('d-none', visibleOptions.length > 0 || options.length === 0);
+      setActive(-1);
+      openResults();
+    }
+
+    function choose(option) {
+      const name = (option.dataset.name || '').trim();
+      const email = option.dataset.email || '';
+      const phone = option.dataset.phone || '';
+      userId.value = option.dataset.userId;
+      search.value = name || email;
+      search.setAttribute('aria-activedescendant', '');
+      selectedUser.innerHTML =
+        '<div class="d-flex align-items-center gap-2">' +
+          '<span class="user-picker-avatar rounded-circle bg-primary text-white"><i class="bi bi-person-check"></i></span>' +
+          '<span><strong class="d-block">' + escapeHtml(name || email) + '</strong>' +
+          (name ? '<span class="small text-secondary">' + escapeHtml(email) + '</span>' : '') +
+          (phone ? '<span class="small text-secondary ms-2">' + escapeHtml(phone) + '</span>' : '') + '</span>' +
+        '</div>';
+      selectedUser.classList.remove('d-none');
+      clearButton.classList.remove('d-none');
+      assignButton.disabled = false;
+      closeResults();
+    }
+
+    function clearSelection() {
+      userId.value = '';
+      search.value = '';
+      selectedUser.classList.add('d-none');
+      selectedUser.innerHTML = '';
+      clearButton.classList.add('d-none');
+      assignButton.disabled = true;
+      options.forEach(option => option.classList.remove('d-none'));
+      visibleOptions = options.slice();
+      search.focus();
+      openResults();
+    }
+
+    function escapeHtml(value) {
+      const node = document.createElement('span');
+      node.textContent = value || '';
+      return node.innerHTML;
+    }
+
+    search.addEventListener('focus', filterOptions);
+    search.addEventListener('input', function() {
+      if (userId.value) {
+        userId.value = '';
+        selectedUser.classList.add('d-none');
+        clearButton.classList.add('d-none');
+        assignButton.disabled = true;
+      }
+      filterOptions();
+    });
+    options.forEach(option => option.addEventListener('click', () => choose(option)));
+    clearButton.addEventListener('click', clearSelection);
+
+    search.addEventListener('keydown', function(event) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (results.classList.contains('d-none')) openResults();
+        if (!visibleOptions.length) return;
+        const direction = event.key === 'ArrowDown' ? 1 : -1;
+        setActive((activeIndex + direction + visibleOptions.length) % visibleOptions.length);
+      } else if (event.key === 'Enter' && activeIndex >= 0) {
+        event.preventDefault();
+        choose(visibleOptions[activeIndex]);
+      } else if (event.key === 'Escape') {
+        closeResults();
+      }
+    });
+
+    document.addEventListener('click', function(event) {
+      if (!picker.contains(event.target)) closeResults();
     });
   })();
 </script>

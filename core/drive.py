@@ -2,6 +2,8 @@ from __future__ import annotations
 import os
 from django.conf import settings
 import re
+from pathlib import Path
+from django.utils.text import slugify
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload
@@ -11,6 +13,30 @@ from google.auth.transport.requests import Request
 
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+
+def applicant_drive_filename(
+    name: str | None,
+    email: str | None,
+    document_type: str,
+    original_filename: str | None = None,
+    default_extension: str = '',
+) -> str:
+    """Build a safe, readable Drive filename from an applicant name or email."""
+    safe_identity = slugify((name or '').strip())
+    if not safe_identity:
+        safe_identity = slugify((email or '').strip()) or 'applicant'
+    safe_document_type = slugify(document_type) or 'document'
+
+    extension = Path(original_filename or '').suffix.lower()
+    if not re.fullmatch(r'\.[a-z0-9]{1,10}', extension):
+        extension = default_extension.lower().strip()
+        if extension and not extension.startswith('.'):
+            extension = f'.{extension}'
+        if not re.fullmatch(r'\.[a-z0-9]{1,10}', extension):
+            extension = ''
+
+    return f'{safe_identity}_{safe_document_type}{extension}'
 
 
 def _drive_service():

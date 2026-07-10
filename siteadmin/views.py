@@ -2,7 +2,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -21,6 +21,64 @@ def _require_site_admin(user):
     if getattr(user, 'is_superuser', False):
         return True
     return hasattr(user, 'profile') and user.profile.is_website_admin and user.profile.status == 'active'
+
+
+@login_required
+def super_admin_dashboard(request):
+    """System-wide dashboard reserved exclusively for Django superusers."""
+    if not request.user.is_superuser:
+        messages.error(request, "Super Admin access required.")
+        return redirect('dashboard')
+
+    booking_counts = {
+        row['status']: row['total']
+        for row in Booking.objects.values('status').annotate(total=Count('id'))
+    }
+    application_counts = {
+        row['status']: row['total']
+        for row in ResidentApplication.objects.values('status').annotate(total=Count('id'))
+    }
+    bed_counts = {
+        row['status']: row['total']
+        for row in RoomShareStatus.objects.values('status').annotate(total=Count('id'))
+    }
+
+    stats = {
+        'users': get_user_model().objects.count(),
+        'active_users': get_user_model().objects.filter(is_active=True).count(),
+        'pgs': PG.objects.count(),
+        'pg_admins': PGAdmin.objects.count(),
+        'bookings': Booking.objects.count(),
+        'pending_bookings': booking_counts.get(Booking.PENDING, 0),
+        'approved_bookings': booking_counts.get(Booking.APPROVED, 0),
+        'applications': ResidentApplication.objects.count(),
+        'pending_applications': sum(
+            application_counts.get(status, 0)
+            for status in (
+                ResidentApplication.PENDING,
+                ResidentApplication.SUBMITTED,
+                ResidentApplication.RESUBMITTED,
+                ResidentApplication.REFILL_REQUESTED,
+            )
+        ),
+        'vacant_beds': bed_counts.get(RoomShareStatus.VACANT, 0),
+        'reserved_beds': bed_counts.get(RoomShareStatus.RESERVED, 0),
+        'occupied_beds': bed_counts.get(RoomShareStatus.OCCUPIED, 0),
+        'payments_total': Payment.objects.filter(status='success').aggregate(total=Sum('amount'))['total'] or 0,
+        'expenditures_total': Expenditure.objects.aggregate(total=Sum('amount'))['total'] or 0,
+    }
+
+    recent_bookings = Booking.objects.select_related(
+        'user', 'room', 'room__pg'
+    ).order_by('-created_at')[:8]
+    recent_applications = ResidentApplication.objects.select_related(
+        'user', 'pg', 'room'
+    ).order_by('-updated_at')[:8]
+    return render(request, 'siteadmin/super_admin_dashboard.html', {
+        'stats': stats,
+        'recent_bookings': recent_bookings,
+        'recent_applications': recent_applications,
+    })
 
 
 @login_required
@@ -87,7 +145,12 @@ def pg_manage_admins(request, pg_id):
         return redirect('dashboard')
     pg = get_object_or_404(PG, pk=pg_id)
     User = get_user_model()
-    users = User.objects.all().select_related('profile').order_by('email')
+    users = (
+        User.objects.exclude(pg_admin_profile__pg=pg)
+        .select_related('profile')
+        .order_by('email')
+        .distinct()
+    )
     if request.method == 'POST':
         action = request.POST.get('action', 'add')
         if action == 'remove':
@@ -105,6 +168,9 @@ def pg_manage_admins(request, pg_id):
             return redirect('sa_pg_admins', pg_id=pg.id)
         else:
             user_id = request.POST.get('user_id')
+            if not user_id:
+                messages.error(request, "Search for and select a user before assigning.")
+                return redirect('sa_pg_admins', pg_id=pg.id)
             user = get_object_or_404(User, pk=user_id)
             pg_admin, created = PGAdmin.objects.get_or_create(user=user, pg=pg)
             # Create default permissions for new admin

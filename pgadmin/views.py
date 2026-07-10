@@ -23,7 +23,7 @@ except Exception:  # allauth not strictly required at import time
 
 from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus, ReferralCredit, RoomSwap
 from core.audit import log
-from core.drive import drive_delete
+from core.drive import applicant_drive_filename, drive_delete
 from core.models import Notification
 from core.push_notifications import send_push_to_user, send_push_to_users
 from finance.models import Fees
@@ -4526,14 +4526,12 @@ def admin_application_edit(request, app_id):
             def _replace_drive_file(uploaded_file, old_url, name_prefix, warn_prefix):
                 """Upload replacement file; delete old file only after successful upload."""
                 folder_id = getattr(app.pg, 'drive_folder_id', None) or 'root'
-                original_name = (getattr(uploaded_file, 'name', '') or '').strip()
-                ext = ''
-                if '.' in original_name:
-                    ext = '.' + original_name.rsplit('.', 1)[-1].lower()
-                    if len(ext) > 10:
-                        ext = ''
-
-                filename = f"{name_prefix}_{app.id}_{timezone.now().strftime('%Y%m%d%H%M%S%f')}{ext}"
+                filename = applicant_drive_filename(
+                    inst.name,
+                    inst.email or app.user.email,
+                    name_prefix,
+                    getattr(uploaded_file, 'name', ''),
+                )
 
                 try:
                     uploaded = drive_upload(uploaded_file, filename, folder_id)

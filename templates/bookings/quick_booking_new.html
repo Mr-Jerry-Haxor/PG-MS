@@ -227,12 +227,12 @@
           
           <div class="col-md-6">
             <label class="form-label">Name <span class="text-danger">*</span></label>
-            <input type="text" class="form-control" name="future_name" value="{{ user.get_full_name }}" data-future-required="true">
+            <input type="text" class="form-control" name="future_name" data-future-required="true">
           </div>
           
           <div class="col-md-6">
             <label class="form-label">Phone Number <span class="text-danger">*</span></label>
-            <input type="tel" class="form-control" name="future_phone" value="{{ user.profile.phone|default:'' }}" pattern="[0-9]{10}" data-future-required="true">
+            <input type="tel" class="form-control" name="future_phone" pattern="[0-9]{10}" data-future-required="true">
           </div>
           
           <div class="col-12">

@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}Super Admin • PG-MS{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div><h1 class="h3 mb-1">Super Admin</h1><p class="text-secondary mb-0">System-wide overview of PG-MS.</p></div>
+  <a href="{% url 'admin:index' %}" class="btn btn-dark"><i class="bi bi-gear-fill me-1"></i>Django Admin</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <div class="text-secondary small">Users</div><div class="display-6">{{ stats.users }}</div><div class="small text-success">{{ stats.active_users }} active</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <div class="text-secondary small">PGs</div><div class="display-6">{{ stats.pgs }}</div><div class="small text-secondary">{{ stats.pg_admins }} PG admins</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <div class="text-secondary small">Bookings</div><div class="display-6">{{ stats.bookings }}</div>
+    <div class="small"><span class="text-warning">{{ stats.pending_bookings }} pending</span> · <span class="text-success">{{ stats.approved_bookings }} approved</span></div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <div class="text-secondary small">Applications</div><div class="display-6">{{ stats.applications }}</div><div class="small text-warning">{{ stats.pending_applications }} awaiting action</div>
+  </div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-7"><div class="card border-0 shadow-sm h-100">
+    <div class="card-header bg-transparent fw-semibold">Bed Overview</div>
+    <div class="card-body"><div class="row text-center g-3">
+      <div class="col-4"><div class="h3 text-success mb-0">{{ stats.vacant_beds }}</div><div class="small text-secondary">Vacant</div></div>
+      <div class="col-4"><div class="h3 text-info mb-0">{{ stats.reserved_beds }}</div><div class="small text-secondary">Reserved</div></div>
+      <div class="col-4"><div class="h3 text-primary mb-0">{{ stats.occupied_beds }}</div><div class="small text-secondary">Occupied</div></div>
+    </div></div>
+  </div></div>
+  <div class="col-md-5"><div class="card border-0 shadow-sm h-100">
+    <div class="card-header bg-transparent fw-semibold">Financial Overview</div>
+    <div class="card-body">
+      <div class="d-flex justify-content-between mb-3"><span class="text-secondary">Payments</span><strong class="text-success">₹{{ stats.payments_total|floatformat:2 }}</strong></div>
+      <div class="d-flex justify-content-between"><span class="text-secondary">Expenditures</span><strong class="text-danger">₹{{ stats.expenditures_total|floatformat:2 }}</strong></div>
+    </div>
+  </div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
+    <div class="card-header bg-transparent d-flex justify-content-between"><strong>Recent Bookings</strong><a href="{% url 'siteadmin_bookings' %}" class="small">View all</a></div>
+    <div class="list-group list-group-flush">
+      {% for booking in recent_bookings %}<div class="list-group-item">
+        <div class="d-flex justify-content-between gap-2"><strong>{{ booking.user.get_full_name|default:booking.user.email }}</strong><span class="badge bg-secondary-subtle text-dark">{{ booking.status|title }}</span></div>
+        <div class="small text-secondary">{{ booking.room.pg.name }} · Room {{ booking.room.room_no }}, Bed {{ booking.share_no }}</div>
+      </div>{% empty %}<div class="list-group-item text-secondary">No bookings yet.</div>{% endfor %}
+    </div>
+  </div></div>
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
+    <div class="card-header bg-transparent d-flex justify-content-between"><strong>Recent Applications</strong><a href="{% url 'siteadmin_applications' %}" class="small">View all</a></div>
+    <div class="list-group list-group-flush">
+      {% for application in recent_applications %}<div class="list-group-item">
+        <div class="d-flex justify-content-between gap-2"><strong>{{ application.name|default:application.user.email }}</strong><span class="badge bg-secondary-subtle text-dark">{{ application.get_status_display }}</span></div>
+        <div class="small text-secondary">{{ application.pg.name }} · Room {{ application.room.room_no }}</div>
+      </div>{% empty %}<div class="list-group-item text-secondary">No applications yet.</div>{% endfor %}
+    </div>
+  </div></div>
+</div>
+{% endblock %}

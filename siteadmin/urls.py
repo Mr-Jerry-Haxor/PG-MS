@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path('', views.dashboard, name='sa_dashboard'),
+    path('super-admin/', views.super_admin_dashboard, name='super_admin_dashboard'),
     path('pgs/', views.pgs, name='sa_pgs'),
     path('pgs/new/', views.pg_new, name='sa_pg_new'),
     path('pgs/<int:pg_id>/edit/', views.pg_edit, name='sa_pg_edit'),

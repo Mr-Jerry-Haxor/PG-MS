@@ -12,7 +12,7 @@ from django.db.models import Q
 
 from accounts.models import Profile
 from core.audit import log
-from core.drive import drive_upload, drive_delete
+from core.drive import applicant_drive_filename, drive_upload, drive_delete
 from core.models import Notification
 from core.push_notifications import send_push_to_users
 from django.core.mail import send_mail
@@ -173,10 +173,10 @@ def pg_quick_booking(request, pgslug):
         if has_active:
             messages.warning(request, "You already have one booking in this PG; you can't book another room.")
             return redirect('dashboard')
-        # Prefill application form basics
+        # Keep identity-bound email, but let the applicant enter all personal
+        # details themselves. In particular, never derive a name from the user
+        # account/email for quick booking.
         initial = {
-            'name': f"{request.user.first_name} {request.user.last_name}".strip(),
-            'phone': getattr(getattr(request.user, 'profile', None), 'phone', ''),
             'email': request.user.email,
         }
         context['form'] = ResidentApplicationForm(initial=initial)
@@ -322,7 +322,9 @@ def handle_daywise_booking(request, pg, has_active):
                     format_part, img_str = selfie_data.split(';base64,')
                     ext = format_part.split('/')[-1]
                     img_data = base64.b64decode(img_str)
-                    filename = f'daywise_selfie_{booking.id}.{ext}'
+                    filename = applicant_drive_filename(
+                        name, request.user.email, 'selfie', default_extension=ext
+                    )
                     
                     # Upload to Google Drive using core.drive.drive_upload
                     try:
@@ -347,7 +349,10 @@ def handle_daywise_booking(request, pg, has_active):
                     from core.drive import drive_upload as _drive_upload
                     folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '') or None
                     buf1 = _BytesIO(aadhaar_doc1.read())
-                    up1 = _drive_upload(buf1, f'daywise_aadhaar1_{booking.id}_{aadhaar_doc1.name}', folder)
+                    filename1 = applicant_drive_filename(
+                        name, request.user.email, 'aadhaar-front', aadhaar_doc1.name
+                    )
+                    up1 = _drive_upload(buf1, filename1, folder)
                     aadhaar_url_1 = up1[1] if up1 else ''
                 except Exception as e:
                     print(f"Aadhaar doc 1 upload failed (drive): {e}")
@@ -358,7 +363,10 @@ def handle_daywise_booking(request, pg, has_active):
                     from core.drive import drive_upload as _drive_upload
                     folder = getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', '') or None
                     buf2 = _BytesIO(aadhaar_doc2.read())
-                    up2 = _drive_upload(buf2, f'daywise_aadhaar2_{booking.id}_{aadhaar_doc2.name}', folder)
+                    filename2 = applicant_drive_filename(
+                        name, request.user.email, 'aadhaar-back', aadhaar_doc2.name
+                    )
+                    up2 = _drive_upload(buf2, filename2, folder)
                     aadhaar_url_2 = up2[1] if up2 else ''
                 except Exception as e:
                     print(f"Aadhaar doc 2 upload failed (drive): {e}")
@@ -795,7 +803,10 @@ def handle_booknow_booking(request, pg, has_active, context):
             aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
             
             if selfie_file:
-                up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
+                filename = applicant_drive_filename(
+                    inst.name, inst.email or request.user.email, 'selfie', selfie_file.name
+                )
+                up = drive_upload(selfie_file, filename, getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
                 if up:
                     _fid, preview = up
                     inst.selfie_url = preview
@@ -809,7 +820,10 @@ def handle_booknow_booking(request, pg, has_active, context):
                 
                 if is_pdf:
                     # Upload PDF
-                    up = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}.pdf", folder)
+                    filename = applicant_drive_filename(
+                        inst.name, inst.email or request.user.email, 'aadhaar', aadhaar_file_1.name, '.pdf'
+                    )
+                    up = drive_upload(aadhaar_file_1, filename, folder)
                     if up:
                         _fid, preview = up
                         inst.aadhaar_file_url = preview
@@ -821,7 +835,10 @@ def handle_booknow_booking(request, pg, has_active, context):
                         if nm.endswith('.webp'): return '.webp'
                         return '.jpg'
                     ext1 = _pick_ext(name)
-                    up1 = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}_front{ext1}", folder)
+                    filename1 = applicant_drive_filename(
+                        inst.name, inst.email or request.user.email, 'aadhaar-front', aadhaar_file_1.name, ext1
+                    )
+                    up1 = drive_upload(aadhaar_file_1, filename1, folder)
                     if up1:
                         _fid1, preview1 = up1
                         inst.aadhaar_file_url = preview1
@@ -830,7 +847,10 @@ def handle_booknow_booking(request, pg, has_active, context):
                     if aadhaar_file_2:
                         name2 = (getattr(aadhaar_file_2, 'name', '') or '').lower()
                         ext2 = _pick_ext(name2)
-                        up2 = drive_upload(aadhaar_file_2, f"aadhaar_{request.user.id}_back{ext2}", folder)
+                        filename2 = applicant_drive_filename(
+                            inst.name, inst.email or request.user.email, 'aadhaar-back', aadhaar_file_2.name, ext2
+                        )
+                        up2 = drive_upload(aadhaar_file_2, filename2, folder)
                         if up2:
                             _fid2, preview2 = up2
                             inst.aadhaar_file_url_2 = preview2
@@ -1082,7 +1102,10 @@ def handle_booknow_booking(request, pg, has_active, context):
             aadhaar_file_2 = form.cleaned_data.get('aadhaar_pdf_2')
             
             if selfie_file:
-                up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
+                filename = applicant_drive_filename(
+                    inst.name, inst.email or request.user.email, 'selfie', selfie_file.name
+                )
+                up = drive_upload(selfie_file, filename, getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
                 if up:
                     _fid, preview = up
                     inst.selfie_url = preview
@@ -1096,7 +1119,10 @@ def handle_booknow_booking(request, pg, has_active, context):
                 
                 if is_pdf:
                     # Upload PDF
-                    up = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}.pdf", folder)
+                    filename = applicant_drive_filename(
+                        inst.name, inst.email or request.user.email, 'aadhaar', aadhaar_file_1.name, '.pdf'
+                    )
+                    up = drive_upload(aadhaar_file_1, filename, folder)
                     if up:
                         _fid, preview = up
                         inst.aadhaar_file_url = preview
@@ -1108,7 +1134,10 @@ def handle_booknow_booking(request, pg, has_active, context):
                         if nm.endswith('.webp'): return '.webp'
                         return '.jpg'
                     ext1 = _pick_ext(name)
-                    up1 = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}_front{ext1}", folder)
+                    filename1 = applicant_drive_filename(
+                        inst.name, inst.email or request.user.email, 'aadhaar-front', aadhaar_file_1.name, ext1
+                    )
+                    up1 = drive_upload(aadhaar_file_1, filename1, folder)
                     if up1:
                         _fid1, preview1 = up1
                         inst.aadhaar_file_url = preview1
@@ -1117,7 +1146,10 @@ def handle_booknow_booking(request, pg, has_active, context):
                     if aadhaar_file_2:
                         name2 = (getattr(aadhaar_file_2, 'name', '') or '').lower()
                         ext2 = _pick_ext(name2)
-                        up2 = drive_upload(aadhaar_file_2, f"aadhaar_{request.user.id}_back{ext2}", folder)
+                        filename2 = applicant_drive_filename(
+                            inst.name, inst.email or request.user.email, 'aadhaar-back', aadhaar_file_2.name, ext2
+                        )
+                        up2 = drive_upload(aadhaar_file_2, filename2, folder)
                         if up2:
                             _fid2, preview2 = up2
                             inst.aadhaar_file_url_2 = preview2
@@ -1592,7 +1624,11 @@ def aadhaar_submit(request, booking_id):
         if form.is_valid():
             request.user.profile.aadhaar_number = form.cleaned_data['aadhaar_number']
             file = request.FILES['aadhaar_file']
-            up = drive_upload(file, f"aadhaar_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', ''))
+            application = getattr(booking, 'application', None)
+            filename = applicant_drive_filename(
+                getattr(application, 'name', ''), request.user.email, 'aadhaar', file.name
+            )
+            up = drive_upload(file, filename, getattr(settings, 'GOOGLE_DRIVE_FOLDER_AADHAAR', ''))
             if up:
                 _fid, preview = up
                 request.user.profile.aadhaar_file_url = preview
@@ -1734,9 +1770,13 @@ def application_fill(request, booking_id):
     booking = get_object_or_404(Booking, pk=booking_id, user=request.user)
     from .models import ResidentApplication
     app = getattr(booking, 'application', None)
-    # If confirmed, redirect to dashboard (form is no longer accessible)
-    if app and getattr(app, 'status', None) == ResidentApplication.CONFIRMED:
-        messages.info(request, "Your application has been confirmed and cannot be modified. Contact PG Admin if you need changes.")
+    # User editing is allowed only while the booking itself is pending. The
+    # application status is also checked defensively in case it was confirmed
+    # independently of the booking.
+    if booking.status != Booking.PENDING or (
+        app and getattr(app, 'status', None) == ResidentApplication.CONFIRMED
+    ):
+        messages.info(request, "Your booking has been confirmed and the application can no longer be modified. Contact PG Admin if you need changes.")
         return redirect('dashboard')
     # For other statuses, user can view/modify the application
     elif app:
@@ -1816,7 +1856,10 @@ def application_fill(request, booking_id):
 
         # --- Selfie ---
         if selfie_file:
-            up = drive_upload(selfie_file, f"selfie_{request.user.id}", getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
+            filename = applicant_drive_filename(
+                inst.name, inst.email or request.user.email, 'selfie', selfie_file.name
+            )
+            up = drive_upload(selfie_file, filename, getattr(settings, 'GOOGLE_DRIVE_FOLDER_SELFIES', ''))
             if up:
                 _fid, preview = up
                 inst.selfie_url = preview
@@ -1835,7 +1878,10 @@ def application_fill(request, booking_id):
             is_pdf = ctype == 'application/pdf' or name.endswith('.pdf')
 
             if is_pdf:
-                up = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}.pdf", folder)
+                filename = applicant_drive_filename(
+                    inst.name, inst.email or request.user.email, 'aadhaar', aadhaar_file_1.name, '.pdf'
+                )
+                up = drive_upload(aadhaar_file_1, filename, folder)
                 if up:
                     _fid, preview = up
                     inst.aadhaar_file_url = preview
@@ -1857,7 +1903,10 @@ def application_fill(request, booking_id):
                     return '.jpg'
 
                 ext1 = _pick_ext(name)
-                up1 = drive_upload(aadhaar_file_1, f"aadhaar_{request.user.id}_front{ext1}", folder)
+                filename1 = applicant_drive_filename(
+                    inst.name, inst.email or request.user.email, 'aadhaar-front', aadhaar_file_1.name, ext1
+                )
+                up1 = drive_upload(aadhaar_file_1, filename1, folder)
                 if up1:
                     _fid1, preview1 = up1
                     inst.aadhaar_file_url = preview1
@@ -1870,7 +1919,10 @@ def application_fill(request, booking_id):
                 if aadhaar_file_2:
                     name2 = (getattr(aadhaar_file_2, 'name', '') or '').lower()
                     ext2 = _pick_ext(name2)
-                    up2 = drive_upload(aadhaar_file_2, f"aadhaar_{request.user.id}_back{ext2}", folder)
+                    filename2 = applicant_drive_filename(
+                        inst.name, inst.email or request.user.email, 'aadhaar-back', aadhaar_file_2.name, ext2
+                    )
+                    up2 = drive_upload(aadhaar_file_2, filename2, folder)
                     if up2:
                         _fid2, preview2 = up2
                         inst.aadhaar_file_url_2 = preview2
@@ -1967,8 +2019,6 @@ def application_fill(request, booking_id):
             form = ResidentApplicationForm(instance=app)
         else:
             initial = {
-                'name': f"{request.user.first_name} {request.user.last_name}".strip(),
-                'phone': request.user.profile.phone,
                 'email': request.user.email,
                 'date_of_admission': booking.start_date or booking.joining_date,
             }
