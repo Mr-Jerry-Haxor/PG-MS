@@ -306,6 +306,8 @@
       font-size: 0.6rem !important;
     }
   }
+  .metric-accordion-toggle .bi { display: inline-block; transition: transform .2s ease; }
+  .metric-accordion-toggle[aria-expanded="true"] .bi { transform: rotate(180deg); }
 </style>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div class="d-flex align-items-center gap-2">
@@ -406,18 +408,60 @@
           <tr>
             <td class="ps-3"><span class="text-primary fw-semibold">Expected</span></td>
             <td class="text-end nowrap fw-semibold text-primary">₹ <span id="summaryExpected">{{ summary.total_expected|default:"0.00" }}</span></td>
-            <td class="text-end pe-3"><span class="badge bg-primary-subtle text-primary" id="summaryExpectedCount">0</span></td>
+            <td class="text-end pe-3">
+              <button class="btn btn-sm btn-link text-primary p-0 me-1 metric-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#expectedMetricBreakdown" aria-expanded="false" aria-controls="expectedMetricBreakdown" title="Show expected breakdown"><i class="bi bi-chevron-down"></i></button>
+              <span class="badge bg-primary-subtle text-primary" id="summaryExpectedCount">{{ summary.expected_breakdown.active.count|add:summary.expected_breakdown.leaving.count|add:summary.expected_breakdown.joining.count }}</span>
+            </td>
           </tr>
+          <tr><td colspan="3" class="p-0 border-0"><div class="collapse" id="expectedMetricBreakdown">
+            <div class="bg-primary-subtle px-3 py-2">
+              <div class="row g-2 small text-center">
+                <div class="col-4"><span class="d-block text-secondary">Active Bookings</span><strong id="expectedActiveCount">{{ summary.expected_breakdown.active.count }}</strong><span class="d-block text-primary">₹ <span id="expectedActiveAmount">{{ summary.expected_breakdown.active.amount|floatformat:2 }}</span></span></div>
+                <div class="col-4 border-start"><span class="d-block text-secondary">Leaving Bookings</span><strong id="expectedLeavingCount">{{ summary.expected_breakdown.leaving.count }}</strong><span class="d-block text-primary">₹ <span id="expectedLeavingAmount">{{ summary.expected_breakdown.leaving.amount|floatformat:2 }}</span></span></div>
+                <div class="col-4 border-start"><span class="d-block text-secondary">Joining Bookings</span><strong id="expectedJoiningCount">{{ summary.expected_breakdown.joining.count }}</strong><span class="d-block text-primary">₹ <span id="expectedJoiningAmount">{{ summary.expected_breakdown.joining.amount|floatformat:2 }}</span></span></div>
+              </div>
+            </div>
+          </div></td></tr>
           <tr>
             <td class="ps-3"><span class="text-success fw-semibold">Collected</span></td>
             <td class="text-end nowrap fw-semibold text-success">₹ <span id="summaryCollected">{{ summary.total_collected|default:"0.00" }}</span></td>
-            <td class="text-end pe-3"><span class="badge bg-success-subtle text-success" id="summaryCollectedCount">0</span></td>
+            <td class="text-end pe-3">
+              <button class="btn btn-sm btn-link text-success p-0 me-1 metric-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#collectedMetricBreakdown" aria-expanded="false" aria-controls="collectedMetricBreakdown" title="Show collected breakdown"><i class="bi bi-chevron-down"></i></button>
+              <span class="badge bg-success-subtle text-success" id="summaryCollectedCount">{{ summary.collected_breakdown.active.count|add:summary.collected_breakdown.leaving.count|add:summary.collected_breakdown.joining.count }}</span>
+            </td>
           </tr>
+          <tr><td colspan="3" class="p-0 border-0"><div class="collapse" id="collectedMetricBreakdown">
+            <div class="bg-success-subtle px-3 py-2">
+              <div class="row g-2 small text-center">
+                <div class="col-4"><span class="d-block text-secondary">Active Bookings</span><strong id="collectedActiveCount">{{ summary.collected_breakdown.active.count }}</strong><span class="d-block text-success">₹ <span id="collectedActiveAmount">{{ summary.collected_breakdown.active.amount|floatformat:2 }}</span></span></div>
+                <div class="col-4 border-start"><span class="d-block text-secondary">Leaving Bookings</span><strong id="collectedLeavingCount">{{ summary.collected_breakdown.leaving.count }}</strong><span class="d-block text-success">₹ <span id="collectedLeavingAmount">{{ summary.collected_breakdown.leaving.amount|floatformat:2 }}</span></span></div>
+                <div class="col-4 border-start"><span class="d-block text-secondary">Joining Bookings</span><strong id="collectedJoiningCount">{{ summary.collected_breakdown.joining.count }}</strong><span class="d-block text-success">₹ <span id="collectedJoiningAmount">{{ summary.collected_breakdown.joining.amount|floatformat:2 }}</span></span></div>
+              </div>
+            </div>
+          </div></td></tr>
           <tr class="table-light">
             <td class="ps-3 ps-md-5"><small class="text-muted">↳ Today's Collection <span class="text-muted" style="font-weight:600;">({{ today|date:'Y-m-d' }})</span></small></td>
             <td class="text-end nowrap"><small class="fw-semibold text-success">₹ <span id="summaryTodayCollection">{{ summary.today_collection|default:"0.00" }}</span></small></td>
             <td class="text-end pe-3"><small><span class="badge bg-success-subtle text-success" style="font-size: 0.65rem;" id="summaryTodayCount">{{ summary.today_collection_count|default:"0" }}</span></small></td>
           </tr>
+          <tr class="table-light">
+            <td class="ps-3 ps-md-5"><small class="text-muted">↳ No-Due Collection <span class="text-muted fw-semibold">(paid before due date)</span></small></td>
+            <td class="text-end nowrap"><small class="fw-semibold text-info">₹ {{ summary.no_due_collection|default:"0.00"|floatformat:2 }}</small></td>
+            <td class="text-end pe-3">
+              <button class="btn btn-sm btn-link text-info p-0 me-1 metric-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#noDueCollectionBreakdown" aria-expanded="false" aria-controls="noDueCollectionBreakdown" title="Show early payment details"><i class="bi bi-chevron-down"></i></button>
+              <span class="badge bg-info-subtle text-info" style="font-size:.65rem">{{ summary.no_due_collection_count|default:0 }}</span>
+            </td>
+          </tr>
+          <tr><td colspan="3" class="p-0 border-0"><div class="collapse" id="noDueCollectionBreakdown">
+            <div class="bg-info-subtle px-3 py-2 small">
+              {% for item in summary.no_due_rows %}
+              <div class="d-flex justify-content-between align-items-center gap-2 py-1{% if not forloop.last %} border-bottom{% endif %}">
+                <span><strong>{{ item.user.get_full_name|default:item.user.email }}</strong><span class="text-secondary d-block">Room {{ item.room_no }} · Due {{ item.payment_due_date|date:"M d, Y" }}</span></span>
+                <strong class="text-info nowrap">₹ {{ item.early_collection|floatformat:2 }}</strong>
+              </div>
+              {% empty %}<div class="text-secondary text-center py-1">No payments were collected before a future due date.</div>{% endfor %}
+            </div>
+          </div></td></tr>
           <tr>
             <td class="ps-3"><span class="text-warning fw-semibold">Pending</span></td>
             <td class="text-end nowrap fw-semibold text-warning">₹ <span id="summaryPending">{{ summary.total_pending|default:"0.00" }}</span></td>
@@ -503,6 +547,8 @@
               data-whatsapp-phone="{{ r.whatsapp_phone|default:'' }}"
               data-expected="{{ r.expected }}" data-collected="{{ r.collected }}"
               data-pending="{{ r.pending }}" data-advance="{{ r.advance|default:'0' }}"
+              data-metric-cohort="{{ r.metric_cohort|default:'active' }}"
+              data-early-collection="{{ r.early_collection|default:'0' }}"
               data-billing-from="{% if r.billing_from %}{{ r.billing_from|date:'d M Y' }}{% endif %}"
               data-billing-to="{% if r.billing_to %}{{ r.billing_to|date:'d M Y' }}{% endif %}">
             <td><input type="checkbox" class="rowchk" name="user_ids" value="{{ r.user.id }}" {% if r.status == 'paid' %}disabled{% endif %}></td>
@@ -1315,6 +1361,10 @@
       let collectedCount = 0;
       let pendingCount = 0;
       let advanceCount = 0;
+      const breakdown = {
+        expected: { active: {count: 0, amount: 0}, leaving: {count: 0, amount: 0}, joining: {count: 0, amount: 0} },
+        collected: { active: {count: 0, amount: 0}, leaving: {count: 0, amount: 0}, joining: {count: 0, amount: 0} }
+      };
       
       // Count from ALL rows, not just filtered ones
       allRows.forEach(function(tr) {
@@ -1322,11 +1372,20 @@
         const collected = parseFloat(tr.dataset.collected || 0);
         const pending = parseFloat(tr.dataset.pending || 0);
         const advance = parseFloat(tr.dataset.advance || 0);
+        const cohort = ['active', 'leaving', 'joining'].includes(tr.dataset.metricCohort) ? tr.dataset.metricCohort : 'active';
         
         // Use a small threshold to handle floating point precision
         const threshold = 0.01;
-        if (expected > threshold) expectedCount++;
-        if (collected > threshold) collectedCount++;
+        if (expected > threshold) {
+          expectedCount++;
+          breakdown.expected[cohort].count++;
+          breakdown.expected[cohort].amount += expected;
+        }
+        if (collected > threshold) {
+          collectedCount++;
+          breakdown.collected[cohort].count++;
+          breakdown.collected[cohort].amount += collected;
+        }
         if (pending > threshold) pendingCount++;
         if (advance > threshold) advanceCount++;
       });
@@ -1335,6 +1394,15 @@
       document.getElementById('summaryCollectedCount').textContent = collectedCount;
       document.getElementById('summaryPendingCount').textContent = pendingCount;
       document.getElementById('summaryAdvanceCount').textContent = advanceCount;
+      ['expected', 'collected'].forEach(function(metric) {
+        ['active', 'leaving', 'joining'].forEach(function(cohort) {
+          const prefix = metric + cohort.charAt(0).toUpperCase() + cohort.slice(1);
+          const countElement = document.getElementById(prefix + 'Count');
+          const amountElement = document.getElementById(prefix + 'Amount');
+          if (countElement) countElement.textContent = breakdown[metric][cohort].count;
+          if (amountElement) amountElement.textContent = breakdown[metric][cohort].amount.toFixed(2);
+        });
+      });
       // Today's collection is set from backend, don't override it
     }
     

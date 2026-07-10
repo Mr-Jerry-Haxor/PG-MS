@@ -1410,6 +1410,38 @@ def _collected_for_user_pg_month(u, pg, m_first, m_last) -> float:
     return float(p_sum) + float(adj_sum)
 
 
+def _early_collection_for_user_pg_month(u, pg, m_first, m_last, due_date, today=None) -> float:
+    """Return rent collected before a still-future due date in the current month."""
+    today = today or timezone.now().date()
+    if not due_date or (m_first.year, m_first.month) != (today.year, today.month):
+        return 0.0
+    if today >= due_date:
+        return 0.0
+
+    payments = Payment.objects.filter(
+        user=u,
+        pg=pg,
+        status='success',
+        type__in=['fee', 'daywise'],
+        date__lt=due_date,
+    ).filter(
+        Q(from_date__gte=m_first, from_date__lte=m_last)
+        | Q(from_date__isnull=True, date__gte=m_first, date__lte=m_last)
+    )
+    return float(payments.aggregate(total=Sum('amount')).get('total') or 0)
+
+
+def _monthly_metric_cohort(segments, m_first, m_last) -> str:
+    """Classify a row into one mutually exclusive monthly lifecycle cohort."""
+    joins_this_month = any(
+        seg.get('start') and m_first <= seg['start'] <= m_last for seg in segments
+    )
+    leaves_this_month = any(
+        seg.get('end') and m_first <= seg['end'] <= m_last for seg in segments
+    )
+    return 'joining' if joins_this_month else ('leaving' if leaves_this_month else 'active')
+
+
 def _advance_paid_for_user_pg(u, pg, booking_ids=None, not_before=None) -> float:
     """Return total successful advances for a user in a PG.
 
@@ -1866,6 +1898,18 @@ def monthly_dashboard(request):
         # Example: payment due 10th, leaving on 9th or 10th => do not show in overview/export for this month.
         if latest_end and payment_due and payment_due >= latest_end:
             continue
+
+        # Keep cohorts mutually exclusive so their counts always reconcile to
+        # the headline total. A booking that both joins and leaves in the month
+        # is grouped under Joining; Leaving therefore means an existing tenant
+        # who departs during the month.
+        metric_cohort = _monthly_metric_cohort(segs, m_first, m_last)
+        early_collection = round(
+            _early_collection_for_user_pg_month(
+                u, pg, m_first, m_last, payment_due, today
+            ),
+            2,
+        )
         rows.append({
             'user': u,
             'room_no': getattr(last_seg['b'].room, 'room_no', '—'),
@@ -1876,6 +1920,8 @@ def monthly_dashboard(request):
             'status': status,
             'status_label': status_label,
             'status_css': status_css,
+            'metric_cohort': metric_cohort,
+            'early_collection': early_collection,
             'joining': earliest_start,
             'leaving': latest_end,
             'phone': phone_digits,
@@ -2179,6 +2225,27 @@ def monthly_dashboard(request):
     today_collection_total = today_payments.aggregate(total=Sum('amount')).get('total') or 0
     today_collection_count = today_payments.count()
 
+    def _metric_breakdown(value_key):
+        breakdown = {
+            key: {'count': 0, 'amount': 0.0}
+            for key in ('active', 'leaving', 'joining')
+        }
+        for row in rows:
+            amount = float(row.get(value_key) or 0)
+            if amount <= 0.01:
+                continue
+            cohort = row.get('metric_cohort') or 'active'
+            breakdown[cohort]['count'] += 1
+            breakdown[cohort]['amount'] += amount
+        for values in breakdown.values():
+            values['amount'] = round(values['amount'], 2)
+        return breakdown
+
+    no_due_rows = [r for r in rows if float(r.get('early_collection') or 0) > 0.01]
+    no_due_collection_total = round(
+        sum(float(r.get('early_collection') or 0) for r in no_due_rows), 2
+    )
+
     summary = {
         'year': year, 'month': month,
         'month_label': f"{calendar.month_name[month]} {year}",
@@ -2190,6 +2257,11 @@ def monthly_dashboard(request):
         'total_prev_month_pending': footer_totals.get('prev_month_pending', 0.0),
         'today_collection': round(float(today_collection_total), 2),
         'today_collection_count': today_collection_count,
+        'expected_breakdown': _metric_breakdown('expected'),
+        'collected_breakdown': _metric_breakdown('collected'),
+        'no_due_collection': no_due_collection_total,
+        'no_due_collection_count': len(no_due_rows),
+        'no_due_rows': no_due_rows,
         'counts': {
             'paid': sum(1 for r in rows if r['status'] == 'paid'),
             'partial': sum(1 for r in rows if r['status'] == 'partial'),
