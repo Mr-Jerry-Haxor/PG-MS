@@ -1695,12 +1695,13 @@ def leaving_intimation(request, booking_id):
             if admin_emails:
                 tenant_name = request.user.get_full_name() or request.user.email
                 send_mail(
-                    subject="PG-MS: Leaving Request",
+                    subject=f"PG-MS: Leaving Request - {pg.name}",
                     message=(
+                        f"PG Name: {pg.name}\n"
                         f"Tenant Name: {tenant_name}\n"
                         f"Tenant Email: {request.user.email}\n"
                         f"Plans to leave on: {leaving_date}\n"
-                        f"PG: {pg.name}\nRoom: {booking.room.room_no} | Share: {booking.share_no}\n"
+                        f"Room: {booking.room.room_no} | Share: {booking.share_no}\n"
                         "Review and confirm in Leaving Requests page."
                     ),
                     from_email=None,
@@ -2224,7 +2225,6 @@ def initiate_leave_request(request, booking_id):
                     f"Tenant Name: {tenant_name}\n"
                     f"Tenant Email: {booking.user.email}\n"
                     f"PG Name: {pg.name}\n"
-                    f"Tenant: {tenant_name}\n"
                     f"Room Number: {booking.room.room_no}\n"
                     f"Bed: {booking.share_no}\n"
                     f"Joining Date: {booking.joining_date}\n"
