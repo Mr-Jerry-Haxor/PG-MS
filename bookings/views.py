@@ -1693,6 +1693,7 @@ def leaving_intimation(request, booking_id):
         try:
             admin_emails = [admin_user.email for admin_user in admin_users if getattr(admin_user, 'email', None)]
             if admin_emails:
+                tenant_name = request.user.get_full_name() or request.user.email
                 send_mail(
                     subject="PG-MS: Leaving Request",
                     message=(
@@ -2223,6 +2224,7 @@ def initiate_leave_request(request, booking_id):
                     f"Tenant Name: {tenant_name}\n"
                     f"Tenant Email: {booking.user.email}\n"
                     f"PG Name: {pg.name}\n"
+                    f"Tenant: {tenant_name}\n"
                     f"Room Number: {booking.room.room_no}\n"
                     f"Bed: {booking.share_no}\n"
                     f"Joining Date: {booking.joining_date}\n"
