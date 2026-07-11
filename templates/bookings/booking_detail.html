@@ -16,7 +16,7 @@
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-body">
     <div><strong>User:</strong> {{ booking.user.email }}</div>
-  <div><strong>Room:</strong> {{ booking.room.room_no }} • Bed {{ booking.share_no }}</div>
+  <div><strong>Room:</strong> {% if booking.room_id %}{{ booking.room.room_no }} • Bed {{ booking.share_no }}{% else %}<span class="text-warning">Pending admin assignment</span>{% endif %}</div>
     <div><strong>Type:</strong> {{ booking.booking_type|title }}</div>
     <div><strong>Status:</strong> {{ booking.status|title }}</div>
     <div><strong>Start Date:</strong> {{ booking.joining_date|default:booking.start_date|default:"—" }}</div>
@@ -82,7 +82,7 @@
         <p>You are about to delete the booking for:</p>
         <ul class="mb-3">
           <li><strong>User:</strong> {{ booking.user.email }}</li>
-          <li><strong>Room:</strong> {{ booking.room.room_no }} • Bed {{ booking.share_no }}</li>
+          <li><strong>Room:</strong> {% if booking.room_id %}{{ booking.room.room_no }} • Bed {{ booking.share_no }}{% else %}Not assigned{% endif %}</li>
           <li><strong>Status:</strong> {{ booking.status|title }}</li>
         </ul>
         <p class="text-muted small">This will also delete the associated resident application, if any. Files uploaded to Google Drive will be removed.</p>

@@ -159,8 +159,9 @@ def pg_quick_booking(request, pgslug):
     # Allow booking if user has left (leaving_confirmed_date is set and in the past)
     today = date.today()
     has_active = Booking.objects.filter(
-        user=request.user, 
-        room__pg=pg, 
+        user=request.user,
+        pg=pg,
+        booking_type=Booking.REGULAR,
         status__in=[Booking.PENDING, Booking.APPROVED]
     ).filter(
         Q(leaving_confirmed_date__isnull=True) | Q(leaving_confirmed_date__gt=today)
@@ -169,10 +170,6 @@ def pg_quick_booking(request, pgslug):
     context = {'pg': pg, 'has_active': has_active}
 
     if request.method == 'GET':
-        # If user already has an active booking in this PG, prevent new booking
-        if has_active:
-            messages.warning(request, "You already have one booking in this PG; you can't book another room.")
-            return redirect('dashboard')
         # Keep identity-bound email, but let the applicant enter all personal
         # details themselves. In particular, never derive a name from the user
         # account/email for quick booking.
@@ -234,6 +231,10 @@ def handle_daywise_booking(request, pg, has_active):
         errors.append("Start date is required.")
     if not end_date_raw:
         errors.append("End date is required.")
+    if not start_time_raw:
+        errors.append("Start time is required.")
+    if not end_time_raw:
+        errors.append("End time is required.")
     if not purpose:
         errors.append("Purpose of stay is required.")
     if not selfie_data:
@@ -271,6 +272,17 @@ def handle_daywise_booking(request, pg, has_active):
             end_time = dt_time(h, m)
         except:
             errors.append("Invalid end time format.")
+
+    if start_date and end_date and start_time and end_time:
+        from datetime import datetime as dt_datetime
+        if dt_datetime.combine(end_date, end_time) <= dt_datetime.combine(start_date, start_time):
+            errors.append("Check-out must be after check-in.")
+
+    import re
+    if mobile and not re.fullmatch(r'\d{10}', mobile):
+        errors.append("Mobile number must contain exactly 10 digits.")
+    if emergency_contact and not re.fullmatch(r'\d{10}', emergency_contact):
+        errors.append("Emergency contact must contain exactly 10 digits.")
     
     # Validate Aadhaar documents (at least one required)
     aadhaar_doc1 = request.FILES.get('daywise_aadhaar1')
@@ -293,18 +305,12 @@ def handle_daywise_booking(request, pg, has_active):
                 messages.error(request, "You must be logged in to create a booking.")
                 return redirect('pg_quick_booking', pgslug=pg.slug)
             
-            # Get first room for temporary assignment (admin will reassign)
-            temp_room = pg.rooms.first()
-            if not temp_room:
-                messages.error(request, "No rooms available in this PG.")
-                return redirect('pg_quick_booking', pgslug=pg.slug)
-            
             # Create Booking with booking_type='daywise'
             booking = Booking.objects.create(
                 user=booking_user,  # Use actual user instead of system_user
-                room=temp_room,
+                room=None,
                 pg=pg,
-                share_no=1,  # Temporary, will be set during approval
+                share_no=None,
                 booking_type=Booking.DAYWISE,
                 status=Booking.PENDING,
                 joining_date=start_date,  # start_date → joining_date
@@ -376,7 +382,7 @@ def handle_daywise_booking(request, pg, has_active):
                 user=booking_user,
                 booking=booking,
                 pg=pg,
-                room=temp_room,
+                room=None,
                 status=ResidentApplication.SUBMITTED,
                 name=name,
                 phone=mobile,
@@ -2377,38 +2383,43 @@ def daywise_bookings_list(request):
     pg = _active_pg(request)
     pgs = list(_admin_pgs(request.user))
     
-    # Auto-complete day-wise bookings where leaving_date is in the past
-    today = date.today()
-    if pg:
-        expired_bookings = Booking.objects.filter(
-            booking_type=Booking.DAYWISE,
-            room__pg=pg,
-            status=Booking.APPROVED,
-            leaving_date__lt=today
-        )
-    else:
-        expired_bookings = Booking.objects.filter(
-            booking_type=Booking.DAYWISE,
-            room__pg__in=pgs,
-            status=Booking.APPROVED,
-            leaving_date__lt=today
-        )
-    
-    # Mark expired bookings as completed (don't change room share status)
+    # Complete stays after their actual checkout time and recalculate bed state.
+    from datetime import datetime, time as dt_time
+    today = timezone.localdate()
+    now_local = timezone.localtime().replace(tzinfo=None)
+    expired_bookings = Booking.objects.filter(
+        booking_type=Booking.DAYWISE,
+        status=Booking.APPROVED,
+        pg=pg,
+    ) if pg else Booking.objects.filter(
+        booking_type=Booking.DAYWISE,
+        status=Booking.APPROVED,
+        pg__in=pgs,
+    )
+    affected_pg_ids = set()
     for booking in expired_bookings:
-        booking.status = Booking.COMPLETED
-        booking.save(update_fields=['status'])
+        if not booking.leaving_date:
+            continue
+        checkout = datetime.combine(booking.leaving_date, booking.end_time or dt_time.max)
+        if checkout <= now_local:
+            booking.status = Booking.COMPLETED
+            booking.save(update_fields=['status'])
+            affected_pg_ids.add(booking.pg_id)
+    if affected_pg_ids:
+        from bookings.utils import sync_room_share_statuses
+        for affected_pg in PG.objects.filter(id__in=affected_pg_ids):
+            sync_room_share_statuses(affected_pg)
     
     # Base queryset - only day-wise bookings (exclude rejected)
     if pg:
         bookings_qs = Booking.objects.filter(
             booking_type=Booking.DAYWISE,
-            room__pg=pg
+            pg=pg
         ).exclude(status=Booking.REJECTED)
     else:
         bookings_qs = Booking.objects.filter(
             booking_type=Booking.DAYWISE,
-            room__pg__in=pgs
+            pg__in=pgs
         ).exclude(status=Booking.REJECTED)
     
     # Select related for performance (application is OneToOne)
@@ -2484,19 +2495,22 @@ def daywise_bookings_list(request):
     
     # Summary stats (exclude rejected)
     if pg:
-        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg=pg).exclude(status=Booking.REJECTED)
+        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, pg=pg).exclude(status=Booking.REJECTED)
     else:
-        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, room__pg__in=pgs).exclude(status=Booking.REJECTED)
+        base_qs = Booking.objects.filter(booking_type=Booking.DAYWISE, pg__in=pgs).exclude(status=Booking.REJECTED)
     
     total_daywise = base_qs.count()
     pending_count = base_qs.filter(status=Booking.PENDING).count()
     approved_count = base_qs.filter(status=Booking.APPROVED).count()
     completed_count = base_qs.filter(status=Booking.COMPLETED).count()
-    active_today = base_qs.filter(
-        status=Booking.APPROVED,
-        joining_date__lte=today,
-        leaving_date__gte=today
-    ).count()
+    active_today = 0
+    for active_booking in base_qs.filter(status=Booking.APPROVED):
+        if not active_booking.joining_date or not active_booking.leaving_date:
+            continue
+        checkin = datetime.combine(active_booking.joining_date, active_booking.start_time or dt_time.min)
+        checkout = datetime.combine(active_booking.leaving_date, active_booking.end_time or dt_time.max)
+        if checkin <= now_local < checkout:
+            active_today += 1
     
     context = {
         'pg': pg,

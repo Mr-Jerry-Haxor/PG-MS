@@ -387,7 +387,7 @@
                 <div class="small text-muted">{{ item.days }} day{{ item.days|pluralize }}</div>
               </td>
               <td>
-                {% if item.booking.assigned_by %}
+                {% if item.booking.room_id and item.booking.share_no %}
                 <span class="badge bg-success-subtle text-success">Room {{ item.booking.room.room_no }}, Bed {{ item.booking.share_no }}</span>
                 {% else %}
                 <span class="badge bg-warning-subtle text-warning">Not Assigned</span>
@@ -490,7 +490,7 @@
                       <div class="dw-field dw-field-box"><small>Check-in</small><span>{{ item.booking.joining_date|date:"M d, Y" }} {% if item.booking.start_time %}{{ item.booking.start_time|time:"g:i A" }}{% endif %}</span></div>
                       <div class="dw-field dw-field-box"><small>Check-out</small><span>{{ item.booking.leaving_date|date:"M d, Y" }} {% if item.booking.end_time %}{{ item.booking.end_time|time:"g:i A" }}{% endif %}</span></div>
                       <div class="dw-field dw-field-box"><small>Duration</small><span>{{ item.days }} day{{ item.days|pluralize }}</span></div>
-                      <div class="dw-field dw-field-box"><small>Room</small><span>{% if item.booking.assigned_by %}Room {{ item.booking.room.room_no }}, Bed {{ item.booking.share_no }}{% else %}<span class="text-warning">Not assigned</span>{% endif %}</span></div>
+                      <div class="dw-field dw-field-box"><small>Room</small><span>{% if item.booking.room_id and item.booking.share_no %}Room {{ item.booking.room.room_no }}, Bed {{ item.booking.share_no }}{% else %}<span class="text-warning">Not assigned</span>{% endif %}</span></div>
                     </div>
                     <div class="dw-field dw-field-box mt-2"><small>Purpose</small><div>{{ item.booking.purpose|default:"—" }}</div></div>
                     

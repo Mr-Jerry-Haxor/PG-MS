@@ -1299,7 +1299,7 @@
       <div class="list-group-item">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
           <div>
-            <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
+            <div class="fw-semibold">{{ b.pg.name }} — {% if b.room_id %}Room {{ b.room.room_no }} • Bed {{ b.share_no }}{% else %}Room assignment pending{% endif %}</div>
             <div class="text-secondary small">Approved on {{ b.updated_at|date:"Y-m-d" }} • Joining {{ b.joining_date|default:"—" }}</div>
             <div class="mt-1 d-flex flex-wrap gap-2">
               <span class="badge bg-success-subtle text-dark border">Approved</span>
@@ -1575,7 +1575,7 @@ document.addEventListener('DOMContentLoaded', function() {
       {% for b in my_pending_bookings %}
         <div class="list-group-item d-flex justify-content-between align-items-center">
           <div>
-            <div class="fw-semibold">{{ b.room.pg.name }} — Room {{ b.room.room_no }} • Bed {{ b.share_no }}</div>
+            <div class="fw-semibold">{{ b.pg.name }} — {% if b.room_id %}Room {{ b.room.room_no }} • Bed {{ b.share_no }}{% else %}Room assignment pending{% endif %}</div>
             <div class="text-secondary small">Applied on {{ b.created_at|date:"Y-m-d" }} • Joining {{ b.joining_date|default:"—" }}</div>
             <div class="badge bg-warning-subtle text-dark border">Pending</div>
             {% if b.booking_type == 'daywise' %}

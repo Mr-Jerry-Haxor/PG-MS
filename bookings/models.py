@@ -63,10 +63,10 @@ class Booking(TimeStampedModel):
 	]
 
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bookings')
-	room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='bookings')
+	room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='bookings', null=True, blank=True)
 	# Denormalized for constraints and fast queries: PG of the room
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='bookings', null=True, blank=True)
-	share_no = models.PositiveSmallIntegerField()
+	share_no = models.PositiveSmallIntegerField(null=True, blank=True)
 	booking_type = models.CharField(max_length=10, choices=BOOKING_TYPE_CHOICES, default=REGULAR, help_text="Type of booking: regular monthly or day-wise short-term")
 	status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
 	advance_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -98,10 +98,11 @@ class Booking(TimeStampedModel):
 
 	class Meta:
 		constraints = [
-			# One active (pending/approved) booking per user per PG
+			# One active regular booking per user per PG. Day-wise stays may
+			# coexist with a regular tenancy and are scheduled independently.
 			models.UniqueConstraint(
 				fields=['user', 'pg'],
-				condition=Q(status__in=['pending', 'approved']),
+				condition=Q(status__in=['pending', 'approved'], booking_type='regular'),
 				name='uniq_active_booking_per_user_per_pg',
 			),
 			# Prevent multiple simultaneous pending/approved bookings for the same exact share by a user
@@ -110,10 +111,18 @@ class Booking(TimeStampedModel):
 				condition=Q(status__in=['pending', 'approved']),
 				name='uniq_active_booking_same_share_user',
 			),
+			models.CheckConstraint(
+				condition=(
+					Q(room__isnull=False, share_no__isnull=False)
+					| Q(booking_type='daywise', status__in=['pending', 'rejected'])
+				),
+				name='booking_assignment_required_unless_pending_daywise',
+			),
 		]
 
 	def __str__(self):
-		return f"{self.user} - {self.room} ({self.share_no}) [{self.status}]"
+		assignment = f"{self.room} ({self.share_no})" if self.room_id and self.share_no else "Unassigned"
+		return f"{self.user} - {assignment} [{self.status}]"
 
 	def save(self, *args, **kwargs):
 		# Keep denormalized pg in sync with room.pg
@@ -161,7 +170,7 @@ class ResidentApplication(TimeStampedModel):
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='resident_applications')
 	booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='application')
 	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='resident_applications')
-	room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='resident_applications')
+	room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='resident_applications', null=True, blank=True)
 	status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=SUBMITTED)
 	# Personal details
 	name = models.CharField(max_length=255)

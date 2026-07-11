@@ -53,7 +53,7 @@
             <span class="badge-pill daywise">Day-wise</span>
             <span class="badge-pill">{{ b.joining_date }} {% if b.start_time %}{{ b.start_time|date:"g A" }}{% endif %}</span>
             <span class="badge-pill">to {{ b.leaving_date }} {% if b.end_time %}{{ b.end_time|date:"g A" }}{% endif %}</span>
-            {% if b.assigned_by %}
+            {% if b.room_id and b.share_no %}
               <span class="badge-pill success">Room {{ b.room.room_no }} / Bed {{ b.share_no }}</span>
             {% else %}
               <span class="badge-pill warn">Room Not Assigned</span>

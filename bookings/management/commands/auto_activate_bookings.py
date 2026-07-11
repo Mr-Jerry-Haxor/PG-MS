@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from bookings.models import Booking, RoomShareStatus
 from django.db import transaction
+from datetime import datetime, time as dt_time
 
 class Command(BaseCommand):
     help = "Auto-activate bookings whose joining date has arrived (change RESERVED to OCCUPIED)"
@@ -21,7 +22,14 @@ class Command(BaseCommand):
         )
         
         activated = 0
+        now_local = timezone.localtime().replace(tzinfo=None)
         for bk in qs:
+            if not bk.room_id or not bk.share_no:
+                continue
+            if bk.booking_type == Booking.DAYWISE:
+                check_in = datetime.combine(bk.joining_date, bk.start_time or dt_time.min)
+                if check_in > now_local:
+                    continue
             share = bk.room.shares.filter(share_no=bk.share_no).first()
             if not share:
                 continue

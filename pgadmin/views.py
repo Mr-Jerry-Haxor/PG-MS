@@ -3300,7 +3300,7 @@ def bookings_pending(request):
     if pg:
         # Get all pending bookings (both regular and day-wise)
         pending = (
-            Booking.objects.filter(status=Booking.PENDING, room__pg=pg)
+            Booking.objects.filter(status=Booking.PENDING, pg=pg)
             .select_related('user', 'room', 'assigned_by')
             .prefetch_related('application', 'application__status_history')
             .annotate(has_application=Exists(ResidentApplication.objects.filter(booking_id=OuterRef('pk'))))
@@ -3391,7 +3391,10 @@ def booking_approve(request, booking_id):
         messages.error(request, "PG Admin access required for this PG.")
         return redirect('dashboard')
     
-    pg = booking.pg or booking.room.pg
+    pg = booking.pg or (booking.room.pg if booking.room_id else None)
+    if not pg:
+        messages.error(request, "Booking is not linked to a PG.")
+        return redirect('pg_bookings_pending')
     
     # Handle day-wise bookings differently - need room assignment
     if booking.booking_type == Booking.DAYWISE:
@@ -3399,7 +3402,7 @@ def booking_approve(request, booking_id):
             # Process room assignment for day-wise booking
             room_id = request.POST.get('room_id')
             share_no = request.POST.get('share_no')
-            payment_amount = request.POST.get('payment_amount', '0')
+            payment_amount_raw = (request.POST.get('payment_amount') or '0').strip()
             payment_received = request.POST.get('payment_received') == 'on'
             
             if not room_id or not share_no:
@@ -3409,7 +3412,54 @@ def booking_approve(request, booking_id):
             try:
                 room = Room.objects.get(id=room_id, pg=pg)
                 share_no = int(share_no)
-                share = RoomShareStatus.objects.get(room=room, share_no=share_no)
+                share = RoomShareStatus.objects.select_for_update().get(room=room, share_no=share_no)
+
+                from datetime import datetime, time as dt_time
+                from decimal import Decimal, InvalidOperation
+                try:
+                    payment_amount = Decimal(payment_amount_raw)
+                    if payment_amount < 0:
+                        raise InvalidOperation
+                except (InvalidOperation, ValueError):
+                    messages.error(request, "Enter a valid non-negative payment amount.")
+                    return redirect('pg_booking_approve', booking_id=booking.id)
+
+                start_dt = datetime.combine(booking.joining_date, booking.start_time or dt_time.min)
+                end_dt = datetime.combine(booking.leaving_date, booking.end_time or dt_time.max)
+                current_dt = timezone.localtime().replace(tzinfo=None)
+                if end_dt <= current_dt:
+                    messages.error(request, "This stay has already ended and cannot be approved.")
+                    return redirect('pg_booking_approve', booking_id=booking.id)
+
+                if share.status not in (RoomShareStatus.VACANT, RoomShareStatus.VACANT_FROM):
+                    messages.error(request, "The selected bed is no longer available.")
+                    return redirect('pg_booking_approve', booking_id=booking.id)
+                if share.status == RoomShareStatus.VACANT_FROM and (
+                    not share.vacant_from or share.vacant_from > booking.joining_date
+                ):
+                    messages.error(request, "The selected bed is not vacant by the requested check-in date.")
+                    return redirect('pg_booking_approve', booking_id=booking.id)
+
+                if RoomSwap.objects.filter(
+                    to_room=room,
+                    to_share_no=share_no,
+                    is_future_swap=True,
+                    status__in=[RoomSwap.PENDING, RoomSwap.APPROVED],
+                ).exists():
+                    messages.error(request, "The selected bed has a pending room swap.")
+                    return redirect('pg_booking_approve', booking_id=booking.id)
+
+                for other in Booking.objects.filter(
+                    room=room,
+                    share_no=share_no,
+                    status__in=[Booking.PENDING, Booking.APPROVED],
+                ).exclude(pk=booking.pk):
+                    other_start_date = other.joining_date or other.start_date
+                    other_start = datetime.combine(other_start_date, other.start_time or dt_time.min) if other_start_date else datetime.min
+                    other_end = datetime.combine(other.leaving_date, other.end_time or dt_time.max) if other.leaving_date else datetime.max
+                    if start_dt < other_end and other_start < end_dt:
+                        messages.error(request, "The selected bed has another booking during this stay.")
+                        return redirect('pg_booking_approve', booking_id=booking.id)
                 
                 # Update booking with assigned room
                 booking.room = room
@@ -3418,28 +3468,27 @@ def booking_approve(request, booking_id):
                 booking.assigned_by = request.user
                 booking.assigned_at = timezone.now()
                 booking.payment_received = payment_received
-                if payment_amount:
-                    booking.payment_amount = float(payment_amount)
+                booking.payment_amount = payment_amount
                 booking.save()
                 
-                # Update share status to OCCUPIED (day-wise bookings start immediately)
-                share.status = RoomShareStatus.OCCUPIED
-                share.save(update_fields=['status'])
+                share.status = RoomShareStatus.RESERVED if start_dt > current_dt else RoomShareStatus.OCCUPIED
+                share.vacant_from = None
+                share.save(update_fields=['status', 'vacant_from'])
                 
                 # Update application status
                 if hasattr(booking, 'application'):
                     booking.application.status = ResidentApplication.CONFIRMED
-                    booking.application.save(update_fields=['status'])
+                    booking.application.room = room
+                    booking.application.save(update_fields=['status', 'room'])
                 
                 # Create Payment record if payment was received
-                if payment_received and payment_amount:
+                if payment_received and payment_amount > 0:
                     from finance.models import Payment
                     try:
-                        amount_decimal = float(payment_amount)
                         Payment.objects.create(
                             user=booking.user,
                             pg=pg,
-                            amount=amount_decimal,
+                            amount=payment_amount,
                             date=timezone.now().date(),
                             status='success',
                             mode='cash',  # Default to cash, admin can edit later
@@ -3519,7 +3568,7 @@ def booking_approve(request, booking_id):
             # Get vacant shares but only include VACANT_FROM shares that are available by booking.start
             # Also exclude shares that have overlapping bookings (PENDING/APPROVED)
             # Also exclude shares that have pending future swaps
-            from bookings.models import Booking as BookingModel, RoomSwap
+            from bookings.models import Booking as BookingModel
             pending_booking_keys = pending_booking_share_keys(pg=pg)
             
             # Get all beds with pending/approved future swaps

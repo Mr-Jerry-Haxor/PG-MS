@@ -49,22 +49,24 @@
           
           <!-- Book Now -->
           <div class="col-md-4">
-            <div class="card h-100 booking-type-card" data-type="booknow" style="cursor: pointer;">
+            <div class="card h-100 booking-type-card{% if has_active %} booking-type-disabled{% endif %}" data-type="booknow" style="cursor: pointer;">
               <div class="card-body text-center">
                 <i class="bi bi-door-open fs-1 text-success"></i>
                 <h5 class="card-title mt-3">Joining Form</h5>
                 <p class="card-text small text-muted">Move in immediately</p>
+                {% if has_active %}<span class="badge bg-secondary">Existing regular booking</span>{% endif %}
               </div>
             </div>
           </div>
           
           <!-- Book for Future -->
           <div class="col-md-4">
-            <div class="card h-100 booking-type-card" data-type="future" style="cursor: pointer;">
+            <div class="card h-100 booking-type-card{% if has_active %} booking-type-disabled{% endif %}" data-type="future" style="cursor: pointer;">
               <div class="card-body text-center">
                 <i class="bi bi-calendar-check fs-1 text-info"></i>
                 <h5 class="card-title mt-3">Advance Booking</h5>
                 <p class="card-text small text-muted">Reserve for later date</p>
+                {% if has_active %}<span class="badge bg-secondary">Existing regular booking</span>{% endif %}
               </div>
             </div>
           </div>
@@ -274,6 +276,8 @@
   transform: translateY(-5px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
+.booking-type-disabled {opacity:.55;cursor:not-allowed!important;}
+.booking-type-disabled:hover {border-color:transparent;transform:none;box-shadow:none;}
 
 #video, #canvas, #selfiePreview {
   border: 2px solid #dee2e6;
@@ -327,6 +331,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Handle booking type selection
   document.querySelectorAll('.booking-type-card').forEach(card => {
     card.addEventListener('click', function() {
+      if (this.classList.contains('booking-type-disabled')) {
+        alert('You already have an active regular booking in this PG. Day-wise booking is still available.');
+        return;
+      }
       const type = this.dataset.type;
       selectBookingType(type);
       const modal = bootstrap.Modal.getInstance(document.getElementById('bookingTypeModal'));

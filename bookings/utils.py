@@ -1,6 +1,7 @@
 """Utility functions for bookings app"""
 from django.utils import timezone
 from django.db.models import Q
+from datetime import datetime, time as dt_time
 from .models import Booking, RoomShareStatus, RoomSwap
 
 
@@ -42,7 +43,8 @@ def sync_room_share_statuses(pg=None):
     Returns:
         dict with counts of updated statuses
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
+    now_local = timezone.localtime().replace(tzinfo=None)
     stats = {
         'vacant': 0,
         'reserved': 0,
@@ -113,6 +115,18 @@ def sync_room_share_statuses(pg=None):
         for booking in all_bookings:
             joining_date = booking.joining_date or booking.start_date
             leaving_date = booking.leaving_date
+
+            if booking.booking_type == Booking.DAYWISE and joining_date:
+                start_dt = datetime.combine(joining_date, booking.start_time or dt_time.min)
+                end_dt = datetime.combine(leaving_date, booking.end_time or dt_time.max) if leaving_date else datetime.max
+                if end_dt <= now_local:
+                    continue
+                if start_dt > now_local:
+                    if not future_booking:
+                        future_booking = booking
+                    continue
+                active_candidates.append(booking)
+                continue
             
             # Skip bookings that have left (leaving_date in the past)
             if leaving_date and leaving_date < today:
@@ -155,6 +169,14 @@ def sync_room_share_statuses(pg=None):
         if current_booking:
             joining_date = current_booking.joining_date or current_booking.start_date
             leaving_date = current_booking.leaving_date
+
+            if current_booking.booking_type == Booking.DAYWISE:
+                if share.status != RoomShareStatus.OCCUPIED or share.vacant_from is not None:
+                    share.status = RoomShareStatus.OCCUPIED
+                    share.vacant_from = None
+                    share.save(update_fields=['status', 'vacant_from'])
+                    stats['occupied'] += 1
+                continue
             
             # Current booking has a leaving date (in the future or today)
             if leaving_date:
@@ -216,17 +238,36 @@ def _complete_past_bookings(pg, today, stats):
     
     Also archives completed tenants to OldTenant table for PG admin reference.
     """
-    # Query: APPROVED bookings with confirmed leaving AND leaving_date in the past
+    # Day-wise bookings complete at their actual checkout time and do not need
+    # the regular tenant leave-confirmation lifecycle.
+    now_local = timezone.localtime().replace(tzinfo=None)
+    daywise_qs = Booking.objects.filter(
+        status=Booking.APPROVED,
+        booking_type=Booking.DAYWISE,
+        leaving_date__isnull=False,
+    )
+    if pg:
+        daywise_qs = daywise_qs.filter(pg=pg)
+    for booking in daywise_qs:
+        checkout = datetime.combine(booking.leaving_date, booking.end_time or dt_time.max)
+        if checkout <= now_local:
+            booking.status = Booking.COMPLETED
+            booking.save(update_fields=['status'])
+            stats['bookings_completed'] += 1
+
+    # Query: APPROVED regular bookings with confirmed leaving and a past date.
     if pg:
         confirmed_past_bookings = Booking.objects.filter(
             pg=pg,
             status=Booking.APPROVED,
+            booking_type=Booking.REGULAR,
             leaving_confirmed_date__isnull=False,
             leaving_date__lt=today  # leaving_date is strictly in the past
         ).select_related('room', 'user', 'application')
     else:
         confirmed_past_bookings = Booking.objects.filter(
             status=Booking.APPROVED,
+            booking_type=Booking.REGULAR,
             leaving_confirmed_date__isnull=False,
             leaving_date__lt=today
         ).select_related('room', 'user', 'application')
