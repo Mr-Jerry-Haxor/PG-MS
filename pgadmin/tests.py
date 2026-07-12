@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from bookings.models import Booking, ResidentApplication
+from bookings.models import Booking, ResidentApplication, Room
 from .models import PG, PGAdmin, WhatsAppCloudConfig, WhatsAppConversation, WhatsAppMessage
 from .whatsapp_cloud import WhatsAppCloudError, process_webhook_payload, send_cloud_message
 from .whatsapp_crypto import encrypt_secret
@@ -83,6 +83,15 @@ class WhatsAppCloudCoexistenceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'PG2 Secret Contact')
 
+    def test_webhook_verification_rejects_empty_verify_token(self):
+        WhatsAppCloudConfig.objects.create(pg=self.pg1, enabled=True)
+        response = self.client.get(reverse('whatsapp_cloud_webhook'), {
+            'hub.mode': 'subscribe',
+            'hub.verify_token': '',
+            'hub.challenge': 'challenge-value',
+        })
+        self.assertEqual(response.status_code, 403)
+
     @patch('pgadmin.whatsapp_cloud.requests.post')
     def test_pg_admin_can_search_pg_users_and_send_from_whatsapp_page(self, post):
         self.config(self.pg1, 'phone-1', enable_whatsapp_messages=True)
@@ -135,6 +144,58 @@ class WhatsAppCloudCoexistenceTests(TestCase):
         self.assertContains(response, 'WhatsApp')
         self.assertContains(response, reverse('pg_whatsapp_conversations'))
         self.assertNotContains(response, '>Manage Rooms</a>')
+
+    def test_whatsapp_page_lists_only_current_pg_users(self):
+        self.config(self.pg1, 'phone-1', enable_whatsapp_messages=True)
+        active_user = get_user_model().objects.create_user(
+            username='active', email='active@example.com', password='x'
+        )
+        inactive_user = get_user_model().objects.create_user(
+            username='inactive', email='inactive@example.com', password='x'
+        )
+        room = Room.objects.create(pg=self.pg1, room_no='A1', total_shares=2)
+        active_booking = Booking.objects.create(
+            user=active_user, pg=self.pg1, room=room, share_no=1, status=Booking.APPROVED
+        )
+        inactive_booking = Booking.objects.create(
+            user=inactive_user, pg=self.pg1, room=room, share_no=2, status=Booking.COMPLETED
+        )
+        ResidentApplication.objects.create(
+            booking=active_booking,
+            user=active_user,
+            pg=self.pg1,
+            name='Active Tenant',
+            whatsapp_number='+91 90000 00001',
+        )
+        ResidentApplication.objects.create(
+            booking=inactive_booking,
+            user=inactive_user,
+            pg=self.pg1,
+            name='Old Tenant',
+            whatsapp_number='+91 90000 00002',
+        )
+
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('pg_whatsapp_conversations'), {'pg': self.pg1.id})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Active Tenant')
+        self.assertNotContains(response, 'Old Tenant')
+
+    @patch('pgadmin.whatsapp_cloud.requests.post')
+    def test_invalid_pg_parameter_does_not_fallback_when_sending(self, post):
+        self.config(self.pg1, 'phone-1', enable_whatsapp_messages=True)
+        response = Mock(ok=True, status_code=200)
+        response.json.return_value = {'messages': [{'id': 'wamid.invalid-pg'}]}
+        post.return_value = response
+
+        self.client.force_login(self.admin)
+        response = self.client.post(f"{reverse('pg_whatsapp_cloud_send')}?pg={self.pg2.id}", data=json.dumps({
+            'phone': '919999999999',
+            'message': 'Should not send',
+            'section': 'whatsapp_messages',
+        }), content_type='application/json')
+        self.assertEqual(response.status_code, 403)
+        post.assert_not_called()
 
     def test_super_admin_configuration_page_handles_unconfigured_pgs(self):
         User = get_user_model()

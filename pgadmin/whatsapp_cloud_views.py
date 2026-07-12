@@ -6,11 +6,11 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
-from bookings.models import ResidentApplication
+from bookings.models import Booking, ResidentApplication
 from .models import PG, PGAdmin, WhatsAppCloudConfig, WhatsAppConversation
 from .whatsapp_cloud import WhatsAppCloudError, process_webhook_payload, send_cloud_message
 from .whatsapp_crypto import decrypt_secret
@@ -20,8 +20,14 @@ logger = logging.getLogger(__name__)
 
 def _active_admin_pg(request):
     allowed = PG.objects.filter(admins__user=request.user).distinct().order_by('name')
-    pg_id = request.GET.get('pg') or request.POST.get('pg') or request.session.get('active_pg_id')
-    pg = allowed.filter(pk=pg_id).first() if pg_id else allowed.first()
+    requested_pg_id = request.GET.get('pg') or request.POST.get('pg')
+    if requested_pg_id:
+        pg = allowed.filter(pk=requested_pg_id).first()
+        if not pg:
+            return None
+    else:
+        session_pg_id = request.session.get('active_pg_id')
+        pg = allowed.filter(pk=session_pg_id).first() if session_pg_id else allowed.first()
     if pg:
         request.session['active_pg_id'] = pg.id
     return pg
@@ -32,7 +38,10 @@ def _is_pg_admin(user):
 
 
 def _pg_user_contacts(pg, query=''):
-    applications = ResidentApplication.objects.filter(pg=pg).select_related('user').order_by('name', 'user__email')
+    applications = ResidentApplication.objects.filter(
+        pg=pg,
+        booking__status__in=[Booking.PENDING, Booking.APPROVED],
+    ).select_related('user').order_by('name', 'user__email')
     if query:
         applications = applications.filter(
             Q(name__icontains=query)
@@ -74,9 +83,10 @@ def whatsapp_cloud_webhook(request):
         mode = request.GET.get('hub.mode')
         token = request.GET.get('hub.verify_token', '')
         challenge = request.GET.get('hub.challenge', '')
-        if mode == 'subscribe':
+        if mode == 'subscribe' and token:
             for config in WhatsAppCloudConfig.objects.filter(enabled=True).only('verify_token_encrypted'):
-                if hmac.compare_digest(decrypt_secret(config.verify_token_encrypted), token):
+                stored_token = decrypt_secret(config.verify_token_encrypted)
+                if stored_token and hmac.compare_digest(stored_token, token):
                     return HttpResponse(challenge, content_type='text/plain')
         return HttpResponse('Webhook verification failed.', status=403)
 
