@@ -9,10 +9,10 @@ def pending_booking_share_keys(pg=None, room=None):
     """Return a set of (room_id, share_no) pairs for pending bookings."""
     qs = Booking.objects.filter(status=Booking.PENDING)
     if pg is not None:
-        qs = qs.filter(room__pg=pg)
+        qs = qs.filter(pg=pg)
     if room is not None:
         qs = qs.filter(room=room)
-    return set(qs.values_list('room_id', 'share_no'))
+    return set(qs.exclude(room__isnull=True).exclude(share_no__isnull=True).values_list('room_id', 'share_no'))
 
 
 def share_has_pending_booking(room, share_no):

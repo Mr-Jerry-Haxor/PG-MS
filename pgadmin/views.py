@@ -3449,17 +3449,26 @@ def booking_approve(request, booking_id):
                     messages.error(request, "The selected bed has a pending room swap.")
                     return redirect('pg_booking_approve', booking_id=booking.id)
 
-                for other in Booking.objects.filter(
+                conflicting = False
+                other_bookings = Booking.objects.filter(
                     room=room,
                     share_no=share_no,
                     status__in=[Booking.PENDING, Booking.APPROVED],
-                ).exclude(pk=booking.pk):
+                ).exclude(pk=booking.pk)
+                for other in other_bookings:
                     other_start_date = other.joining_date or other.start_date
-                    other_start = datetime.combine(other_start_date, other.start_time or dt_time.min) if other_start_date else datetime.min
-                    other_end = datetime.combine(other.leaving_date, other.end_time or dt_time.max) if other.leaving_date else datetime.max
+                    other_start = datetime.combine(
+                        other_start_date, other.start_time or dt_time.min
+                    ) if other_start_date else datetime.min
+                    other_end = datetime.combine(
+                        other.leaving_date, other.end_time or dt_time.max
+                    ) if other.leaving_date else datetime.max
                     if start_dt < other_end and other_start < end_dt:
-                        messages.error(request, "The selected bed has another booking during this stay.")
-                        return redirect('pg_booking_approve', booking_id=booking.id)
+                        conflicting = True
+                        break
+                if conflicting:
+                    messages.error(request, "The selected bed has another booking during this stay.")
+                    return redirect('pg_booking_approve', booking_id=booking.id)
                 
                 # Update booking with assigned room
                 booking.room = room
@@ -3471,7 +3480,11 @@ def booking_approve(request, booking_id):
                 booking.payment_amount = payment_amount
                 booking.save()
                 
-                share.status = RoomShareStatus.RESERVED if start_dt > current_dt else RoomShareStatus.OCCUPIED
+                # Future check-ins reserve the bed; only a stay that has started
+                # is occupied. The activation command handles the transition.
+                share.status = (
+                    RoomShareStatus.RESERVED if start_dt > current_dt else RoomShareStatus.OCCUPIED
+                )
                 share.vacant_from = None
                 share.save(update_fields=['status', 'vacant_from'])
                 

@@ -610,7 +610,7 @@ def handle_future_booking(request, pg, has_active):
             return redirect('dashboard')
             
     except IntegrityError:
-        messages.error(request, "You already have an active booking in this PG.")
+        messages.error(request, "A conflicting active booking already exists. Please review your pending bookings.")
         return redirect('pg_quick_booking', pgslug=pg.slug)
     except Exception as ex:
         messages.error(request, f'Failed to create future booking: {str(ex)}')

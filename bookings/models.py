@@ -98,8 +98,8 @@ class Booking(TimeStampedModel):
 
 	class Meta:
 		constraints = [
-			# One active regular booking per user per PG. Day-wise stays may
-			# coexist with a regular tenancy and are scheduled independently.
+			# One active regular booking per user per PG. Day-wise stays are
+			# independently scheduled and may coexist with a regular tenancy.
 			models.UniqueConstraint(
 				fields=['user', 'pg'],
 				condition=Q(status__in=['pending', 'approved'], booking_type='regular'),
