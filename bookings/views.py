@@ -2385,7 +2385,9 @@ def daywise_bookings_list(request):
     pg = _active_pg(request)
     pgs = list(_admin_pgs(request.user))
     
-    # Complete stays after their actual checkout time and recalculate bed state.
+    # Auto-complete stays after their actual check-out date and time, then
+    # recalculate bed state so a completed day-wise stay never leaves a bed
+    # incorrectly occupied/reserved.
     from datetime import datetime, time as dt_time
     today = timezone.localdate()
     now_local = timezone.localtime().replace(tzinfo=None)
