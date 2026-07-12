@@ -1,46 +1,190 @@
 {% extends 'base.html' %}
-{% block title %}WhatsApp Messages • {{ pg.name }}{% endblock %}
+{% block title %}WhatsApp Messages - {{ pg.name }}{% endblock %}
 {% block extra_head %}
 <style>
-  .wa-shell{height:calc(100vh - 155px);min-height:570px;background:#efeae2;border-radius:16px;overflow:hidden;display:grid;grid-template-columns:340px 1fr;border:1px solid #d7d7d7}
-  .wa-sidebar{background:#fff;border-right:1px solid #ddd;overflow-y:auto}.wa-sidebar-head,.wa-chat-head{background:#f0f2f5;padding:12px 16px}
-  .wa-contact{display:block;padding:12px 16px;color:#111;text-decoration:none;border-bottom:1px solid #f0f0f0}.wa-contact:hover,.wa-contact.active{background:#f0f2f5}
-  .wa-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#d9fdd3;color:#087c53;font-weight:700;flex:none}
-  .wa-chat{display:flex;min-width:0;flex-direction:column}.wa-thread{flex:1;overflow-y:auto;padding:24px 6%;background-color:#efeae2;background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:12px 12px}
-  .wa-row{display:flex;margin:5px 0}.wa-row.outbound{justify-content:flex-end}.wa-bubble{max-width:75%;padding:7px 10px 5px;border-radius:8px;background:#fff;box-shadow:0 1px 1px rgba(0,0,0,.12);white-space:pre-wrap;overflow-wrap:anywhere}.wa-row.outbound .wa-bubble{background:#d9fdd3}
-  .wa-meta{font-size:.67rem;color:#667781;text-align:right;margin-top:3px}.wa-compose{background:#f0f2f5;padding:10px 14px}.wa-compose textarea{resize:none;border-radius:20px}.wa-new{padding:12px;border-bottom:1px solid #ddd}
-  @media(max-width:767px){.wa-shell{grid-template-columns:1fr;height:auto;min-height:0}.wa-sidebar{max-height:280px}.wa-chat{min-height:580px}.wa-bubble{max-width:88%}}
+  .wa-page{height:calc(100vh - 118px);min-height:620px;background:#111b21;border:1px solid #d1d7db;display:grid;grid-template-columns:390px minmax(0,1fr);overflow:hidden}
+  .wa-sidebar{background:#fff;border-right:1px solid #d1d7db;display:flex;flex-direction:column;min-width:0}
+  .wa-panel-head{height:60px;background:#f0f2f5;display:flex;align-items:center;justify-content:space-between;padding:0 16px;gap:12px}
+  .wa-avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#d9fdd3;color:#008069;font-weight:700;flex:none}
+  .wa-search{background:#fff;padding:8px 12px;border-bottom:1px solid #eef0f1}
+  .wa-search .input-group-text,.wa-search .form-control{background:#f0f2f5;border:0}
+  .wa-scroll{overflow-y:auto;min-height:0}
+  .wa-contact{display:block;color:#111b21;text-decoration:none;padding:0 12px}
+  .wa-contact-inner{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #f0f2f5}
+  .wa-contact:hover,.wa-contact.active{background:#f0f2f5;color:#111b21}
+  .wa-name-line{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .wa-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .wa-last{font-size:.72rem;color:#667781;flex:none}
+  .wa-muted{color:#667781}
+  .wa-contact-picker{border-top:1px solid #e9edef;background:#fff}
+  .wa-picker-title{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#667781;padding:12px 14px 4px}
+  .wa-picker-item{width:100%;border:0;background:#fff;text-align:left;padding:9px 14px;display:flex;gap:10px;align-items:center}
+  .wa-picker-item:hover{background:#f5f6f6}
+  .wa-chat{display:flex;flex-direction:column;min-width:0;background:#efeae2}
+  .wa-chat-head{height:60px;background:#f0f2f5;border-bottom:1px solid #d1d7db;display:flex;align-items:center;gap:12px;padding:0 16px}
+  .wa-thread{flex:1;overflow-y:auto;padding:26px 7%;background-color:#efeae2;background-image:linear-gradient(rgba(255,255,255,.4),rgba(255,255,255,.4)),radial-gradient(rgba(0,0,0,.055) 1px,transparent 1px);background-size:auto,13px 13px}
+  .wa-row{display:flex;margin:4px 0}.wa-row.outbound{justify-content:flex-end}
+  .wa-bubble{max-width:min(70%,720px);padding:7px 9px 5px;border-radius:7.5px;background:#fff;box-shadow:0 1px .5px rgba(11,20,26,.13);white-space:pre-wrap;overflow-wrap:anywhere;color:#111b21}
+  .wa-row.outbound .wa-bubble{background:#d9fdd3}
+  .wa-meta{font-size:.68rem;color:#667781;text-align:right;margin-top:3px}
+  .wa-compose{background:#f0f2f5;padding:10px 14px;display:flex;gap:10px;align-items:flex-end}
+  .wa-compose textarea{resize:none;border:0;border-radius:8px;padding:10px 14px;max-height:120px}
+  .wa-icon-btn{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;border:0;background:transparent;color:#54656f}
+  .wa-send{background:#00a884;color:#fff}.wa-send:hover{background:#008069;color:#fff}
+  .wa-empty{height:100%;display:grid;place-items:center;text-align:center;color:#41525d;background:#f8f9fa;border-bottom:6px solid #25d366}
+  @media(max-width:900px){.wa-page{grid-template-columns:1fr;height:auto;min-height:0}.wa-sidebar{max-height:520px}.wa-chat{min-height:620px}.wa-bubble{max-width:88%}}
 </style>
 {% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div><h1 class="h5 mb-0"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp Messages</h1><div class="small text-secondary">{{ pg.name }} · {{ cloud_config.display_phone_number|default:'Cloud number' }}</div></div>
-  <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard' %}?pg={{ pg.id }}">Dashboard</a>
-</div>
-<div class="wa-shell">
+<div class="wa-page shadow-sm">
   <aside class="wa-sidebar">
-    <div class="wa-sidebar-head fw-semibold">Conversations</div>
-    <form method="post" class="wa-new">{% csrf_token %}<input type="hidden" name="pg" value="{{ pg.id }}">
-      <label class="small text-secondary">Start a conversation</label>
-      <input class="form-control form-control-sm my-1" name="phone" inputmode="tel" placeholder="Phone with country code" required>
-      <textarea class="form-control form-control-sm mb-1" name="message" rows="2" placeholder="Message" required></textarea>
-      <button class="btn btn-success btn-sm w-100" type="submit">Send</button>
+    <div class="wa-panel-head">
+      <div class="d-flex align-items-center gap-2 min-w-0">
+        <div class="wa-avatar"><i class="bi bi-whatsapp"></i></div>
+        <div class="min-w-0">
+          <div class="fw-semibold text-truncate">WhatsApp</div>
+          <div class="small wa-muted text-truncate">{{ pg.name }} - {{ cloud_config.display_phone_number|default:'Cloud number' }}</div>
+        </div>
+      </div>
+      <a class="btn btn-sm btn-light" href="{% url 'dashboard' %}?pg={{ pg.id }}" title="Dashboard"><i class="bi bi-arrow-left"></i></a>
+    </div>
+
+    <form method="get" class="wa-search">
+      <input type="hidden" name="pg" value="{{ pg.id }}">
+      {% if selected_conversation %}<input type="hidden" name="conversation" value="{{ selected_conversation.id }}">{% endif %}
+      <div class="input-group input-group-sm">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input class="form-control" name="contact_q" value="{{ contact_search }}" placeholder="Search PG users">
+        <button class="btn btn-outline-secondary" type="submit">Search</button>
+      </div>
     </form>
-    {% for conversation in conversations %}
-      <a class="wa-contact {% if selected_conversation.id == conversation.id %}active{% endif %}" href="?pg={{ pg.id }}&conversation={{ conversation.id }}">
-        <div class="d-flex gap-2 align-items-center"><div class="wa-avatar">{{ conversation.contact.name|default:conversation.contact.wa_id|slice:':1'|upper }}</div><div class="min-w-0 flex-grow-1"><div class="d-flex justify-content-between"><span class="fw-semibold text-truncate">{{ conversation.contact.name|default:conversation.contact.wa_id }}</span><small class="text-secondary">{{ conversation.last_message_at|date:'d M' }}</small></div><div class="small text-secondary text-truncate">{{ conversation.contact.wa_id }}</div></div>{% if conversation.unread_count %}<span class="badge rounded-pill bg-success">{{ conversation.unread_count }}</span>{% endif %}</div>
+
+    <div class="wa-contact-picker">
+      <div class="wa-picker-title">PG users</div>
+      {% for contact in pg_user_contacts %}
+      <form method="post" class="m-0">
+        {% csrf_token %}
+        <input type="hidden" name="pg" value="{{ pg.id }}">
+        <input type="hidden" name="user_id" value="{{ contact.user_id }}">
+        <input type="hidden" name="message" value="Hi">
+        <button class="wa-picker-item" type="button" data-wa-user="{{ contact.user_id }}" data-wa-name="{{ contact.name }}" data-wa-phone="{{ contact.phone }}">
+          <div class="wa-avatar">{{ contact.name|slice:':1'|upper }}</div>
+          <div class="min-w-0">
+            <div class="fw-semibold text-truncate">{{ contact.name }}</div>
+            <div class="small wa-muted text-truncate">{{ contact.phone }}{% if contact.email %} - {{ contact.email }}{% endif %}</div>
+          </div>
+        </button>
+      </form>
+      {% empty %}
+      <div class="px-3 pb-3 small wa-muted">No PG users with WhatsApp numbers found.</div>
+      {% endfor %}
+    </div>
+
+    <div class="wa-scroll">
+      {% for conversation in conversations %}
+      <a class="wa-contact {% if selected_conversation.id == conversation.id %}active{% endif %}" href="?pg={{ pg.id }}&conversation={{ conversation.id }}{% if contact_search %}&contact_q={{ contact_search|urlencode }}{% endif %}">
+        <div class="wa-contact-inner">
+          <div class="wa-avatar">{{ conversation.contact.name|default:conversation.contact.wa_id|slice:':1'|upper }}</div>
+          <div class="min-w-0 flex-grow-1">
+            <div class="wa-name-line">
+              <span class="wa-name">{{ conversation.contact.name|default:conversation.contact.wa_id }}</span>
+              <span class="wa-last">{{ conversation.last_message_at|date:'d M' }}</span>
+            </div>
+            <div class="small wa-muted text-truncate">+{{ conversation.contact.wa_id }}</div>
+          </div>
+          {% if conversation.unread_count %}<span class="badge rounded-pill bg-success">{{ conversation.unread_count }}</span>{% endif %}
+        </div>
       </a>
-    {% empty %}<div class="p-4 text-center text-secondary small">No conversations yet.</div>{% endfor %}
+      {% empty %}
+      <div class="p-4 text-center small wa-muted">No conversations yet.</div>
+      {% endfor %}
+    </div>
   </aside>
+
   <section class="wa-chat">
     {% if selected_conversation %}
-      <div class="wa-chat-head d-flex align-items-center gap-2"><div class="wa-avatar">{{ selected_conversation.contact.name|default:selected_conversation.contact.wa_id|slice:':1'|upper }}</div><div><div class="fw-semibold">{{ selected_conversation.contact.name|default:selected_conversation.contact.wa_id }}</div><div class="small text-secondary">+{{ selected_conversation.contact.wa_id }}</div></div></div>
-      <div class="wa-thread" id="waThread">
-        {% for message in thread_messages %}<div class="wa-row {{ message.direction }}"><div class="wa-bubble">{% if message.text %}{{ message.text }}{% else %}<span class="fst-italic text-secondary">{{ message.message_type|title }} message</span>{% endif %}<div class="wa-meta">{{ message.provider_timestamp|default:message.created_at|date:'d M, H:i' }}{% if message.direction == 'outbound' %} · {{ message.status }}{% endif %}</div>{% if message.error_message %}<div class="small text-danger">{{ message.error_message }}</div>{% endif %}</div></div>{% endfor %}
+    <div class="wa-chat-head">
+      <div class="wa-avatar">{{ selected_conversation.contact.name|default:selected_conversation.contact.wa_id|slice:':1'|upper }}</div>
+      <div class="min-w-0">
+        <div class="fw-semibold text-truncate">{{ selected_conversation.contact.name|default:selected_conversation.contact.wa_id }}</div>
+        <div class="small wa-muted text-truncate">+{{ selected_conversation.contact.wa_id }}</div>
       </div>
-      <form method="post" class="wa-compose d-flex gap-2 align-items-end">{% csrf_token %}<input type="hidden" name="pg" value="{{ pg.id }}"><input type="hidden" name="phone" value="{{ selected_conversation.contact.wa_id }}"><textarea class="form-control" name="message" rows="1" placeholder="Type a message" required></textarea><button class="btn btn-success rounded-circle" type="submit" aria-label="Send"><i class="bi bi-send-fill"></i></button></form>
-    {% else %}<div class="h-100 d-grid place-items-center text-center text-secondary p-5"><div><i class="bi bi-whatsapp display-2 text-success"></i><p class="mt-3">Choose a conversation or start a new one.</p></div></div>{% endif %}
+    </div>
+    <div class="wa-thread" id="waThread">
+      {% for message in thread_messages %}
+      <div class="wa-row {{ message.direction }}">
+        <div class="wa-bubble">
+          {% if message.text %}{{ message.text }}{% else %}<span class="fst-italic wa-muted">{{ message.message_type|title }} message</span>{% endif %}
+          <div class="wa-meta">{{ message.provider_timestamp|default:message.created_at|date:'d M, H:i' }}{% if message.direction == 'outbound' %} - {{ message.status }}{% endif %}</div>
+          {% if message.error_message %}<div class="small text-danger">{{ message.error_message }}</div>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <form method="post" class="wa-compose">
+      {% csrf_token %}
+      <input type="hidden" name="pg" value="{{ pg.id }}">
+      <input type="hidden" name="phone" value="{{ selected_conversation.contact.wa_id }}">
+      <button class="wa-icon-btn" type="button" disabled><i class="bi bi-emoji-smile fs-5"></i></button>
+      <textarea class="form-control" name="message" rows="1" placeholder="Type a message" required></textarea>
+      <button class="wa-icon-btn wa-send" type="submit" aria-label="Send"><i class="bi bi-send-fill"></i></button>
+    </form>
+    {% else %}
+    <div class="wa-empty">
+      <div>
+        <i class="bi bi-whatsapp display-2 text-success"></i>
+        <div class="h5 mt-3">WhatsApp Web</div>
+        <div class="wa-muted">Select a conversation or search a PG user to start messaging.</div>
+      </div>
+    </div>
+    {% endif %}
   </section>
 </div>
-<script>document.addEventListener('DOMContentLoaded',function(){var el=document.getElementById('waThread');if(el){el.scrollTop=el.scrollHeight;}});</script>
+
+<div class="modal fade" id="newMessageModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" class="modal-content">
+      {% csrf_token %}
+      <input type="hidden" name="pg" value="{{ pg.id }}">
+      <input type="hidden" name="user_id" id="waModalUserId">
+      <div class="modal-header">
+        <h2 class="modal-title h6 mb-0">Send WhatsApp Message</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <div class="wa-avatar" id="waModalAvatar"></div>
+          <div>
+            <div class="fw-semibold" id="waModalName"></div>
+            <div class="small wa-muted" id="waModalPhone"></div>
+          </div>
+        </div>
+        <textarea class="form-control" name="message" rows="4" placeholder="Type a message" required></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-success" type="submit"><i class="bi bi-send-fill me-1"></i>Send</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var thread = document.getElementById('waThread');
+  if (thread) thread.scrollTop = thread.scrollHeight;
+
+  var modalEl = document.getElementById('newMessageModal');
+  var modal = modalEl && window.bootstrap ? new bootstrap.Modal(modalEl) : null;
+  document.querySelectorAll('[data-wa-user]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      document.getElementById('waModalUserId').value = button.dataset.waUser || '';
+      document.getElementById('waModalName').textContent = button.dataset.waName || '';
+      document.getElementById('waModalPhone').textContent = button.dataset.waPhone || '';
+      document.getElementById('waModalAvatar').textContent = (button.dataset.waName || '?').slice(0, 1).toUpperCase();
+      if (modal) modal.show();
+    });
+  });
+});
+</script>
 {% endblock %}

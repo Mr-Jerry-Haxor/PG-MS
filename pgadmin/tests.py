@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from bookings.models import Booking, ResidentApplication
 from .models import PG, PGAdmin, WhatsAppCloudConfig, WhatsAppConversation, WhatsAppMessage
 from .whatsapp_cloud import WhatsAppCloudError, process_webhook_payload, send_cloud_message
 from .whatsapp_crypto import encrypt_secret
@@ -81,6 +82,59 @@ class WhatsAppCloudCoexistenceTests(TestCase):
         })
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'PG2 Secret Contact')
+
+    @patch('pgadmin.whatsapp_cloud.requests.post')
+    def test_pg_admin_can_search_pg_users_and_send_from_whatsapp_page(self, post):
+        self.config(self.pg1, 'phone-1', enable_whatsapp_messages=True)
+        tenant = get_user_model().objects.create_user(
+            username='tenant', email='tenant@example.com', password='x', first_name='Tenant'
+        )
+        booking = Booking.objects.create(user=tenant, pg=self.pg1, booking_type=Booking.DAYWISE)
+        ResidentApplication.objects.create(
+            booking=booking,
+            user=tenant,
+            pg=self.pg1,
+            name='Tenant One',
+            phone='99999 99999',
+            whatsapp_number='+91 99999 99999',
+        )
+        response = Mock(ok=True, status_code=200)
+        response.json.return_value = {'messages': [{'id': 'wamid.page'}]}
+        post.return_value = response
+
+        self.client.force_login(self.admin)
+        page = self.client.get(reverse('pg_whatsapp_conversations'), {
+            'pg': self.pg1.id,
+            'contact_q': 'Tenant',
+        })
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'Tenant One')
+
+        send_response = self.client.post(reverse('pg_whatsapp_conversations'), {
+            'pg': self.pg1.id,
+            'user_id': tenant.id,
+            'message': 'Hello from admin',
+        })
+        self.assertEqual(send_response.status_code, 302)
+        self.assertTrue(WhatsAppMessage.objects.filter(
+            pg=self.pg1,
+            conversation__contact__user=tenant,
+            direction=WhatsAppMessage.OUTBOUND,
+            text='Hello from admin',
+        ).exists())
+        self.assertEqual(post.call_args.kwargs['json']['to'], '919999999999')
+
+    def test_dashboard_replaces_manage_rooms_card_when_whatsapp_enabled(self):
+        self.config(self.pg1, 'phone-1', enable_whatsapp_messages=True)
+        self.admin.profile.is_pg_admin = True
+        self.admin.profile.save(update_fields=['is_pg_admin'])
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse('dashboard'), {'pg': self.pg1.id})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'WhatsApp')
+        self.assertContains(response, reverse('pg_whatsapp_conversations'))
+        self.assertNotContains(response, '>Manage Rooms</a>')
 
     def test_super_admin_configuration_page_handles_unconfigured_pgs(self):
         User = get_user_model()

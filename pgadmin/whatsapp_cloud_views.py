@@ -4,11 +4,13 @@ import logging
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
+from bookings.models import ResidentApplication
 from .models import PG, PGAdmin, WhatsAppCloudConfig, WhatsAppConversation
 from .whatsapp_cloud import WhatsAppCloudError, process_webhook_payload, send_cloud_message
 from .whatsapp_crypto import decrypt_secret
@@ -27,6 +29,42 @@ def _active_admin_pg(request):
 
 def _is_pg_admin(user):
     return bool(user.is_authenticated and PGAdmin.objects.filter(user=user).exists())
+
+
+def _pg_user_contacts(pg, query=''):
+    applications = ResidentApplication.objects.filter(pg=pg).select_related('user').order_by('name', 'user__email')
+    if query:
+        applications = applications.filter(
+            Q(name__icontains=query)
+            | Q(phone__icontains=query)
+            | Q(whatsapp_number__icontains=query)
+            | Q(user__email__icontains=query)
+            | Q(user__first_name__icontains=query)
+            | Q(user__last_name__icontains=query)
+        )
+    contacts = []
+    seen_users = set()
+    for application in applications:
+        phone = (application.whatsapp_number or application.phone or '').strip()
+        if not phone:
+            continue
+        user_id = application.user_id
+        if user_id in seen_users:
+            continue
+        seen_users.add(user_id)
+        display_name = (
+            (application.name or '').strip()
+            or application.user.get_full_name()
+            or application.user.email
+            or application.user.username
+        )
+        contacts.append({
+            'user_id': user_id,
+            'name': display_name,
+            'phone': phone,
+            'email': application.user.email,
+        })
+    return contacts[:50]
 
 
 @csrf_exempt
@@ -71,6 +109,13 @@ def whatsapp_conversations(request):
 
     if request.method == 'POST':
         phone = request.POST.get('phone', '')
+        user_id = request.POST.get('user_id', '')
+        if user_id:
+            application = ResidentApplication.objects.filter(pg=pg, user_id=user_id).select_related('user').first()
+            if not application:
+                messages.error(request, 'Selected contact is not part of this PG.')
+                return redirect(f"{request.path}?pg={pg.id}")
+            phone = application.whatsapp_number or application.phone or ''
         text = request.POST.get('message', '')
         try:
             sent = send_cloud_message(
@@ -96,6 +141,7 @@ def whatsapp_conversations(request):
         if selected.unread_count:
             selected.unread_count = 0
             selected.save(update_fields=['unread_count', 'updated_at'])
+    contact_search = (request.GET.get('contact_q') or '').strip()
     return render(request, 'pgadmin/whatsapp_conversations.html', {
         'pg': pg,
         'pgs': list(PG.objects.filter(admins__user=request.user).distinct().order_by('name')),
@@ -103,6 +149,8 @@ def whatsapp_conversations(request):
         'conversations': conversations,
         'selected_conversation': selected,
         'thread_messages': thread_messages,
+        'contact_search': contact_search,
+        'pg_user_contacts': _pg_user_contacts(pg, contact_search),
     })
 
 
