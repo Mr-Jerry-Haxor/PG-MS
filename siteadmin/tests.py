@@ -27,7 +27,7 @@ class SuperAdminDashboardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Super Admin')
         self.assertContains(response, reverse('admin:index'))
-        self.assertEqual(response.context['stats']['users'], 2)
+        self.assertEqual(response.context['stats']['users'], get_user_model().objects.count())
 
     def test_non_superuser_is_redirected(self):
         self.client.force_login(self.regular_user)

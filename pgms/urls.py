@@ -29,6 +29,7 @@ from core.views import (
     register_fcm_token,
     unregister_fcm_token,
 )
+from pgadmin.whatsapp_cloud_views import whatsapp_cloud_webhook
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -49,6 +50,7 @@ urlpatterns = [
     path('notifications/mark-all/', notifications_mark_all, name='notifications_mark_all'),
     path('notifications/fcm/register/', register_fcm_token, name='register_fcm_token'),
     path('notifications/fcm/unregister/', unregister_fcm_token, name='unregister_fcm_token'),
+    path('webhooks/whatsapp/cloud/', whatsapp_cloud_webhook, name='whatsapp_cloud_webhook'),
 ]
 
 # Serve media files in development

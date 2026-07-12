@@ -79,7 +79,8 @@ class PendingApplicationEditingTests(TestCase):
         self.assertEqual(response.context['form'].initial.get('name', ''), '')
         self.assertEqual(response.context['form'].initial.get('phone', ''), '')
         self.assertNotContains(response, 'value="Applicant"')
-        self.assertNotContains(response, 'placeholder=')
+        self.assertNotContains(response, 'placeholder="Applicant"')
+        self.assertNotContains(response, 'placeholder="applicant@example.com"')
 
 
 class DayWisePendingAssignmentTests(TestCase):

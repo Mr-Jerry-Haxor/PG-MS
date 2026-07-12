@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from core.models import TimeStampedModel
 from django.utils.text import slugify
+from django.db.models import Q
 
 
 class PG(TimeStampedModel):
@@ -49,6 +50,126 @@ class PGAdmin(TimeStampedModel):
 
 	def __str__(self):
 		return f"{self.user} ({self.pg})"
+
+
+class WhatsAppCloudConfig(TimeStampedModel):
+	"""Opt-in Cloud API configuration. Disabled means all legacy behaviour is retained."""
+	pg = models.OneToOneField(PG, on_delete=models.CASCADE, related_name='whatsapp_cloud_config')
+	enabled = models.BooleanField(default=False)
+	api_base_url = models.URLField(max_length=500, default='https://graph.facebook.com')
+	api_version = models.CharField(max_length=20, default='v25.0')
+	messages_endpoint = models.CharField(
+		max_length=700, blank=True,
+		help_text='Optional full endpoint. Use {phone_number_id} as a placeholder, or leave blank to derive it.'
+	)
+	phone_number_id = models.CharField(max_length=100, blank=True, null=True)
+	business_account_id = models.CharField(max_length=100, blank=True)
+	display_phone_number = models.CharField(max_length=30, blank=True)
+	template_language = models.CharField(max_length=20, default='en_US')
+	monthly_template_name = models.CharField(max_length=255, blank=True)
+	messages_template_name = models.CharField(max_length=255, blank=True)
+	leaving_template_name = models.CharField(max_length=255, blank=True)
+	compliance_template_name = models.CharField(max_length=255, blank=True)
+	access_token_encrypted = models.TextField(blank=True)
+	verify_token_encrypted = models.TextField(blank=True)
+	app_secret_encrypted = models.TextField(blank=True)
+	enable_monthly_dashboard = models.BooleanField(default=False)
+	enable_whatsapp_messages = models.BooleanField(default=False)
+	enable_leaving_page = models.BooleanField(default=False)
+	enable_compliance_page = models.BooleanField(default=False)
+
+	class Meta:
+		constraints = [
+			models.UniqueConstraint(
+				fields=['phone_number_id'],
+				condition=Q(phone_number_id__isnull=False) & ~Q(phone_number_id=''),
+				name='unique_whatsapp_cloud_phone_number_id',
+			),
+		]
+
+	def __str__(self):
+		return f"Cloud API for {self.pg}"
+
+	def section_enabled(self, section):
+		field = {
+			'monthly_dashboard': 'enable_monthly_dashboard',
+			'whatsapp_messages': 'enable_whatsapp_messages',
+			'leaving_page': 'enable_leaving_page',
+			'compliance_page': 'enable_compliance_page',
+		}.get(section)
+		return bool(self.enabled and field and getattr(self, field, False))
+
+	def template_for_section(self, section):
+		return {
+			'monthly_dashboard': self.monthly_template_name,
+			'whatsapp_messages': self.messages_template_name,
+			'leaving_page': self.leaving_template_name,
+			'compliance_page': self.compliance_template_name,
+		}.get(section, '')
+
+	@property
+	def resolved_messages_endpoint(self):
+		if self.messages_endpoint:
+			return self.messages_endpoint.replace('{phone_number_id}', self.phone_number_id or '')
+		return f"{self.api_base_url.rstrip('/')}/{self.api_version.strip('/')}/{self.phone_number_id}/messages"
+
+
+class WhatsAppContact(TimeStampedModel):
+	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='whatsapp_contacts')
+	wa_id = models.CharField(max_length=30)
+	name = models.CharField(max_length=200, blank=True)
+	user = models.ForeignKey(get_user_model(), on_delete=models.SET_NULL, null=True, blank=True, related_name='whatsapp_contacts')
+
+	class Meta:
+		constraints = [models.UniqueConstraint(fields=['pg', 'wa_id'], name='unique_whatsapp_contact_per_pg')]
+		indexes = [models.Index(fields=['pg', 'wa_id'])]
+
+	def __str__(self):
+		return self.name or self.wa_id
+
+
+class WhatsAppConversation(TimeStampedModel):
+	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='whatsapp_conversations')
+	contact = models.ForeignKey(WhatsAppContact, on_delete=models.CASCADE, related_name='conversations')
+	last_message_at = models.DateTimeField(null=True, blank=True)
+	unread_count = models.PositiveIntegerField(default=0)
+
+	class Meta:
+		constraints = [models.UniqueConstraint(fields=['pg', 'contact'], name='unique_whatsapp_conversation_per_pg')]
+		ordering = ['-last_message_at', '-updated_at']
+
+
+class WhatsAppMessage(TimeStampedModel):
+	INBOUND = 'inbound'
+	OUTBOUND = 'outbound'
+	DIRECTION_CHOICES = [(INBOUND, 'Inbound'), (OUTBOUND, 'Outbound')]
+	pg = models.ForeignKey(PG, on_delete=models.CASCADE, related_name='whatsapp_messages')
+	conversation = models.ForeignKey(WhatsAppConversation, on_delete=models.CASCADE, related_name='messages')
+	provider_message_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+	direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
+	message_type = models.CharField(max_length=30, default='text')
+	text = models.TextField(blank=True)
+	media_id = models.CharField(max_length=255, blank=True)
+	media_url = models.URLField(max_length=1000, blank=True)
+	status = models.CharField(max_length=30, default='received')
+	section = models.CharField(max_length=40, blank=True)
+	provider_timestamp = models.DateTimeField(null=True, blank=True)
+	sent_by = models.ForeignKey(get_user_model(), on_delete=models.SET_NULL, null=True, blank=True, related_name='sent_whatsapp_messages')
+	error_message = models.TextField(blank=True)
+	raw_payload = models.JSONField(default=dict, blank=True)
+
+	class Meta:
+		ordering = ['provider_timestamp', 'created_at']
+		indexes = [models.Index(fields=['pg', 'conversation', 'created_at']), models.Index(fields=['pg', 'status'])]
+
+
+class WhatsAppWebhookEvent(TimeStampedModel):
+	payload_hash = models.CharField(max_length=64, unique=True)
+	phone_number_id = models.CharField(max_length=100, blank=True)
+	pg = models.ForeignKey(PG, on_delete=models.SET_NULL, null=True, blank=True, related_name='whatsapp_webhook_events')
+	processed = models.BooleanField(default=False)
+	payload = models.JSONField(default=dict)
+	error_message = models.TextField(blank=True)
 
 
 class PGAdminPermission(TimeStampedModel):

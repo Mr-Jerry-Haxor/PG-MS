@@ -2357,6 +2357,26 @@
       });
     }
 
+    window.sendMonthlyWhatsapp = function(phone, message) {
+      {% if whatsapp_cloud_monthly_enabled %}
+      var match = document.cookie.match('(^|;)\\s*csrftoken\\s*=\\s*([^;]+)');
+      return fetch('{% url "pg_whatsapp_cloud_send" %}?pg={{ pg.id }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': match ? match.pop() : ''},
+        body: JSON.stringify({phone: phone, message: message, section: 'monthly_dashboard'})
+      }).then(function(response) {
+        return response.json().then(function(data) {
+          if (!response.ok || !data.ok) throw new Error(data.error || 'Unable to send WhatsApp message.');
+          showToast('WhatsApp message sent through Cloud API.', 'success');
+          return data;
+        });
+      }).catch(function(error) { showToast(error.message || 'Unable to send WhatsApp message.', 'danger'); throw error; });
+      {% else %}
+      window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(message), '_blank');
+      return Promise.resolve({legacy: true});
+      {% endif %}
+    };
+
     // WhatsApp reminder button click handler - builds URL with custom message
     document.querySelectorAll('.whatsapp-reminder-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
@@ -2395,9 +2415,7 @@
           message = window.getWhatsappMessageWithCustom(message);
         }
 
-        // Build WhatsApp URL
-        var url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(message);
-        window.open(url, '_blank');
+        window.sendMonthlyWhatsapp(phone, message);
       });
     });
 
@@ -2888,9 +2906,7 @@
     waSendBtn.addEventListener('click', function() {
       var msg = document.getElementById('whatsappConfirmMessage').value || '';
       if (waPhoneStore && msg.trim()) {
-        var url = 'https://wa.me/' + waPhoneStore + '?text=' + encodeURIComponent(msg);
-        console.log('Opening WhatsApp URL:', url);
-        window.open(url, '_blank');
+        window.sendMonthlyWhatsapp(waPhoneStore, msg);
       } else {
         console.warn('No phone or message to send');
       }

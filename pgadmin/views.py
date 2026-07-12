@@ -5640,6 +5640,10 @@ def leaving_requests(request):
         'pgs': list(_admin_pgs(request.user)),
         'leave_requests': leave_requests,
         'today': today,
+        'whatsapp_cloud_leaving_enabled': bool(
+            getattr(pg, 'whatsapp_cloud_config', None)
+            and pg.whatsapp_cloud_config.section_enabled('leaving_page')
+        ),
     }
     
     return render(request, 'pgadmin/leaving_requests_enhanced.html', context)

@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import complaint_views
+from . import whatsapp_cloud_views
 
 
 urlpatterns = [
@@ -72,6 +73,8 @@ urlpatterns = [
     path('whatsapp/', views.whatsapp_management, name='pg_whatsapp_management'),
     path('whatsapp/mark-sent/<int:booking_id>/', views.whatsapp_mark_sent, name='pg_whatsapp_mark_sent'),
     path('whatsapp/stats/', views.whatsapp_stats, name='pg_whatsapp_stats'),
+    path('whatsapp/messages/', whatsapp_cloud_views.whatsapp_conversations, name='pg_whatsapp_conversations'),
+    path('whatsapp/cloud/send/', whatsapp_cloud_views.whatsapp_cloud_send, name='pg_whatsapp_cloud_send'),
     
     # Complaint management
     path('complaints/', complaint_views.admin_complaints, name='admin_complaints'),

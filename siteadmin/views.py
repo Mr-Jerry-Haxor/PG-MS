@@ -6,12 +6,13 @@ from django.db.models import Count, Q, Sum
 from django.db import transaction
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.urls import reverse
 import json
 
-from pgadmin.models import PG, PGAdmin, PGAdminPermission
+from pgadmin.models import PG, PGAdmin, PGAdminPermission, WhatsAppCloudConfig
 from bookings.models import Booking, ResidentApplication, ApplicationStatusHistory, RoomShareStatus, RoomSwap, ReferralCredit
 from finance.models import Payment, Expenditure
-from pgadmin.forms import PGForm
+from pgadmin.forms import PGForm, WhatsAppCloudConfigForm
 from core.drive import drive_delete, extract_drive_file_id
 from core.audit import log
 
@@ -21,6 +22,38 @@ def _require_site_admin(user):
     if getattr(user, 'is_superuser', False):
         return True
     return hasattr(user, 'profile') and user.profile.is_website_admin and user.profile.status == 'active'
+
+
+@login_required
+def whatsapp_cloud_configs(request):
+    if not request.user.is_superuser:
+        messages.error(request, 'Super Admin access required.')
+        return redirect('dashboard')
+    items = PG.objects.select_related('whatsapp_cloud_config').order_by('name')
+    return render(request, 'siteadmin/whatsapp_cloud_configs.html', {'items': items})
+
+
+@login_required
+def whatsapp_cloud_config_edit(request, pg_id):
+    if not request.user.is_superuser:
+        messages.error(request, 'Super Admin access required.')
+        return redirect('dashboard')
+    pg = get_object_or_404(PG, pk=pg_id)
+    config, _ = WhatsAppCloudConfig.objects.get_or_create(pg=pg)
+    if request.method == 'POST':
+        form = WhatsAppCloudConfigForm(request.POST, instance=config)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'WhatsApp Cloud API configuration updated for {pg.name}.')
+            return redirect('sa_whatsapp_cloud_configs')
+    else:
+        form = WhatsAppCloudConfigForm(instance=config)
+    return render(request, 'siteadmin/whatsapp_cloud_config_form.html', {
+        'pg': pg,
+        'config': config,
+        'form': form,
+        'callback_url': request.build_absolute_uri(reverse('whatsapp_cloud_webhook')),
+    })
 
 
 @login_required

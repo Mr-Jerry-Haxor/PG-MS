@@ -1529,8 +1529,18 @@ document.addEventListener('DOMContentLoaded', function() {
       const checkoutDate = leaveDate || 'the confirmed date';
       const advanceEligible = this.dataset.advanceEligible || 'No';
       const message = buildLeaveWhatsappMessage(tenantName, checkoutDate, advanceEligible);
+      {% if whatsapp_cloud_leaving_enabled %}
+      fetch('{% url "pg_whatsapp_cloud_send" %}?pg={{ pg.id }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+        body: JSON.stringify({phone: rawPhone, message: message, section: 'leaving_page'})
+      }).then(r => r.json().then(data => {
+        if (!r.ok || !data.ok) throw new Error(data.error || 'Unable to send WhatsApp message.');
+      })).catch(error => alert(error.message || 'Unable to send WhatsApp message.'));
+      {% else %}
       const whatsappUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, '_blank');
+      {% endif %}
     });
   });
 
@@ -1550,8 +1560,18 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
 
+      {% if whatsapp_cloud_leaving_enabled %}
+      fetch('{% url "pg_whatsapp_cloud_send" %}?pg={{ pg.id }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+        body: JSON.stringify({phone: rawPhone, message: message, section: 'leaving_page'})
+      }).then(r => r.json().then(data => {
+        if (!r.ok || !data.ok) throw new Error(data.error || 'Unable to send WhatsApp message.');
+      })).catch(error => alert(error.message || 'Unable to send WhatsApp message.'));
+      {% else %}
       const whatsappUrl = `https://wa.me/${rawPhone}?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, '_blank');
+      {% endif %}
 
       // Capture send from confirm-modal as first tick.
       if (bookingId) {

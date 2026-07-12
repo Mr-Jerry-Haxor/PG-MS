@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}WhatsApp Cloud API — {{ pg.name }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div><h1 class="h4 mb-1">WhatsApp Cloud API — {{ pg.name }}</h1><p class="text-secondary mb-0">Cloud mode is opt-in and section-specific.</p></div>
+  <a class="btn btn-outline-secondary" href="{% url 'sa_whatsapp_cloud_configs' %}">All configurations</a>
+</div>
+<form method="post" novalidate>{% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <div class="form-check form-switch">{{ form.enabled }}<label class="form-check-label fw-semibold" for="{{ form.enabled.id_for_label }}">Enable Cloud Business API coexistence for this PG</label></div>
+    <div class="form-text">When off, every section continues to use the existing WhatsApp implementation.</div>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-header bg-transparent fw-semibold">Cloud API endpoints and identifiers</div><div class="card-body row g-3">
+    <div class="col-md-8"><label class="form-label">API base URL</label>{{ form.api_base_url }}{{ form.api_base_url.errors }}</div>
+    <div class="col-md-4"><label class="form-label">API version</label>{{ form.api_version }}{{ form.api_version.errors }}</div>
+    <div class="col-12"><label class="form-label">Messages endpoint override</label>{{ form.messages_endpoint }}<div class="form-text">Optional. Use <code>{phone_number_id}</code> as a placeholder, or leave blank to derive the endpoint.</div>{{ form.messages_endpoint.errors }}</div>
+    <div class="col-md-4"><label class="form-label">Phone number ID</label>{{ form.phone_number_id }}{{ form.phone_number_id.errors }}</div>
+    <div class="col-md-4"><label class="form-label">WhatsApp Business Account ID</label>{{ form.business_account_id }}{{ form.business_account_id.errors }}</div>
+    <div class="col-md-4"><label class="form-label">Display phone number</label>{{ form.display_phone_number }}{{ form.display_phone_number.errors }}</div>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-header bg-transparent fw-semibold">Credentials and main webhook</div><div class="card-body row g-3">
+    <div class="col-12"><label class="form-label">Main callback URL</label><div class="input-group"><input class="form-control" value="{{ callback_url }}" readonly><button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText('{{ callback_url|escapejs }}')">Copy</button></div><div class="form-text">Register this callback in Meta. Incoming messages are isolated by Phone Number ID.</div></div>
+    <div class="col-md-4"><label class="form-label">Access token</label>{{ form.access_token }}<div class="form-text">{% if config.access_token_encrypted %}Stored; leave blank to keep it.{% else %}Not configured.{% endif %}</div>{{ form.access_token.errors }}</div>
+    <div class="col-md-4"><label class="form-label">Webhook verify token</label>{{ form.verify_token }}<div class="form-text">{% if config.verify_token_encrypted %}Stored; leave blank to keep it.{% else %}Not configured.{% endif %}</div>{{ form.verify_token.errors }}</div>
+    <div class="col-md-4"><label class="form-label">Meta app secret</label>{{ form.app_secret }}<div class="form-text">{% if config.app_secret_encrypted %}Stored; leave blank to keep it.{% else %}Not configured.{% endif %}</div>{{ form.app_secret.errors }}</div>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-header bg-transparent fw-semibold">Section routing</div><div class="card-body row g-3">
+    <div class="col-md-6"><div class="form-check form-switch">{{ form.enable_monthly_dashboard }}<label class="form-check-label" for="{{ form.enable_monthly_dashboard.id_for_label }}">Monthly Dashboard</label></div></div>
+    <div class="col-md-6"><div class="form-check form-switch">{{ form.enable_whatsapp_messages }}<label class="form-check-label" for="{{ form.enable_whatsapp_messages.id_for_label }}">WhatsApp Messages</label></div></div>
+    <div class="col-md-6"><div class="form-check form-switch">{{ form.enable_leaving_page }}<label class="form-check-label" for="{{ form.enable_leaving_page.id_for_label }}">Leaving Page</label></div></div>
+    <div class="col-md-6"><div class="form-check form-switch">{{ form.enable_compliance_page }}<label class="form-check-label" for="{{ form.enable_compliance_page.id_for_label }}">Compliance Page</label></div></div>
+  </div></div>
+  <div class="card border-0 shadow-sm mb-3"><div class="card-header bg-transparent fw-semibold">Optional approved templates</div><div class="card-body row g-3">
+    <div class="col-md-4"><label class="form-label">Template language</label>{{ form.template_language }}<div class="form-text">For example, en_US.</div></div>
+    <div class="col-md-4"><label class="form-label">Monthly Dashboard template</label>{{ form.monthly_template_name }}</div>
+    <div class="col-md-4"><label class="form-label">WhatsApp Messages template</label>{{ form.messages_template_name }}</div>
+    <div class="col-md-4"><label class="form-label">Leaving Page template</label>{{ form.leaving_template_name }}</div>
+    <div class="col-md-4"><label class="form-label">Compliance Page template</label>{{ form.compliance_template_name }}</div>
+    <div class="col-12 form-text">When set, the complete generated message (including the Monthly Dashboard custom message) is sent as the first body parameter. Use an approved template containing a matching body variable for business-initiated messages outside the customer-service window.</div>
+  </div></div>
+  <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{% url 'sa_whatsapp_cloud_configs' %}">Cancel</a><button class="btn btn-success" type="submit">Save configuration</button></div>
+</form>
+{% endblock %}

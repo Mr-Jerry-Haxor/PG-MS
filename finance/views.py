@@ -2286,6 +2286,10 @@ def monthly_dashboard(request):
         'current_sort': sort_key,
         'current_dir': sort_dir,
         'filter_only': only,
+        'whatsapp_cloud_monthly_enabled': bool(
+            getattr(pg, 'whatsapp_cloud_config', None)
+            and pg.whatsapp_cloud_config.section_enabled('monthly_dashboard')
+        ),
     })
 
 

@@ -434,6 +434,12 @@ def dashboard(request):
 			"leaving_shares": leaving,
 			"total_shares": total,
 		})
+		try:
+			ctx['whatsapp_cloud_messages_enabled'] = bool(
+				pg and pg.whatsapp_cloud_config.section_enabled('whatsapp_messages')
+			)
+		except Exception:
+			ctx['whatsapp_cloud_messages_enabled'] = False
 	
 	# Check if user (PG admin) has employee access permission
 	# This runs for ANY user who is actually a PG Admin (via PGAdmin records)

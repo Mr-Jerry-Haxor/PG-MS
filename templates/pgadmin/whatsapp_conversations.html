@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}WhatsApp Messages • {{ pg.name }}{% endblock %}
+{% block extra_head %}
+<style>
+  .wa-shell{height:calc(100vh - 155px);min-height:570px;background:#efeae2;border-radius:16px;overflow:hidden;display:grid;grid-template-columns:340px 1fr;border:1px solid #d7d7d7}
+  .wa-sidebar{background:#fff;border-right:1px solid #ddd;overflow-y:auto}.wa-sidebar-head,.wa-chat-head{background:#f0f2f5;padding:12px 16px}
+  .wa-contact{display:block;padding:12px 16px;color:#111;text-decoration:none;border-bottom:1px solid #f0f0f0}.wa-contact:hover,.wa-contact.active{background:#f0f2f5}
+  .wa-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#d9fdd3;color:#087c53;font-weight:700;flex:none}
+  .wa-chat{display:flex;min-width:0;flex-direction:column}.wa-thread{flex:1;overflow-y:auto;padding:24px 6%;background-color:#efeae2;background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:12px 12px}
+  .wa-row{display:flex;margin:5px 0}.wa-row.outbound{justify-content:flex-end}.wa-bubble{max-width:75%;padding:7px 10px 5px;border-radius:8px;background:#fff;box-shadow:0 1px 1px rgba(0,0,0,.12);white-space:pre-wrap;overflow-wrap:anywhere}.wa-row.outbound .wa-bubble{background:#d9fdd3}
+  .wa-meta{font-size:.67rem;color:#667781;text-align:right;margin-top:3px}.wa-compose{background:#f0f2f5;padding:10px 14px}.wa-compose textarea{resize:none;border-radius:20px}.wa-new{padding:12px;border-bottom:1px solid #ddd}
+  @media(max-width:767px){.wa-shell{grid-template-columns:1fr;height:auto;min-height:0}.wa-sidebar{max-height:280px}.wa-chat{min-height:580px}.wa-bubble{max-width:88%}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div><h1 class="h5 mb-0"><i class="bi bi-whatsapp text-success me-1"></i>WhatsApp Messages</h1><div class="small text-secondary">{{ pg.name }} · {{ cloud_config.display_phone_number|default:'Cloud number' }}</div></div>
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'dashboard' %}?pg={{ pg.id }}">Dashboard</a>
+</div>
+<div class="wa-shell">
+  <aside class="wa-sidebar">
+    <div class="wa-sidebar-head fw-semibold">Conversations</div>
+    <form method="post" class="wa-new">{% csrf_token %}<input type="hidden" name="pg" value="{{ pg.id }}">
+      <label class="small text-secondary">Start a conversation</label>
+      <input class="form-control form-control-sm my-1" name="phone" inputmode="tel" placeholder="Phone with country code" required>
+      <textarea class="form-control form-control-sm mb-1" name="message" rows="2" placeholder="Message" required></textarea>
+      <button class="btn btn-success btn-sm w-100" type="submit">Send</button>
+    </form>
+    {% for conversation in conversations %}
+      <a class="wa-contact {% if selected_conversation.id == conversation.id %}active{% endif %}" href="?pg={{ pg.id }}&conversation={{ conversation.id }}">
+        <div class="d-flex gap-2 align-items-center"><div class="wa-avatar">{{ conversation.contact.name|default:conversation.contact.wa_id|slice:':1'|upper }}</div><div class="min-w-0 flex-grow-1"><div class="d-flex justify-content-between"><span class="fw-semibold text-truncate">{{ conversation.contact.name|default:conversation.contact.wa_id }}</span><small class="text-secondary">{{ conversation.last_message_at|date:'d M' }}</small></div><div class="small text-secondary text-truncate">{{ conversation.contact.wa_id }}</div></div>{% if conversation.unread_count %}<span class="badge rounded-pill bg-success">{{ conversation.unread_count }}</span>{% endif %}</div>
+      </a>
+    {% empty %}<div class="p-4 text-center text-secondary small">No conversations yet.</div>{% endfor %}
+  </aside>
+  <section class="wa-chat">
+    {% if selected_conversation %}
+      <div class="wa-chat-head d-flex align-items-center gap-2"><div class="wa-avatar">{{ selected_conversation.contact.name|default:selected_conversation.contact.wa_id|slice:':1'|upper }}</div><div><div class="fw-semibold">{{ selected_conversation.contact.name|default:selected_conversation.contact.wa_id }}</div><div class="small text-secondary">+{{ selected_conversation.contact.wa_id }}</div></div></div>
+      <div class="wa-thread" id="waThread">
+        {% for message in thread_messages %}<div class="wa-row {{ message.direction }}"><div class="wa-bubble">{% if message.text %}{{ message.text }}{% else %}<span class="fst-italic text-secondary">{{ message.message_type|title }} message</span>{% endif %}<div class="wa-meta">{{ message.provider_timestamp|default:message.created_at|date:'d M, H:i' }}{% if message.direction == 'outbound' %} · {{ message.status }}{% endif %}</div>{% if message.error_message %}<div class="small text-danger">{{ message.error_message }}</div>{% endif %}</div></div>{% endfor %}
+      </div>
+      <form method="post" class="wa-compose d-flex gap-2 align-items-end">{% csrf_token %}<input type="hidden" name="pg" value="{{ pg.id }}"><input type="hidden" name="phone" value="{{ selected_conversation.contact.wa_id }}"><textarea class="form-control" name="message" rows="1" placeholder="Type a message" required></textarea><button class="btn btn-success rounded-circle" type="submit" aria-label="Send"><i class="bi bi-send-fill"></i></button></form>
+    {% else %}<div class="h-100 d-grid place-items-center text-center text-secondary p-5"><div><i class="bi bi-whatsapp display-2 text-success"></i><p class="mt-3">Choose a conversation or start a new one.</p></div></div>{% endif %}
+  </section>
+</div>
+<script>document.addEventListener('DOMContentLoaded',function(){var el=document.getElementById('waThread');if(el){el.scrollTop=el.scrollHeight;}});</script>
+{% endblock %}

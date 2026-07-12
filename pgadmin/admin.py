@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import PG, PGAdmin, PGAdminPermission, Complaint, ComplaintComment, ComplaintMedia, OldTenant
+from .models import (
+	PG, PGAdmin, PGAdminPermission, Complaint, ComplaintComment, ComplaintMedia, OldTenant,
+	WhatsAppCloudConfig, WhatsAppContact, WhatsAppConversation, WhatsAppMessage,
+)
 
 
 @admin.register(PG)
@@ -134,4 +137,33 @@ class OldTenantAdmin(admin.ModelAdmin):
 			"classes": ("collapse",)
 		}),
 	)
+
+
+@admin.register(WhatsAppCloudConfig)
+class WhatsAppCloudConfigAdmin(admin.ModelAdmin):
+	list_display = ('pg', 'enabled', 'display_phone_number', 'enable_monthly_dashboard', 'enable_whatsapp_messages')
+	list_filter = ('enabled', 'enable_monthly_dashboard', 'enable_whatsapp_messages', 'enable_leaving_page')
+	search_fields = ('pg__name', 'display_phone_number', 'phone_number_id')
+	exclude = ('access_token_encrypted', 'verify_token_encrypted', 'app_secret_encrypted')
+
+
+@admin.register(WhatsAppContact)
+class WhatsAppContactAdmin(admin.ModelAdmin):
+	list_display = ('name', 'wa_id', 'pg', 'user')
+	search_fields = ('name', 'wa_id', 'pg__name')
+	list_filter = ('pg',)
+
+
+@admin.register(WhatsAppConversation)
+class WhatsAppConversationAdmin(admin.ModelAdmin):
+	list_display = ('contact', 'pg', 'last_message_at', 'unread_count')
+	list_filter = ('pg',)
+
+
+@admin.register(WhatsAppMessage)
+class WhatsAppMessageAdmin(admin.ModelAdmin):
+	list_display = ('conversation', 'pg', 'direction', 'message_type', 'status', 'created_at')
+	list_filter = ('pg', 'direction', 'message_type', 'status')
+	search_fields = ('provider_message_id', 'text', 'conversation__contact__wa_id')
+	readonly_fields = ('raw_payload',)
 
