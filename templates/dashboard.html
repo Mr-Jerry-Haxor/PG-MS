@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 {% block title %}Dashboard • PG-MS{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -390,11 +391,11 @@
         <div class="month-metrics">
           <div class="month-chip">
             <div class="month-chip-title">Income</div>
-            <div class="month-chip-value"><i class="bi bi-graph-up-arrow"></i><span>₹ {{ month_income|default:0|floatformat:2 }}</span></div>
+            <div class="month-chip-value"><i class="bi bi-graph-up-arrow"></i><span>₹ {{ month_income|default:0|indian_currency }}</span></div>
           </div>
             <div class="month-chip">
               <div class="month-chip-title">Expense</div>
-              <div class="month-chip-value"><i class="bi bi-cash-stack"></i><span>₹ {{ month_expense|default:0|floatformat:2 }}</span></div>
+              <div class="month-chip-value"><i class="bi bi-cash-stack"></i><span>₹ {{ month_expense|default:0|indian_currency }}</span></div>
             </div>
         </div>
       </div>
@@ -1727,9 +1728,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 <tr>
                   <td>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</td>
                   <td>{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}{% else %}—{% endif %}</td>
-                  <td>₹ {{ c.amount|floatformat:2 }}</td>
+                  <td>₹ {{ c.amount|indian_currency }}</td>
                   <td>{% if c.scheduled_month %}{{ c.scheduled_month|date:'M Y' }}{% else %}—{% endif %}</td>
-                  <td>{% if c.redeemed_on %}Yes (₹ {{ c.redeemed_amount|default:c.amount|floatformat:2 }}){% else %}No{% endif %}</td>
+                  <td>{% if c.redeemed_on %}Yes (₹ {{ c.redeemed_amount|default:c.amount|indian_currency }}){% else %}No{% endif %}</td>
                   <td>{{ c.notes|default:'—' }}</td>
                   <td>{{ c.created_at|date:'Y-m-d' }}</td>
                 </tr>

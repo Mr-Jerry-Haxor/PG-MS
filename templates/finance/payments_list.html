@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load tz %}
+{% load tz currency %}
 {% block title %}Payments • PG-MS{% endblock %}
 {% block content %}
 <style>
@@ -269,9 +269,9 @@
             <div class="small text-muted">{{ i.user.email }}</div>
           </td>
           <td class="col-room">{% if i.booking and i.booking.room %}{{ i.booking.room.room_no }}{% elif i.room_no %}{{ i.room_no }}{% else %}—{% endif %}</td>
-          <td class="nowrap">₹ {{ i.amount }}</td>
-          <td class="nowrap col-upi">{% if i.upi_amount %}₹ {{ i.upi_amount }}{% else %}—{% endif %}</td>
-          <td class="nowrap col-cash">{% if i.cash_amount %}₹ {{ i.cash_amount }}{% else %}—{% endif %}</td>
+          <td class="nowrap">₹ {{ i.amount|indian_currency }}</td>
+          <td class="nowrap col-upi">{% if i.upi_amount %}₹ {{ i.upi_amount|indian_currency }}{% else %}—{% endif %}</td>
+          <td class="nowrap col-cash">{% if i.cash_amount %}₹ {{ i.cash_amount|indian_currency }}{% else %}—{% endif %}</td>
           <td>{{ i.date }}<br><span class="text-muted" style="font-size:0.7rem;">{% timezone "Asia/Kolkata" %}{{ i.created_at|time:"h:i A" }} IST{% endtimezone %}</span></td>
           <td>
             {% if i.mode == 'upi' %}
@@ -570,11 +570,12 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
     
-    document.getElementById('totalAmount').textContent = `₹ ${totalAmount.toFixed(2)}`;
-    document.getElementById('upiTotal').textContent = `₹ ${upiTotal.toFixed(2)}`;
-    document.getElementById('cashTotal').textContent = `₹ ${cashTotal.toFixed(2)}`;
-    document.getElementById('mixedUpi').textContent = `₹ ${mixedUpi.toFixed(2)}`;
-    document.getElementById('mixedCash').textContent = `₹ ${mixedCash.toFixed(2)}`;
+    const formatIndianAmount = value => Number(value || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('totalAmount').textContent = `₹ ${formatIndianAmount(totalAmount)}`;
+    document.getElementById('upiTotal').textContent = `₹ ${formatIndianAmount(upiTotal)}`;
+    document.getElementById('cashTotal').textContent = `₹ ${formatIndianAmount(cashTotal)}`;
+    document.getElementById('mixedUpi').textContent = `₹ ${formatIndianAmount(mixedUpi)}`;
+    document.getElementById('mixedCash').textContent = `₹ ${formatIndianAmount(mixedCash)}`;
     
     document.getElementById('totalCount').textContent = totalCount;
     document.getElementById('upiCount').textContent = upiCount;

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 
 {% block title %}My Payments • PG-MS{% endblock %}
 
@@ -63,7 +64,7 @@
     {% if payment_rows %}
     <div class="text-md-end d-flex align-items-center gap-2">
       <!-- <div class="text-end me-2">
-        <div class="fs-5 fw-semibold text-primary">₹ {{ total_success|floatformat:2 }}</div>
+        <div class="fs-5 fw-semibold text-primary">₹ {{ total_success|indian_currency }}</div>
         <small class="text-muted">Total successful payments</small>
       </div> -->
       <div class="btn-group btn-group-sm" role="group" aria-label="Sort payments">
@@ -238,16 +239,16 @@
                         </tr>
                         <tr>
                           <td>Credit Amount</td>
-                          <td>₹ {{ c.amount }}</td>
+                          <td>₹ {{ c.amount|indian_currency }}</td>
                         </tr>
                         <tr>
                           <td>Applied / Redeemed</td>
-                          <td>₹ {{ c.redeemed_amount }}{% if c.notes %} · {{ c.notes }}{% endif %}</td>
+                          <td>₹ {{ c.redeemed_amount|indian_currency }}{% if c.notes %} · {{ c.notes }}{% endif %}</td>
                         </tr>
                       {% endfor %}
                       <tr>
                         <td><strong>Total Applied</strong></td>
-                        <td class="text-success">-₹ {{ row.receipt.referral_total }}</td>
+                        <td class="text-success">-₹ {{ row.receipt.referral_total|indian_currency }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -255,7 +256,7 @@
 
                 <div class="amount-highlight">
                   <span>Amount Paid</span>
-                  <strong>₹ {{ row.receipt.amount_paid }}</strong>
+                  <strong>₹ {{ row.receipt.amount_paid|indian_currency }}</strong>
                 </div>
 
                 <div class="receipt-notes">

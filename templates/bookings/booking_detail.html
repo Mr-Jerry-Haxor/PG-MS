@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 {% block title %}Booking Detail • PG-MS{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -28,7 +29,7 @@
     <div><strong>Check-out Time:</strong> {% if booking.end_time %}{{ booking.end_time|date:"g:i A" }}{% else %}—{% endif %}</div>
     <div><strong>Purpose:</strong> {{ booking.purpose|default:"—" }}</div>
     <div><strong>Payment Received:</strong> {{ booking.payment_received|yesno:"Yes,No" }}</div>
-    {% if booking.payment_amount %}<div><strong>Payment Amount:</strong> ₹{{ booking.payment_amount }}</div>{% endif %}
+    {% if booking.payment_amount %}<div><strong>Payment Amount:</strong> ₹{{ booking.payment_amount|indian_currency }}</div>{% endif %}
     {% endif %}
   </div>
 </div>

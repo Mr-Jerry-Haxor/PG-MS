@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static currency %}
 
 {% block title %}Old Tenants • {{ pg.name }}{% endblock %}
 
@@ -854,10 +854,10 @@
           <div class="accordion-body bg-light small pt-3 pb-3">
             <dl class="row mb-0 gy-2">
               <dt class="col-sm-5 text-muted fw-normal">Advance Paid</dt>
-              <dd class="col-sm-7 fw-medium text-success">₹{{ tenant.advance_paid|default:"0.00" }}</dd>
+              <dd class="col-sm-7 fw-medium text-success">₹{{ tenant.advance_paid|default:"0.00"|indian_currency }}</dd>
               
               <dt class="col-sm-5 text-muted fw-normal">Deposit Returned</dt>
-              <dd class="col-sm-7 fw-medium text-primary">₹{{ tenant.advance_returned|default:"0.00" }}</dd>
+              <dd class="col-sm-7 fw-medium text-primary">₹{{ tenant.advance_returned|default:"0.00"|indian_currency }}</dd>
               
               <dt class="col-sm-5 text-muted fw-normal">Reason to leave</dt>
               <dd class="col-sm-7 fw-medium text-dark">{{ tenant.leaving_reason|default:"-" }}</dd>

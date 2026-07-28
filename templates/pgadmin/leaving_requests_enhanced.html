@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static currency %}
 
 {% block title %}Leave Requests • {{ pg.name }}{% endblock %}
 
@@ -471,7 +471,7 @@
                   {% if booking.advance_returned %}
                     <div class="small">
                       <span class="badge bg-info">Returned</span><br>
-                      <span class="text-muted">₹{{ booking.advance_returned_amount }}</span>
+                      <span class="text-muted">₹{{ booking.advance_returned_amount|indian_currency }}</span>
                       <button class="btn btn-sm btn-link p-0 ms-1 edit-advance-amount-btn" data-booking-id="{{ booking.id }}" data-current-amount="{{ booking.advance_returned_amount }}" data-advance-paid="{{ booking.advance_paid }}" title="Edit amount">
                         <i class="bi bi-pencil"></i>
                       </button><br>
@@ -487,7 +487,7 @@
                   {% if booking.advance_returned %}
                     <div class="small">
                       <span class="badge bg-info">Returned</span><br>
-                      <span class="text-muted">₹{{ booking.advance_returned_amount }}</span>
+                      <span class="text-muted">₹{{ booking.advance_returned_amount|indian_currency }}</span>
                       <button class="btn btn-sm btn-link p-0 ms-1 edit-advance-amount-btn" data-booking-id="{{ booking.id }}" data-current-amount="{{ booking.advance_returned_amount }}" data-advance-paid="{{ booking.advance_paid }}" title="Edit amount">
                         <i class="bi bi-pencil"></i>
                       </button><br>
@@ -677,7 +677,7 @@
                 <span class="badge bg-secondary">✗ Not Eligible</span>
               {% endif %}
               {% if booking.advance_returned %}
-                <span class="badge bg-info ms-1">Returned ₹{{ booking.advance_returned_amount }}</span>
+                <span class="badge bg-info ms-1">Returned ₹{{ booking.advance_returned_amount|indian_currency }}</span>
                 <button class="btn btn-sm btn-link p-0 ms-1 edit-advance-amount-btn" data-booking-id="{{ booking.id }}" data-current-amount="{{ booking.advance_returned_amount }}" data-advance-paid="{{ booking.advance_paid }}" title="Edit">
                   <i class="bi bi-pencil" style="font-size:0.7rem;"></i>
                 </button>
@@ -1116,18 +1116,23 @@ function saveLeaveDate() {
   });
 }
 
+function formatIndianAmount(value) {
+  return Number(value || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
 function markAdvanceReturned(bookingId, advancePaid, isEligible) {
+  const displayedAdvance = formatIndianAmount(advancePaid);
   document.getElementById('advanceBookingId').value = bookingId;
-  document.getElementById('originalAdvance').textContent = advancePaid;
+  document.getElementById('originalAdvance').textContent = displayedAdvance;
   
   // For eligible: pre-fill with full advance amount
   // For not eligible: pre-fill with 0 and show advance paid instead of "original advance"
   if (isEligible === 'true' || isEligible === true) {
     document.getElementById('advanceAmount').value = 0;
-    document.getElementById('advanceHelpText').innerHTML = 'Advance paid: ₹<span id="originalAdvance">' + advancePaid + '</span>';
+    document.getElementById('advanceHelpText').innerHTML = 'Advance paid: ₹<span id="originalAdvance">' + displayedAdvance + '</span>';
   } else {
     document.getElementById('advanceAmount').value = 0;
-    document.getElementById('advanceHelpText').innerHTML = 'Advance paid: ₹<span id="originalAdvance">' + advancePaid + '</span> (Not eligible for return)';
+    document.getElementById('advanceHelpText').innerHTML = 'Advance paid: ₹<span id="originalAdvance">' + displayedAdvance + '</span> (Not eligible for return)';
   }
   
   const modal = new bootstrap.Modal(document.getElementById('markAdvanceModal'));
@@ -1174,8 +1179,8 @@ function saveAdvanceReturn() {
 function editAdvanceAmount(bookingId, currentAmount, advancePaid) {
   document.getElementById('editAdvanceBookingId').value = bookingId;
   document.getElementById('editAdvanceAmount').value = currentAmount;
-  document.getElementById('editOriginalAdvance').textContent = advancePaid;
-  document.getElementById('currentReturnedAmount').textContent = currentAmount;
+  document.getElementById('editOriginalAdvance').textContent = formatIndianAmount(advancePaid);
+  document.getElementById('currentReturnedAmount').textContent = formatIndianAmount(currentAmount);
   
   const modal = new bootstrap.Modal(document.getElementById('editAdvanceAmountModal'));
   modal.show();

@@ -2862,6 +2862,85 @@ def room_edit(request, pk):
 
 
 @login_required
+@transaction.atomic
+def room_delete(request, pk):
+    if not _require_pg_admin(request.user):
+        messages.error(request, "PG Admin access required.")
+        return redirect('dashboard')
+
+    room = get_object_or_404(Room.objects.select_related('pg'), pk=pk)
+    if not _admin_pgs(request.user).filter(id=room.pg_id).exists():
+        messages.error(request, "PG Admin access required for this PG.")
+        return redirect('dashboard')
+
+    bookings = list(
+        Booking.objects.filter(room=room)
+        .select_related('user')
+        .order_by('-created_at')
+    )
+    active_statuses = {Booking.PENDING, Booking.APPROVED}
+    active_bookings = [booking for booking in bookings if booking.status in active_statuses]
+    historical_bookings = [booking for booking in bookings if booking.status not in active_statuses]
+    applications = list(
+        ResidentApplication.objects.filter(room=room)
+        .select_related('user', 'booking')
+        .order_by('-created_at')
+    )
+    swaps = list(
+        RoomSwap.objects.filter(Q(from_room=room) | Q(to_room=room))
+        .select_related('booking__user', 'from_room', 'to_room')
+        .distinct()
+        .order_by('-requested_at')
+    )
+    pending_swaps = [
+        swap for swap in swaps
+        if swap.status in {RoomSwap.PENDING, RoomSwap.APPROVED}
+    ]
+    deletion_blockers = bool(bookings or applications or swaps)
+
+    if request.method == 'POST':
+        confirmation = (request.POST.get('confirmation') or '').strip()
+        expected_confirmation = f"DELETE ROOM {room.room_no}"
+        if deletion_blockers:
+            messages.error(
+                request,
+                "This room has linked resident or swap history and cannot be deleted.",
+            )
+        elif confirmation != expected_confirmation:
+            messages.error(
+                request,
+                f'Type "{expected_confirmation}" exactly to confirm deletion.',
+            )
+        else:
+            room_id = room.id
+            room_label = room.room_no
+            pg_id = room.pg_id
+            room.delete()
+            log(
+                request.user,
+                'room_deleted',
+                'Room',
+                room_id,
+                f"Deleted unused room {room_label}.",
+                meta={'pg_id': pg_id, 'room_no': room_label},
+            )
+            messages.success(request, f"Room {room_label} deleted.")
+            return redirect(f"{reverse('pg_rooms')}?pg={pg_id}")
+
+    context = {
+        'room': room,
+        'active_bookings': active_bookings,
+        'historical_bookings': historical_bookings,
+        'applications': applications,
+        'swaps': swaps,
+        'pending_swaps': pending_swaps,
+        'deletion_blockers': deletion_blockers,
+        'expected_confirmation': f"DELETE ROOM {room.room_no}",
+    }
+    return render(request, 'pgadmin/room_delete_confirm.html', context)
+
+
+@login_required
 def application_pdf(request, app_id):
     """Generate a structured PDF of a resident application for PG Admins.
     Includes selfie (if available) and appends Aadhaar PDF pages when possible.

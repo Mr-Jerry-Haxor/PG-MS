@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static currency %}
 
 {% block title %}Day-wise Bookings • {{ pg.name|default:"PG-MS" }}{% endblock %}
 
@@ -416,7 +416,7 @@
                   <span class="dw-badge dw-badge-unpaid"><i class="bi bi-x-circle"></i> Unpaid</span>
                 {% endif %}
                 {% if item.booking.payment_amount %}
-                <div class="small text-muted mt-1">₹{{ item.booking.payment_amount|floatformat:0 }}</div>
+                <div class="small text-muted mt-1">₹{{ item.booking.payment_amount|indian_currency:0 }}</div>
                 {% endif %}
               </td>
               <td class="text-end">
@@ -504,7 +504,7 @@
                       </span></div>
                       <div class="dw-field dw-field-box"><small>Payment</small><span>
                         {% if item.booking.payment_received %}<span class="dw-badge dw-badge-paid">Paid</span>{% else %}<span class="dw-badge dw-badge-unpaid">Unpaid</span>{% endif %}
-                        {% if item.booking.payment_amount %}<span class="ms-1">₹{{ item.booking.payment_amount|floatformat:0 }}</span>{% endif %}
+                        {% if item.booking.payment_amount %}<span class="ms-1">₹{{ item.booking.payment_amount|indian_currency:0 }}</span>{% endif %}
                       </span></div>
                       <div class="dw-field dw-field-box"><small>Created</small><span class="small">{{ item.booking.created_at|date:"M d, Y g:i A" }}</span></div>
                       {% if item.booking.assigned_by %}

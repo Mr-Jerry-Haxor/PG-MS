@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 {% block title %}{{ employee.name }} • PG-MS{% endblock %}
 
 {% block content %}
@@ -100,7 +101,7 @@
                         {% endif %}
                         <div class="mb-3">
                             <strong><i class="bi bi-currency-rupee me-2"></i>Salary:</strong><br>
-                            <span class="ms-4">₹{{ employee.salary|floatformat:2 }}/month</span>
+                            <span class="ms-4">₹{{ employee.salary|indian_currency }}/month</span>
                         </div>
                         <div class="mb-3">
                             <strong><i class="bi bi-calendar-check me-2"></i>Joined:</strong><br>
@@ -139,7 +140,7 @@
                         <div class="col-md-3 col-sm-6 col-6">
                             <h6 class="text-muted small">Current Balance</h6>
                             <h3 class="h4 h3-md {% if balance < 0 %}text-danger{% elif balance > 0 %}text-success{% else %}text-secondary{% endif %}">
-                                ₹{{ balance|floatformat:2 }}
+                                ₹{{ balance|indian_currency }}
                             </h3>
                             <small class="text-muted d-none d-md-block">
                                 {% if balance < 0 %}
@@ -153,15 +154,15 @@
                         </div>
                         <div class="col-md-3 col-sm-6 col-6">
                             <h6 class="text-muted small">Total Salary Paid</h6>
-                            <h3 class="h4 h3-md text-primary">₹{{ totals.total_salary|default:0|floatformat:2 }}</h3>
+                            <h3 class="h4 h3-md text-primary">₹{{ totals.total_salary|default:0|indian_currency }}</h3>
                         </div>
                         <div class="col-md-3 col-sm-6 col-6">
                             <h6 class="text-muted small">Total Advances</h6>
-                            <h3 class="h4 h3-md text-danger">₹{{ totals.total_advances|default:0|floatformat:2 }}</h3>
+                            <h3 class="h4 h3-md text-danger">₹{{ totals.total_advances|default:0|indian_currency }}</h3>
                         </div>
                         <div class="col-md-3 col-sm-6 col-6">
                             <h6 class="text-muted small">Total Bonus</h6>
-                            <h3 class="h4 h3-md text-success">₹{{ totals.total_bonus|default:0|floatformat:2 }}</h3>
+                            <h3 class="h4 h3-md text-success">₹{{ totals.total_bonus|default:0|indian_currency }}</h3>
                         </div>
                     </div>
                 </div>
@@ -252,7 +253,7 @@
                                                 <small>{{ entry.description|default:"—"|truncatewords:10 }}</small>
                                             </td>
                                             <td class="text-end {% if entry.amount < 0 %}text-danger{% else %}text-success{% endif %}">
-                                                <strong>₹{{ entry.amount|floatformat:2 }}</strong>
+                                                <strong>₹{{ entry.amount|indian_currency }}</strong>
                                             </td>
                                             <td>
                                                 <small class="text-muted">

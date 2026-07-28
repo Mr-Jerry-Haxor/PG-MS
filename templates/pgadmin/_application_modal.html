@@ -1,4 +1,5 @@
 {# Reusable application modal. Expects `booking` in context, and optionally `pg`, `referral_options` #}
+{% load currency %}
 <div class="modal fade" id="appModal{{ booking.id }}" tabindex="-1" aria-labelledby="appModalLabel{{ booking.id }}" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
@@ -162,10 +163,10 @@
             {% if credit and not credit.redeemed_on %}
               <button class="btn btn-sm btn-outline-danger" type="submit" name="action" value="clear">Clear Referral</button>
             {% endif %}
-            <div class="small text-secondary ms-auto">Default credit: ₹ {{ pg.referral_amount|default:'0.00' }}</div>
+            <div class="small text-secondary ms-auto">Default credit: ₹ {{ pg.referral_amount|default:'0.00'|indian_currency }}</div>
           </div>
           {% if credit and credit.redeemed_for_month %}
-            <div class="small text-success mt-2">Applied for {{ credit.redeemed_for_month|date:"F Y" }} (₹ {{ credit.redeemed_amount|default:credit.amount }})</div>
+            <div class="small text-success mt-2">Applied for {{ credit.redeemed_for_month|date:"F Y" }} (₹ {{ credit.redeemed_amount|default:credit.amount|indian_currency }})</div>
           {% elif credit %}
             <div class="small text-secondary mt-2">Scheduled for {% if credit.scheduled_month %}{{ credit.scheduled_month|date:"F Y" }}{% else %}manual application{% endif %}.</div>
           {% endif %}

@@ -1,3 +1,4 @@
+{% load currency %}
 <!doctype html>
 <html>
   <head>
@@ -107,7 +108,7 @@
 
         <div class="amount-box">
           <span>Amount Paid</span>
-          <strong>₹ {{ amount_paid }}</strong>
+          <strong>₹ {{ amount_paid|indian_currency }}</strong>
         </div>
 
   {% if payment_type == 'fee' and referral_applied and referral_applied|length > 0 %}
@@ -121,16 +122,16 @@
             </tr>
             <tr>
               <td>Credit Amount</td>
-              <td>₹ {{ c.amount }}</td>
+              <td>₹ {{ c.amount|indian_currency }}</td>
             </tr>
             <tr>
               <td>Applied / Redeemed</td>
-              <td>₹ {{ c.redeemed_amount }}{% if c.notes %} · {{ c.notes }}{% endif %}</td>
+              <td>₹ {{ c.redeemed_amount|indian_currency }}{% if c.notes %} · {{ c.notes }}{% endif %}</td>
             </tr>
             {% endfor %}
             <tr>
               <td><strong>Total Applied</strong></td>
-              <td class="text-success">-₹ {{ referral_total }}</td>
+              <td class="text-success">-₹ {{ referral_total|indian_currency }}</td>
             </tr>
           </tbody>
         </table>

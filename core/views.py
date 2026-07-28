@@ -168,10 +168,25 @@ from core.drive import drive_delete
 
 @login_required
 def dashboard(request):
-	# Load top unread notifications to display on dashboard
-	notes_qs = Notification.objects.filter(user=request.user, is_read=False).order_by('-created_at')[:10]
-	# Evaluate to list so we can safely mark them as read while still rendering these items
-	notes = list(notes_qs)
+	# PG admins use the dedicated Notifications page; do not duplicate or
+	# auto-mark notifications from their operational dashboard.
+	try:
+		from pgadmin.models import PGAdmin
+		profile = getattr(request.user, 'profile', None)
+		is_pg_admin_dashboard = bool(
+			getattr(profile, 'is_pg_admin', False)
+			or PGAdmin.objects.filter(user=request.user).exists()
+		)
+	except Exception:
+		is_pg_admin_dashboard = bool(
+			getattr(getattr(request.user, 'profile', None), 'is_pg_admin', False)
+		)
+	notes = []
+	if not is_pg_admin_dashboard:
+		notes_qs = Notification.objects.filter(
+			user=request.user, is_read=False
+		).order_by('-created_at')[:10]
+		notes = list(notes_qs)
 	ctx = {"notifications": notes}
 	
 	try:

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 {% block title %}Monthly Dashboard • PG-MS{% endblock %}
 {% block content %}
 <style>
@@ -407,7 +408,7 @@
         <tbody id="summaryTableBody">
           <tr>
             <td class="ps-3"><span class="text-primary fw-semibold">Expected</span></td>
-            <td class="text-end nowrap fw-semibold text-primary">₹ <span id="summaryExpected">{{ summary.total_expected|default:"0.00" }}</span></td>
+            <td class="text-end nowrap fw-semibold text-primary">₹ <span id="summaryExpected">{{ summary.total_expected|default:"0.00"|indian_currency }}</span></td>
             <td class="text-end pe-3">
               <button class="btn btn-sm btn-link text-primary p-0 me-1 metric-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#expectedMetricBreakdown" aria-expanded="false" aria-controls="expectedMetricBreakdown" title="Show expected breakdown"><i class="bi bi-chevron-down"></i></button>
               <span class="badge bg-primary-subtle text-primary" id="summaryExpectedCount">{{ summary.expected_breakdown.active.count|add:summary.expected_breakdown.leaving.count|add:summary.expected_breakdown.joining.count }}</span>
@@ -416,15 +417,15 @@
           <tr><td colspan="3" class="p-0 border-0"><div class="collapse" id="expectedMetricBreakdown">
             <div class="bg-primary-subtle px-3 py-2">
               <div class="row g-2 small text-center">
-                <div class="col-4"><span class="d-block text-secondary">Active Bookings</span><strong id="expectedActiveCount">{{ summary.expected_breakdown.active.count }}</strong><span class="d-block text-primary">₹ <span id="expectedActiveAmount">{{ summary.expected_breakdown.active.amount|floatformat:2 }}</span></span></div>
-                <div class="col-4 border-start"><span class="d-block text-secondary">Leaving Bookings</span><strong id="expectedLeavingCount">{{ summary.expected_breakdown.leaving.count }}</strong><span class="d-block text-primary">₹ <span id="expectedLeavingAmount">{{ summary.expected_breakdown.leaving.amount|floatformat:2 }}</span></span></div>
-                <div class="col-4 border-start"><span class="d-block text-secondary">Joining Bookings</span><strong id="expectedJoiningCount">{{ summary.expected_breakdown.joining.count }}</strong><span class="d-block text-primary">₹ <span id="expectedJoiningAmount">{{ summary.expected_breakdown.joining.amount|floatformat:2 }}</span></span></div>
+                <div class="col-4"><span class="d-block text-secondary">Active Bookings</span><strong id="expectedActiveCount">{{ summary.expected_breakdown.active.count }}</strong><span class="d-block text-primary">₹ <span id="expectedActiveAmount">{{ summary.expected_breakdown.active.amount|indian_currency }}</span></span></div>
+                <div class="col-4 border-start"><span class="d-block text-secondary">Leaving Bookings</span><strong id="expectedLeavingCount">{{ summary.expected_breakdown.leaving.count }}</strong><span class="d-block text-primary">₹ <span id="expectedLeavingAmount">{{ summary.expected_breakdown.leaving.amount|indian_currency }}</span></span></div>
+                <div class="col-4 border-start"><span class="d-block text-secondary">Joining Bookings</span><strong id="expectedJoiningCount">{{ summary.expected_breakdown.joining.count }}</strong><span class="d-block text-primary">₹ <span id="expectedJoiningAmount">{{ summary.expected_breakdown.joining.amount|indian_currency }}</span></span></div>
               </div>
             </div>
           </div></td></tr>
           <tr>
             <td class="ps-3"><span class="text-success fw-semibold">Collected</span></td>
-            <td class="text-end nowrap fw-semibold text-success">₹ <span id="summaryCollected">{{ summary.total_collected|default:"0.00" }}</span></td>
+            <td class="text-end nowrap fw-semibold text-success">₹ <span id="summaryCollected">{{ summary.total_collected|default:"0.00"|indian_currency }}</span></td>
             <td class="text-end pe-3">
               <button class="btn btn-sm btn-link text-success p-0 me-1 metric-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#collectedMetricBreakdown" aria-expanded="false" aria-controls="collectedMetricBreakdown" title="Show collected breakdown"><i class="bi bi-chevron-down"></i></button>
               <span class="badge bg-success-subtle text-success" id="summaryCollectedCount">{{ summary.collected_breakdown.active.count|add:summary.collected_breakdown.leaving.count|add:summary.collected_breakdown.joining.count }}</span>
@@ -433,20 +434,20 @@
           <tr><td colspan="3" class="p-0 border-0"><div class="collapse" id="collectedMetricBreakdown">
             <div class="bg-success-subtle px-3 py-2">
               <div class="row g-2 small text-center">
-                <div class="col-4"><span class="d-block text-secondary">Active Bookings</span><strong id="collectedActiveCount">{{ summary.collected_breakdown.active.count }}</strong><span class="d-block text-success">₹ <span id="collectedActiveAmount">{{ summary.collected_breakdown.active.amount|floatformat:2 }}</span></span></div>
-                <div class="col-4 border-start"><span class="d-block text-secondary">Leaving Bookings</span><strong id="collectedLeavingCount">{{ summary.collected_breakdown.leaving.count }}</strong><span class="d-block text-success">₹ <span id="collectedLeavingAmount">{{ summary.collected_breakdown.leaving.amount|floatformat:2 }}</span></span></div>
-                <div class="col-4 border-start"><span class="d-block text-secondary">Joining Bookings</span><strong id="collectedJoiningCount">{{ summary.collected_breakdown.joining.count }}</strong><span class="d-block text-success">₹ <span id="collectedJoiningAmount">{{ summary.collected_breakdown.joining.amount|floatformat:2 }}</span></span></div>
+                <div class="col-4"><span class="d-block text-secondary">Active Bookings</span><strong id="collectedActiveCount">{{ summary.collected_breakdown.active.count }}</strong><span class="d-block text-success">₹ <span id="collectedActiveAmount">{{ summary.collected_breakdown.active.amount|indian_currency }}</span></span></div>
+                <div class="col-4 border-start"><span class="d-block text-secondary">Leaving Bookings</span><strong id="collectedLeavingCount">{{ summary.collected_breakdown.leaving.count }}</strong><span class="d-block text-success">₹ <span id="collectedLeavingAmount">{{ summary.collected_breakdown.leaving.amount|indian_currency }}</span></span></div>
+                <div class="col-4 border-start"><span class="d-block text-secondary">Joining Bookings</span><strong id="collectedJoiningCount">{{ summary.collected_breakdown.joining.count }}</strong><span class="d-block text-success">₹ <span id="collectedJoiningAmount">{{ summary.collected_breakdown.joining.amount|indian_currency }}</span></span></div>
               </div>
             </div>
           </div></td></tr>
           <tr class="table-light">
             <td class="ps-3 ps-md-5"><small class="text-muted">↳ Today's Collection <span class="text-muted" style="font-weight:600;">({{ today|date:'Y-m-d' }})</span></small></td>
-            <td class="text-end nowrap"><small class="fw-semibold text-success">₹ <span id="summaryTodayCollection">{{ summary.today_collection|default:"0.00" }}</span></small></td>
+            <td class="text-end nowrap"><small class="fw-semibold text-success">₹ <span id="summaryTodayCollection">{{ summary.today_collection|default:"0.00"|indian_currency }}</span></small></td>
             <td class="text-end pe-3"><small><span class="badge bg-success-subtle text-success" style="font-size: 0.65rem;" id="summaryTodayCount">{{ summary.today_collection_count|default:"0" }}</span></small></td>
           </tr>
           <tr class="table-light">
             <td class="ps-3 ps-md-5"><small class="text-muted">↳ No-Due Collection <span class="text-muted fw-semibold">(paid before due date)</span></small></td>
-            <td class="text-end nowrap"><small class="fw-semibold text-info">₹ {{ summary.no_due_collection|default:"0.00"|floatformat:2 }}</small></td>
+            <td class="text-end nowrap"><small class="fw-semibold text-info">₹ {{ summary.no_due_collection|default:"0.00"|indian_currency }}</small></td>
             <td class="text-end pe-3">
               <button class="btn btn-sm btn-link text-info p-0 me-1 metric-accordion-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#noDueCollectionBreakdown" aria-expanded="false" aria-controls="noDueCollectionBreakdown" title="Show early payment details"><i class="bi bi-chevron-down"></i></button>
               <span class="badge bg-info-subtle text-info" style="font-size:.65rem">{{ summary.no_due_collection_count|default:0 }}</span>
@@ -457,25 +458,25 @@
               {% for item in summary.no_due_rows %}
               <div class="d-flex justify-content-between align-items-center gap-2 py-1{% if not forloop.last %} border-bottom{% endif %}">
                 <span><strong>{{ item.user.get_full_name|default:item.user.email }}</strong><span class="text-secondary d-block">Room {{ item.room_no }} · Due {{ item.payment_due_date|date:"M d, Y" }}</span></span>
-                <strong class="text-info nowrap">₹ {{ item.early_collection|floatformat:2 }}</strong>
+                <strong class="text-info nowrap">₹ {{ item.early_collection|indian_currency }}</strong>
               </div>
               {% empty %}<div class="text-secondary text-center py-1">No payments were collected before a future due date.</div>{% endfor %}
             </div>
           </div></td></tr>
           <tr>
             <td class="ps-3"><span class="text-warning fw-semibold">Pending</span></td>
-            <td class="text-end nowrap fw-semibold text-warning">₹ <span id="summaryPending">{{ summary.total_pending|default:"0.00" }}</span></td>
+            <td class="text-end nowrap fw-semibold text-warning">₹ <span id="summaryPending">{{ summary.total_pending|default:"0.00"|indian_currency }}</span></td>
             <td class="text-end pe-3"><span class="badge bg-warning-subtle text-warning" id="summaryPendingCount">0</span></td>
           </tr>
           <tr>
             <td class="ps-3"><span class="text-info fw-semibold">Advance</span></td>
-            <td class="text-end nowrap fw-semibold text-info">₹ <span id="summaryAdvance">{{ summary.total_advance|default:"0.00" }}</span></td>
+            <td class="text-end nowrap fw-semibold text-info">₹ <span id="summaryAdvance">{{ summary.total_advance|default:"0.00"|indian_currency }}</span></td>
             <td class="text-end pe-3"><span class="badge bg-info-subtle text-info" id="summaryAdvanceCount">0</span></td>
           </tr>
           {% if filter_only == 'old_dues' %}
           <tr class="table-light">
             <td class="ps-3"><span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle me-1"></i>{{ summary.prev_month_label }} Dues</span></td>
-            <td class="text-end nowrap fw-semibold text-danger">₹ <span id="summaryOldDues">{{ summary.total_prev_month_pending|default:"0.00" }}</span></td>
+            <td class="text-end nowrap fw-semibold text-danger">₹ <span id="summaryOldDues">{{ summary.total_prev_month_pending|default:"0.00"|indian_currency }}</span></td>
             <td class="text-end pe-3"><span class="badge bg-danger-subtle text-danger" id="summaryOldDuesCount">{{ rows|length }}</span></td>
           </tr>
           {% endif %}
@@ -562,22 +563,22 @@
                 <div class="small text-secondary">Room {{ r.room_no }}</div>
               {% endif %}
               {% if r.referral_adjustment %}
-                <div class="small text-success">Referral credit applied: -₹ {{ r.referral_adjustment|floatformat:2 }}</div>
+                <div class="small text-success">Referral credit applied: -₹ {{ r.referral_adjustment|indian_currency }}</div>
               {% endif %}
               {% if r.referral_pending_total %}
-                <div class="small text-secondary">Pending referral credit: -₹ {{ r.referral_pending_total|floatformat:2 }}
+                <div class="small text-secondary">Pending referral credit: -₹ {{ r.referral_pending_total|indian_currency }}
                   {% for credit in r.referral_pending %}
                     <span class="d-inline"{% if credit.notes %} title="{{ credit.notes }}"{% endif %}>({{ credit.scheduled_month|date:"M Y"|default:"unscheduled" }}){% if not forloop.last %}, {% endif %}</span>
                   {% endfor %}
                 </div>
               {% endif %}
               {% if r.referral_future %}
-                <div class="small text-secondary">Upcoming referral credit: {% for credit in r.referral_future %}-₹ {{ credit.amount|floatformat:2 }} {% if credit.scheduled_month %}({{ credit.scheduled_month|date:"M Y" }}){% else %}(unscheduled){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}</div>
+                <div class="small text-secondary">Upcoming referral credit: {% for credit in r.referral_future %}-₹ {{ credit.amount|indian_currency }} {% if credit.scheduled_month %}({{ credit.scheduled_month|date:"M Y" }}){% else %}(unscheduled){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}</div>
               {% endif %}
               {% if r.prev_month_pending %}
                 <div class="small text-danger fw-semibold mt-1">
-                  <i class="bi bi-exclamation-triangle me-1"></i>{{ r.prev_month_label }} dues: ₹ {{ r.prev_month_pending|floatformat:2 }}
-                  <span class="text-muted fw-normal">(Expected: ₹{{ r.prev_month_expected|floatformat:2 }}, Collected: ₹{{ r.prev_month_collected|floatformat:2 }})</span>
+                  <i class="bi bi-exclamation-triangle me-1"></i>{{ r.prev_month_label }} dues: ₹ {{ r.prev_month_pending|indian_currency }}
+                  <span class="text-muted fw-normal">(Expected: ₹{{ r.prev_month_expected|indian_currency }}, Collected: ₹{{ r.prev_month_collected|indian_currency }})</span>
                 </div>
               {% endif %}
               {% if r.segments and r.segments|length > 1 %}
@@ -625,7 +626,7 @@
                   <span class="badge {% if r.advance and r.advance > 0 %}bg-success{% else %}bg-primary{% endif %} text-white" style="border-radius:50%;padding:.28rem .45rem;font-size:.75rem;line-height:1">i</span>
                 </a>
               {% endif %}
-              <span>₹ {{ r.advance_total|default:'0.00' }}</span>
+              <span>₹ {{ r.advance_total|default:'0.00'|indian_currency }}</span>
               {% if r.advance_details_html %}
                 <div id="{{ r.advance_breakdown_id }}" class="d-none">{% autoescape off %}{{ r.advance_details_html }}{% endautoescape %}</div>
               {% endif %}
@@ -637,10 +638,10 @@
                       data-bs-toggle="popover"
                       data-breakdown-target="{{ r.prev_month_breakdown_id }}"
                       data-breakdown-title="{{ r.prev_month_label }} Expected breakdown"
-                      title="{{ r.prev_month_label }} Expected: ₹{{ r.prev_month_expected|floatformat:2 }}"
+                      title="{{ r.prev_month_label }} Expected: ₹{{ r.prev_month_expected|indian_currency }}"
                       aria-label="{{ r.prev_month_label }} Expected breakdown for {{ r.user.first_name }} {{ r.user.last_name }}">
                   <span class="badge bg-danger-subtle text-danger border border-danger me-1" style="border-radius:50%;padding:.12rem .4rem;font-size:.7rem;line-height:1">i</span>
-                  ₹ {{ r.prev_month_expected|floatformat:2 }}
+                  ₹ {{ r.prev_month_expected|indian_currency }}
                 </span>
                 <div class="small text-danger">{{ r.prev_month_label }}</div>
                 <div id="{{ r.prev_month_breakdown_id }}" class="d-none">
@@ -655,7 +656,7 @@
                       title="{{ r.expected_tip|escape }}"
                       aria-label="Expected breakdown for {{ r.user.first_name }} {{ r.user.last_name }}">
                   <span class="badge bg-light text-primary border border-primary me-1" style="border-radius:50%;padding:.12rem .4rem;font-size:.7rem;line-height:1">i</span>
-                  ₹ {{ r.expected }}
+                  ₹ {{ r.expected|indian_currency }}
                 </span>
                 {% if r.segments and r.segments|length > 1 %}
                   <span class="badge bg-secondary ms-1">{{ r.segments|length }}</span>
@@ -667,18 +668,18 @@
             </td>
             <td class="nowrap td-collected">
               {% if filter_only == 'old_dues' and r.prev_month_collected is not None %}
-                <span class="text-danger">₹ {{ r.prev_month_collected|floatformat:2 }}</span>
+                <span class="text-danger">₹ {{ r.prev_month_collected|indian_currency }}</span>
                 <div class="small text-danger">{{ r.prev_month_label }}</div>
               {% else %}
-                ₹ {{ r.collected }}
+                ₹ {{ r.collected|indian_currency }}
               {% endif %}
             </td>
             <td class="nowrap td-pending">
               {% if filter_only == 'old_dues' and r.prev_month_pending %}
-                <span class="text-danger fw-semibold">₹ {{ r.prev_month_pending|floatformat:2 }}</span>
+                <span class="text-danger fw-semibold">₹ {{ r.prev_month_pending|indian_currency }}</span>
                 <div class="small text-danger">{{ r.prev_month_label }}</div>
               {% else %}
-                ₹ {{ r.pending }}
+                ₹ {{ r.pending|indian_currency }}
               {% endif %}
             </td>
             <td>
@@ -739,7 +740,7 @@
                           data-sort="{{ current_sort|default:'room' }}"
                           data-dir="{{ current_dir|default:'asc' }}"
                           data-only="{{ request.GET.only|default:'' }}">
-                    Apply Referral Credit (₹ {{ credit.amount|floatformat:2 }})
+                    Apply Referral Credit (₹ {{ credit.amount|indian_currency }})
                     {% if credit.scheduled_month %}
                       <span class="small text-secondary d-block">{{ credit.scheduled_month|date:"F Y" }}</span>
                     {% else %}
@@ -756,7 +757,7 @@
                 <div class="mt-2">
                   {% for credit in r.referral_redeemed %}
                     <div class="d-flex gap-1 align-items-start">
-                      <div class="flex-grow-1 small text-success">Applied: -₹ {{ credit.redeemed_amount|default:credit.amount|floatformat:2 }} ({{ credit.redeemed_for_month|date:'M Y' }})</div>
+                      <div class="flex-grow-1 small text-success">Applied: -₹ {{ credit.redeemed_amount|default:credit.amount|indian_currency }} ({{ credit.redeemed_for_month|date:'M Y' }})</div>
                       <button type="button" class="btn btn-sm btn-outline-danger remove-referral-btn" title="Unapply referral"
                               data-credit-id="{{ credit.id }}"
                               data-year="{{ summary.year }}"
@@ -782,7 +783,7 @@
                   {% for s in r.segments %}
                     <li class="small">
                       Room {{ s.room_no }} — {{ s.joining|date:'Y-m-d' }} to {% if s.leaving %}{{ s.leaving|date:'Y-m-d' }}{% else %}—{% endif %}
-                      · Base ₹ {{ s.base }} ({{ s.source }}) · Days {{ s.stayed }}/{{ r.month_days }} · Expected ₹ {{ s.expected }}
+                      · Base ₹ {{ s.base|indian_currency }} ({{ s.source }}) · Days {{ s.stayed }}/{{ r.month_days }} · Expected ₹ {{ s.expected|indian_currency }}
                       {% if s.payment_due %}· Payment date {{ s.payment_due|date:'Y-m-d' }}{% endif %}
                     </li>
                   {% endfor %}
@@ -798,10 +799,10 @@
         <tfoot>
           <tr class="fw-semibold">
             <td colspan="6" class="text-end">Totals</td>
-            <td title="One-time advance (not monthly)">₹ {{ footer_totals.advance|default:'0.00' }}</td>
-            <td>₹ {{ footer_totals.expected|default:'0.00' }}</td>
-            <td>₹ {{ footer_totals.collected|default:'0.00' }}</td>
-            <td>₹ {{ footer_totals.pending|default:'0.00' }}</td>
+            <td title="One-time advance (not monthly)">₹ {{ footer_totals.advance|default:'0.00'|indian_currency }}</td>
+            <td>₹ {{ footer_totals.expected|default:'0.00'|indian_currency }}</td>
+            <td>₹ {{ footer_totals.collected|default:'0.00'|indian_currency }}</td>
+            <td>₹ {{ footer_totals.pending|default:'0.00'|indian_currency }}</td>
             <td></td>
             <td></td>
           </tr>
@@ -913,7 +914,7 @@
                           <span class="badge {% if r.advance and r.advance > 0 %}bg-success{% else %}bg-primary{% endif %} text-white" style="border-radius:50%;padding:.15rem .35rem;font-size:.65rem;line-height:1">i</span>
                         </span>
                       {% endif %}
-                      ₹ {{ r.advance_total|default:'0.00' }}
+                      ₹ {{ r.advance_total|default:'0.00'|indian_currency }}
                     </span>
                   </div>
                   <div class="detail-row">
@@ -926,27 +927,27 @@
                             title="{{ r.expected_breakdown_html|striptags }}">
                         <span class="badge bg-light text-primary border border-primary" style="border-radius:50%;padding:.15rem .35rem;font-size:.65rem;line-height:1">i</span>
                       </span>
-                      ₹ {% if filter_only == 'old_dues' %}{{ r.prev_month_expected|floatformat:2 }}{% else %}{{ r.expected }}{% endif %}
+                      ₹ {% if filter_only == 'old_dues' %}{{ r.prev_month_expected|indian_currency }}{% else %}{{ r.expected|indian_currency }}{% endif %}
                     </span>
                   </div>
                   <div class="detail-row">
                     <span class="detail-label">Collected:</span>
-                    <span class="detail-value text-success">₹ {% if filter_only == 'old_dues' and r.prev_month_collected is not None %}{{ r.prev_month_collected|floatformat:2 }}{% else %}{{ r.collected }}{% endif %}</span>
+                    <span class="detail-value text-success">₹ {% if filter_only == 'old_dues' and r.prev_month_collected is not None %}{{ r.prev_month_collected|indian_currency }}{% else %}{{ r.collected|indian_currency }}{% endif %}</span>
                   </div>
                   <div class="detail-row">
                     <span class="detail-label">Pending:</span>
-                    <span class="detail-value fw-semibold {% if r.pending > 0 %}text-danger{% else %}text-success{% endif %}">₹ {% if filter_only == 'old_dues' %}{{ r.prev_month_pending|floatformat:2 }}{% else %}{{ r.pending }}{% endif %}</span>
+                    <span class="detail-value fw-semibold {% if r.pending > 0 %}text-danger{% else %}text-success{% endif %}">₹ {% if filter_only == 'old_dues' %}{{ r.prev_month_pending|indian_currency }}{% else %}{{ r.pending|indian_currency }}{% endif %}</span>
                   </div>
                   {% if r.referral_adjustment %}
                   <div class="detail-row">
                     <span class="detail-label">Referral:</span>
-                    <span class="detail-value text-success">-₹ {{ r.referral_adjustment|floatformat:2 }}</span>
+                    <span class="detail-value text-success">-₹ {{ r.referral_adjustment|indian_currency }}</span>
                   </div>
                   {% endif %}
                   {% if r.prev_month_pending and filter_only != 'old_dues' %}
                   <div class="detail-row">
                     <span class="detail-label text-danger">Old Dues:</span>
-                    <span class="detail-value text-danger">₹ {{ r.prev_month_pending|floatformat:2 }} ({{ r.prev_month_label }})</span>
+                    <span class="detail-value text-danger">₹ {{ r.prev_month_pending|indian_currency }} ({{ r.prev_month_label }})</span>
                   </div>
                   {% endif %}
                 </div>
@@ -1019,7 +1020,7 @@
                         data-sort="{{ current_sort|default:'room' }}"
                         data-dir="{{ current_dir|default:'asc' }}"
                         data-only="{{ request.GET.only|default:'' }}">
-                  Apply Referral Credit (₹ {{ credit.amount|floatformat:2 }})
+                  Apply Referral Credit (₹ {{ credit.amount|indian_currency }})
                   {% if credit.scheduled_month %}
                     <span class="small text-secondary d-block">{{ credit.scheduled_month|date:"F Y" }}</span>
                   {% else %}
@@ -1032,7 +1033,7 @@
               {% endfor %}
               {% for credit in r.referral_redeemed %}
                 <div class="d-flex gap-1 align-items-center">
-                  <span class="small text-success flex-grow-1">Applied: -₹ {{ credit.redeemed_amount|default:credit.amount|floatformat:2 }} ({{ credit.redeemed_for_month|date:'M Y' }})</span>
+                  <span class="small text-success flex-grow-1">Applied: -₹ {{ credit.redeemed_amount|default:credit.amount|indian_currency }} ({{ credit.redeemed_for_month|date:'M Y' }})</span>
                   <button type="button" class="btn btn-sm btn-outline-danger remove-referral-btn" title="Unapply referral"
                           data-credit-id="{{ credit.id }}"
                           data-year="{{ summary.year }}"
@@ -1060,19 +1061,19 @@
           <div class="row text-center small">
             <div class="col">
               <div class="text-muted">Advance</div>
-              <div class="fw-semibold">₹ {{ footer_totals.advance|default:'0.00' }}</div>
+              <div class="fw-semibold">₹ {{ footer_totals.advance|default:'0.00'|indian_currency }}</div>
             </div>
             <div class="col">
               <div class="text-muted">Expected</div>
-              <div class="fw-semibold">₹ {{ footer_totals.expected|default:'0.00' }}</div>
+              <div class="fw-semibold">₹ {{ footer_totals.expected|default:'0.00'|indian_currency }}</div>
             </div>
             <div class="col">
               <div class="text-muted">Collected</div>
-              <div class="fw-semibold text-success">₹ {{ footer_totals.collected|default:'0.00' }}</div>
+              <div class="fw-semibold text-success">₹ {{ footer_totals.collected|default:'0.00'|indian_currency }}</div>
             </div>
             <div class="col">
               <div class="text-muted">Pending</div>
-              <div class="fw-semibold text-danger">₹ {{ footer_totals.pending|default:'0.00' }}</div>
+              <div class="fw-semibold text-danger">₹ {{ footer_totals.pending|default:'0.00'|indian_currency }}</div>
             </div>
           </div>
         </div>
@@ -1307,6 +1308,13 @@
   </div>
   </div>
 <script>
+  function formatIndianAmount(value) {
+    var number = Number(value || 0);
+    return Number.isFinite(number)
+      ? number.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+      : '0.00';
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     // Pagination state
     let currentPage = 1;
@@ -1400,7 +1408,7 @@
           const countElement = document.getElementById(prefix + 'Count');
           const amountElement = document.getElementById(prefix + 'Amount');
           if (countElement) countElement.textContent = breakdown[metric][cohort].count;
-          if (amountElement) amountElement.textContent = breakdown[metric][cohort].amount.toFixed(2);
+          if (amountElement) amountElement.textContent = formatIndianAmount(breakdown[metric][cohort].amount);
         });
       });
       // Today's collection is set from backend, don't override it
@@ -2219,7 +2227,7 @@
           }
         }
 
-        var confirmMsg = 'Confirm to record payment of ₹' + amt.toFixed(2) + ' (' + type + ', ' + mode.toUpperCase() + ')?';
+        var confirmMsg = 'Confirm to record payment of ₹' + formatIndianAmount(amt) + ' (' + type + ', ' + mode.toUpperCase() + ')?';
         if (!confirm(confirmMsg)) { return; }
         lastSubmitTime = now;
         setSubmittingState(true);
@@ -2238,16 +2246,16 @@
               // For old_dues mode, maintain the red styling and month label
               if (res.is_old_dues && res.month_label) {
                 if (colEl) {
-                  colEl.innerHTML = '<span class="text-danger">₹ ' + (res.collected_display || res.collected) + '</span>' +
+                  colEl.innerHTML = '<span class="text-danger">₹ ' + formatIndianAmount(res.collected) + '</span>' +
                                    '<div class="small text-danger">' + res.month_label + '</div>';
                 }
                 if (penEl) {
-                  penEl.innerHTML = '<span class="text-danger fw-semibold">₹ ' + (res.pending_display || res.pending) + '</span>' +
+                  penEl.innerHTML = '<span class="text-danger fw-semibold">₹ ' + formatIndianAmount(res.pending) + '</span>' +
                                    '<div class="small text-danger">' + res.month_label + '</div>';
                 }
               } else {
-                if (colEl) colEl.textContent = '₹ ' + (res.collected_display || res.collected);
-                if (penEl) penEl.textContent = '₹ ' + (res.pending_display || res.pending);
+                if (colEl) colEl.textContent = '₹ ' + formatIndianAmount(res.collected);
+                if (penEl) penEl.textContent = '₹ ' + formatIndianAmount(res.pending);
               }
               
               // Update status chip and row status
@@ -2307,9 +2315,9 @@
                 if (label && value) {
                   var labelText = label.textContent.trim().replace(':', '');
                   if (labelText === 'Collected') {
-                    value.textContent = '₹ ' + (res.collected_display || res.collected);
+                    value.textContent = '₹ ' + formatIndianAmount(res.collected);
                   } else if (labelText === 'Pending') {
-                    value.textContent = '₹ ' + (res.pending_display || res.pending);
+                    value.textContent = '₹ ' + formatIndianAmount(res.pending);
                     var pendVal = parseFloat(res.pending || 0);
                     value.classList.remove('text-danger', 'text-success');
                     value.classList.add(pendVal > 0 ? 'text-danger' : 'text-success');
@@ -2319,16 +2327,16 @@
             }
             // Update summary cards
             if (res.sum_expected !== undefined) {
-              var se = document.getElementById('sumExpected'); if (se) se.textContent = '₹ ' + res.sum_expected;
+              var se = document.getElementById('sumExpected'); if (se) se.textContent = '₹ ' + formatIndianAmount(res.sum_expected);
             }
             if (res.sum_collected !== undefined) {
-              var sc = document.getElementById('sumCollected'); if (sc) sc.textContent = '₹ ' + res.sum_collected;
+              var sc = document.getElementById('sumCollected'); if (sc) sc.textContent = '₹ ' + formatIndianAmount(res.sum_collected);
             }
             if (res.sum_pending !== undefined) {
-              var sp = document.getElementById('sumPending'); if (sp) sp.textContent = '₹ ' + res.sum_pending;
+              var sp = document.getElementById('sumPending'); if (sp) sp.textContent = '₹ ' + formatIndianAmount(res.sum_pending);
             }
             if (res.sum_advance !== undefined) {
-              var sa = document.getElementById('sumAdvance'); if (sa) sa.textContent = '₹ ' + res.sum_advance;
+              var sa = document.getElementById('sumAdvance'); if (sa) sa.textContent = '₹ ' + formatIndianAmount(res.sum_advance);
             }
             // Close modal
             if (qpModal) qpModal.hide();
@@ -2384,7 +2392,7 @@
         var phone = this.dataset.phone || '';
         var name = this.dataset.name || '';
         var room = this.dataset.room || '';
-        var pending = parseFloat(this.dataset.pending || '0').toFixed(2);
+        var pending = formatIndianAmount(this.dataset.pending || '0');
         var paymentDate = this.dataset.paymentDate || '';
         var monthName = this.dataset.monthName || '';
         var isOldDues = this.dataset.isOldDues === 'true';
@@ -2996,7 +3004,7 @@
     } else if (msgBillingFrom) {
       message += '- Billing From: ' + msgBillingFrom + '\n';
     }
-    message += '- Amount Paid: ₹' + parseFloat(amountPaid).toFixed(2) + '\n';
+    message += '- Amount Paid: ₹' + formatIndianAmount(amountPaid) + '\n';
     message += '- Payment Type: ' + (paymentType || 'Fee') + '\n';
     message += '- Mode: ' + (paymentMode || '').toUpperCase() + '\n';
     message += '- Transaction Date: ' + dateStr + '\n\n';

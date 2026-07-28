@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 {% block title %}Referrals • PG-MS{% endblock %}
 {% block content %}
 <style>
@@ -37,13 +38,13 @@
     <div class="col-6 col-sm-3">
       <div class="card border-0 shadow-sm ref-card">
         <div class="small muted-small">Redeemed total</div>
-        <div class="h6">₹ {{ total_redeemed|floatformat:2 }}</div>
+        <div class="h6">₹ {{ total_redeemed|indian_currency }}</div>
       </div>
     </div>
     <div class="col-6 col-sm-3">
       <div class="card border-0 shadow-sm ref-card">
         <div class="small muted-small">Pending total</div>
-        <div class="h6">₹ {{ total_pending|floatformat:2 }}</div>
+        <div class="h6">₹ {{ total_pending|indian_currency }}</div>
       </div>
     </div>
   </div>
@@ -57,7 +58,7 @@
         <div class="d-flex justify-content-between align-items-start">
           <div>
             <div><strong>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</strong></div>
-            <div class="small text-secondary">Amount: ₹ {{ c.amount|floatformat:2 }}{% if c.scheduled_month %} · Scheduled {{ c.scheduled_month|date:'M Y' }}{% endif %}</div>
+            <div class="small text-secondary">Amount: ₹ {{ c.amount|indian_currency }}{% if c.scheduled_month %} · Scheduled {{ c.scheduled_month|date:'M Y' }}{% endif %}</div>
             {% if c.referred_user %}
               <div class="small text-secondary">Referred: {{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}</div>
             {% endif %}
@@ -80,7 +81,7 @@
         <div class="d-flex justify-content-between align-items-start">
           <div>
             <div><strong>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</strong></div>
-            <div class="small text-secondary">Amount: ₹ {{ c.amount|floatformat:2 }} · Redeemed: ₹ {{ c.redeemed_amount|default:c.amount|floatformat:2 }}{% if c.redeemed_for_month %} · For {{ c.redeemed_for_month|date:'M Y' }}{% endif %}</div>
+            <div class="small text-secondary">Amount: ₹ {{ c.amount|indian_currency }} · Redeemed: ₹ {{ c.redeemed_amount|default:c.amount|indian_currency }}{% if c.redeemed_for_month %} · For {{ c.redeemed_for_month|date:'M Y' }}{% endif %}</div>
             {% if c.referred_user %}
               <div class="small text-secondary">Referred: {{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}</div>
             {% endif %}
@@ -127,9 +128,9 @@
             data-created="{{ c.created_at|date:'Y-m-d' }}">
           <td>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</td>
           <td>{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}{% else %}—{% endif %}</td>
-          <td class="text-end">₹ {{ c.amount|floatformat:2 }}</td>
+          <td class="text-end">₹ {{ c.amount|indian_currency }}</td>
           <td>{% if c.scheduled_month %}{{ c.scheduled_month|date:'M Y' }}{% else %}—{% endif %}</td>
-          <td>Yes (₹ {{ c.redeemed_amount|default:c.amount|floatformat:2 }})</td>
+          <td>Yes (₹ {{ c.redeemed_amount|default:c.amount|indian_currency }})</td>
           <td>{{ c.notes|default:'—' }}</td>
           <td>{{ c.created_at|date:'Y-m-d' }}</td>
         </tr>
@@ -144,7 +145,7 @@
             data-created="{{ c.created_at|date:'Y-m-d' }}">
           <td>{{ c.referrer_user.get_full_name|default:c.referrer_user.email }}{% if c.referrer_booking and c.referrer_booking.room %} (Room {{ c.referrer_booking.room.room_no }}/Bed {{ c.referrer_booking.share_no }}){% endif %}</td>
           <td>{% if c.referred_user %}{{ c.referred_user.get_full_name|default:c.referred_user.email }}{% if c.referred_booking and c.referred_booking.room %} (Room {{ c.referred_booking.room.room_no }}/Bed {{ c.referred_booking.share_no }}){% endif %}{% else %}—{% endif %}</td>
-          <td class="text-end">₹ {{ c.amount|floatformat:2 }}</td>
+          <td class="text-end">₹ {{ c.amount|indian_currency }}</td>
           <td>{% if c.scheduled_month %}{{ c.scheduled_month|date:'M Y' }}{% else %}—{% endif %}</td>
           <td>No</td>
           <td>{{ c.notes|default:'—' }}</td>

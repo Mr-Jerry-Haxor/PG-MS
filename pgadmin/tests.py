@@ -7,7 +7,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from bookings.models import Booking, ResidentApplication, Room
+from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus
+from core.models import Notification
 from .models import PG, PGAdmin, WhatsAppCloudConfig, WhatsAppConversation, WhatsAppMessage
 from .whatsapp_cloud import WhatsAppCloudError, process_webhook_payload, send_cloud_message
 from .whatsapp_crypto import encrypt_secret
@@ -209,3 +210,86 @@ class WhatsAppCloudCoexistenceTests(TestCase):
         response = self.client.get(reverse('sa_whatsapp_cloud_config_edit', args=[self.pg1.id]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse('whatsapp_cloud_webhook'))
+
+
+class PGAdminRoomDeletionTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username='room-admin',
+            email='room-admin@example.com',
+            password='x',
+        )
+        self.pg = PG.objects.create(name='Deletion Test PG', address='One')
+        PGAdmin.objects.create(user=self.admin, pg=self.pg)
+        self.client.force_login(self.admin)
+
+    def create_room(self, room_no='101'):
+        room = Room.objects.create(pg=self.pg, room_no=room_no, total_shares=1)
+        RoomShareStatus.objects.create(room=room, share_no=1)
+        return room
+
+    def test_unused_room_requires_exact_confirmation_then_deletes(self):
+        room = self.create_room()
+        url = reverse('pg_room_delete', args=[room.id])
+
+        page = self.client.get(url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'DELETE ROOM 101')
+
+        rejected = self.client.post(url, {'confirmation': 'delete'})
+        self.assertEqual(rejected.status_code, 200)
+        self.assertTrue(Room.objects.filter(pk=room.id).exists())
+
+        deleted = self.client.post(url, {'confirmation': 'DELETE ROOM 101'})
+        self.assertEqual(deleted.status_code, 302)
+        self.assertFalse(Room.objects.filter(pk=room.id).exists())
+
+    def test_linked_active_booking_is_shown_and_blocks_deletion(self):
+        room = self.create_room()
+        resident = get_user_model().objects.create_user(
+            username='linked-resident',
+            email='linked@example.com',
+            first_name='Linked',
+            last_name='Resident',
+        )
+        Booking.objects.create(
+            user=resident,
+            pg=self.pg,
+            room=room,
+            share_no=1,
+            status=Booking.APPROVED,
+        )
+        url = reverse('pg_room_delete', args=[room.id])
+
+        page = self.client.get(url)
+        self.assertContains(page, 'Linked Resident')
+        self.assertContains(page, 'This room cannot be deleted yet.')
+        self.assertNotContains(page, 'Delete room permanently')
+
+        response = self.client.post(url, {'confirmation': 'DELETE ROOM 101'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Room.objects.filter(pk=room.id).exists())
+
+    def test_pg_admin_cannot_review_another_pgs_room(self):
+        other_pg = PG.objects.create(name='Other PG', address='Two')
+        room = Room.objects.create(pg=other_pg, room_no='201', total_shares=1)
+
+        response = self.client.get(reverse('pg_room_delete', args=[room.id]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dashboard'))
+
+    def test_pg_admin_dashboard_does_not_display_or_mark_notification(self):
+        notice = Notification.objects.create(
+            user=self.admin,
+            title='Hidden dashboard notification',
+            message='Use the dedicated notifications page.',
+        )
+
+        response = self.client.get(reverse('dashboard'), {'pg': self.pg.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Hidden dashboard notification')
+        notice.refresh_from_db()
+        self.assertFalse(notice.is_read)

@@ -18,6 +18,7 @@ urlpatterns = [
     path('rooms/', views.rooms_list, name='pg_rooms'),
     path('rooms/new/', views.room_create, name='pg_room_create'),
     path('rooms/<int:pk>/edit/', views.room_edit, name='pg_room_edit'),
+    path('rooms/<int:pk>/delete/', views.room_delete, name='pg_room_delete'),
     path('rooms/<int:pk>/shares/', views.room_shares, name='pg_room_shares'),
     path('vehicles/search/', views.vehicle_search, name='pg_vehicle_search'),
     path('applications/', views.resident_applications, name='pg_resident_applications'),

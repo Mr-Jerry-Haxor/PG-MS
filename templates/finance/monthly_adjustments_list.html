@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static currency %}
 
 {% block title %}Monthly Adjustments • {{ pg.name }}{% endblock %}
 {% comment %} JavaScript handlers are registered inside the body_extra script block below. {% endcomment %}
@@ -137,14 +137,14 @@
             <i class="bi bi-arrow-down-circle-fill adj-text-discount"></i>
             <span>Discounts</span>
           </div>
-          <div class="adj-summary-value adj-text-discount">₹{{ this_month_discounts|floatformat:0 }}</div>
+          <div class="adj-summary-value adj-text-discount">₹{{ this_month_discounts|indian_currency:0 }}</div>
         </div>
         <div class="adj-summary-row">
           <div class="adj-summary-label">
             <i class="bi bi-arrow-up-circle-fill adj-text-increment"></i>
             <span>Increments</span>
           </div>
-          <div class="adj-summary-value adj-text-increment">₹{{ this_month_increments|floatformat:0 }}</div>
+          <div class="adj-summary-value adj-text-increment">₹{{ this_month_increments|indian_currency:0 }}</div>
         </div>
       </div>
     </div>
@@ -160,14 +160,14 @@
             <i class="bi bi-arrow-down-circle-fill adj-text-discount"></i>
             <span>Discounts</span>
           </div>
-          <div class="adj-summary-value adj-text-discount">₹{{ completed_discounts|floatformat:0 }}</div>
+          <div class="adj-summary-value adj-text-discount">₹{{ completed_discounts|indian_currency:0 }}</div>
         </div>
         <div class="adj-summary-row">
           <div class="adj-summary-label">
             <i class="bi bi-arrow-up-circle-fill adj-text-increment"></i>
             <span>Increments</span>
           </div>
-          <div class="adj-summary-value adj-text-increment">₹{{ completed_increments|floatformat:0 }}</div>
+          <div class="adj-summary-value adj-text-increment">₹{{ completed_increments|indian_currency:0 }}</div>
         </div>
       </div>
     </div>
@@ -275,7 +275,7 @@
                   </span>
                 {% endif %}
               </td>
-              <td class="fw-bold">₹{{ adj.amount|floatformat:2 }}</td>
+              <td class="fw-bold">₹{{ adj.amount|indian_currency }}</td>
               <td>
                 {% if adj.duration_type == 'continuous' %}
                   <span class="badge bg-primary">Continuous</span>
@@ -350,7 +350,7 @@
                       </div>
                       <div class="col-6">
                         <strong class="text-primary">Amount:</strong>
-                        <p class="mb-0 fw-bold">₹{{ adj.amount|floatformat:2 }}</p>
+                        <p class="mb-0 fw-bold">₹{{ adj.amount|indian_currency }}</p>
                       </div>
                     </div>
                     

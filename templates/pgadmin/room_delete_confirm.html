@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Delete Room {{ room.room_no }} • PG-MS{% endblock %}
+{% block content %}
+<style>
+  .delete-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem}
+  .delete-summary>div{padding:1rem;border:1px solid #e2e8f0;border-radius:.85rem;background:#fff}
+  .delete-summary strong,.delete-summary span{display:block}
+  .delete-summary strong{font-size:1.35rem}
+  .delete-summary span{font-size:.72rem;color:#64748b}
+  .linked-section{margin-top:1rem}
+  .linked-list{margin:0;padding:0;list-style:none}
+  .linked-list li{display:flex;justify-content:space-between;gap:1rem;padding:.75rem 0;border-top:1px solid #e2e8f0}
+  @media(max-width:700px){.delete-summary{grid-template-columns:1fr 1fr}.linked-list li{display:block}}
+</style>
+
+<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <p class="text-danger small text-uppercase fw-semibold mb-1">Destructive action</p>
+    <h1 class="h4 mb-1">Delete Room {{ room.room_no }}?</h1>
+    <p class="text-secondary mb-0">{{ room.pg.name }} · {{ room.total_shares }} bed{{ room.total_shares|pluralize }}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'pg_rooms' %}?pg={{ room.pg_id }}">Back to rooms</a>
+</div>
+
+{% if deletion_blockers %}
+  <div class="alert alert-danger">
+    <div class="fw-semibold"><i class="bi bi-shield-exclamation me-1"></i>This room cannot be deleted yet.</div>
+    <div class="small mt-1">Linked booking, application or room-swap history would be erased by deletion. Review the records below and retain the room for audit history.</div>
+  </div>
+{% else %}
+  <div class="alert alert-warning">
+    This room has no linked resident or swap history. Deleting it will permanently remove the room and its {{ room.total_shares }} bed status record{{ room.total_shares|pluralize }}.
+  </div>
+{% endif %}
+
+<div class="delete-summary" aria-label="Linked room records summary">
+  <div><strong class="{% if active_bookings %}text-danger{% endif %}">{{ active_bookings|length }}</strong><span>Active / pending bookings</span></div>
+  <div><strong>{{ historical_bookings|length }}</strong><span>Historical bookings</span></div>
+  <div><strong>{{ applications|length }}</strong><span>Resident applications</span></div>
+  <div><strong class="{% if pending_swaps %}text-danger{% endif %}">{{ swaps|length }}</strong><span>Room swaps ({{ pending_swaps|length }} pending)</span></div>
+</div>
+
+{% if active_bookings %}
+<section class="card linked-section border-danger">
+  <div class="card-body">
+    <h2 class="h6 text-danger">Active or pending bookings</h2>
+    <ul class="linked-list">
+      {% for booking in active_bookings %}
+      <li>
+        <span>
+          <strong>{{ booking.user.get_full_name|default:booking.user.email }}</strong>
+          <small class="text-secondary d-block">{{ booking.user.email }}</small>
+        </span>
+        <span class="text-md-end">
+          <strong>Bed {{ booking.share_no|default:"Unassigned" }}</strong>
+          <small class="text-secondary d-block">{{ booking.get_status_display }} · Joining {{ booking.joining_date|default:booking.start_date|date:"d M Y"|default:"Not set" }}</small>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
+
+{% if historical_bookings %}
+<details class="card linked-section">
+  <summary class="card-body fw-semibold">Historical bookings ({{ historical_bookings|length }})</summary>
+  <div class="card-body pt-0">
+    <ul class="linked-list">
+      {% for booking in historical_bookings %}
+      <li><span>{{ booking.user.get_full_name|default:booking.user.email }}</span><span>Bed {{ booking.share_no|default:"—" }} · {{ booking.get_status_display }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+</details>
+{% endif %}
+
+{% if applications %}
+<details class="card linked-section">
+  <summary class="card-body fw-semibold">Resident applications ({{ applications|length }})</summary>
+  <div class="card-body pt-0">
+    <ul class="linked-list">
+      {% for application in applications %}
+      <li><span>{{ application.name|default:application.user.email }}</span><span>{{ application.get_status_display }} · {{ application.email }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+</details>
+{% endif %}
+
+{% if swaps %}
+<details class="card linked-section">
+  <summary class="card-body fw-semibold">Room swap history ({{ swaps|length }})</summary>
+  <div class="card-body pt-0">
+    <ul class="linked-list">
+      {% for swap in swaps %}
+      <li>
+        <span>{{ swap.booking.user.get_full_name|default:swap.booking.user.email }}</span>
+        <span>{{ swap.from_room.room_no }}/{{ swap.from_share_no }} → {{ swap.to_room.room_no }}/{{ swap.to_share_no }} · {{ swap.get_status_display }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</details>
+{% endif %}
+
+{% if not deletion_blockers %}
+<form method="post" class="card border-danger mt-3">
+  {% csrf_token %}
+  <div class="card-body">
+    <label class="form-label fw-semibold" for="confirmation">Type <code>{{ expected_confirmation }}</code> to confirm</label>
+    <input class="form-control" id="confirmation" name="confirmation" autocomplete="off" required aria-describedby="confirmationHelp">
+    <div class="form-text" id="confirmationHelp">This action cannot be undone.</div>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <button class="btn btn-danger" type="submit"><i class="bi bi-trash3 me-1"></i>Delete room permanently</button>
+      <a class="btn btn-outline-secondary" href="{% url 'pg_rooms' %}?pg={{ room.pg_id }}">Cancel</a>
+    </div>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

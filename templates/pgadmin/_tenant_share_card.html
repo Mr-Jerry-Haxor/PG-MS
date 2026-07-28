@@ -4,6 +4,7 @@ Expects context variables:
 - sd: dict with keys share, booking, occupant, application, is_pending
 - today: date for default values
 {% endcomment %}
+{% load currency %}
 <div class="col-12 col-md-6 col-lg-4 tenant-share-col" data-room-id="{{ sd.share.room_id }}" data-share-no="{{ sd.share.share_no }}">
   <div class="card h-100 border-0 shadow-sm" data-room-id="{{ sd.share.room_id }}" data-share-no="{{ sd.share.share_no }}" {% if sd.booking %}data-booking-id="{{ sd.booking.id }}"{% endif %}>
     <div class="card-body p-3">
@@ -38,7 +39,7 @@ Expects context variables:
             <div class="text-secondary small">Check-out: {{ sd.booking.leaving_date|default:'—' }} {% if sd.booking.end_time %}{{ sd.booking.end_time|date:"g:i A" }}{% endif %}</div>
             <div class="text-secondary small">Purpose: {{ sd.booking.purpose|default:'—'|truncatewords:10 }}</div>
             {% if sd.booking.payment_received %}
-              <div class="text-success small"><i class="bi bi-check-circle-fill me-1"></i>Payment: ₹{{ sd.booking.payment_amount|default:0 }}</div>
+              <div class="text-success small"><i class="bi bi-check-circle-fill me-1"></i>Payment: ₹{{ sd.booking.payment_amount|default:0|indian_currency }}</div>
             {% else %}
               <div class="text-warning small"><i class="bi bi-exclamation-circle me-1"></i>Payment pending</div>
             {% endif %}

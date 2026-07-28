@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 {% block title %}Expenditure • PG-MS{% endblock %}
 {% block head_extra %}
 <style>
@@ -147,7 +148,7 @@
       <div class="d-flex justify-content-between align-items-center">
         <div>
           <div class="text-muted small">Total Expenses</div>
-          <div class="h5 mb-0" id="totalExpenses">₹ {{ total|default:'0.00' }}</div>
+          <div class="h5 mb-0" id="totalExpenses">₹ {{ total|default:'0.00'|indian_currency }}</div>
         </div>
         <div class="text-end">
           <div class="text-muted small">Showing</div>
@@ -177,7 +178,7 @@
         <tr>
           <td>{{ i.date|date:'Y-m-d' }}</td>
           <td>{{ i.get_category_display|default:i.category }}</td>
-          <td class="nowrap">₹ {{ i.amount }}</td>
+          <td class="nowrap">₹ {{ i.amount|indian_currency }}</td>
           <td class="text-truncate" style="max-width: 300px;">{{ i.notes }}</td>
           <td class="text-end"><a href="{% url 'expenditure_edit' i.id %}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
         </tr>
@@ -188,7 +189,7 @@
       <tfoot>
         <tr class="fw-semibold">
           <td colspan="2" class="text-end">Total</td>
-          <td class="nowrap">₹ {{ total|default:'0.00' }}</td>
+          <td class="nowrap">₹ {{ total|default:'0.00'|indian_currency }}</td>
           <td colspan="2"></td>
         </tr>
       </tfoot>
@@ -1015,7 +1016,7 @@
       if (el) el.textContent = '₹ ' + formatAmount(total);
     }
 
-    function formatAmount(n){ return (Math.round((n||0) * 100) / 100).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+    function formatAmount(n){ return (Math.round((n||0) * 100) / 100).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
     // header sort handlers
     document.querySelectorAll('th.sortable[data-key]').forEach(th => {

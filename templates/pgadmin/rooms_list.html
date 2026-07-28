@@ -60,7 +60,12 @@
           <div class="fw-semibold">Room {{ room.room_no }}</div>
           <div class="text-secondary small">Beds: {{ room.total_shares }}</div>
         </div>
-        <a href="{% url 'pg_room_edit' room.id %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+        <div class="d-flex gap-1">
+          <a href="{% url 'pg_room_edit' room.id %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+          <a href="{% url 'pg_room_delete' room.id %}" class="btn btn-sm btn-outline-danger" aria-label="Review deletion details for room {{ room.room_no }}">
+            <i class="bi bi-trash3"></i>
+          </a>
+        </div>
       </div>
       <div class="stats-line small">
         <span class="mini-badge alt">Occupied {{ room.occupied_count|default:0 }}</span>

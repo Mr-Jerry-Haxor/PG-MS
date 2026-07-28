@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 {% block title %}Fees • PG-MS{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -28,8 +29,8 @@
       {% for i in items %}
         <tr>
           <td>{{ i.get_share_type_display }}</td>
-          <td>₹ {{ i.monthly_fee }}</td>
-          <td>₹ {{ i.advance_amount }}</td>
+          <td>₹ {{ i.monthly_fee|indian_currency }}</td>
+          <td>₹ {{ i.advance_amount|indian_currency }}</td>
           <td class="text-end"><a href="{% url 'fees_edit' i.id %}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
         </tr>
       {% empty %}

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load currency %}
 {% block title %}Super Admin • PG-MS{% endblock %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
@@ -37,8 +38,8 @@
   <div class="col-md-5"><div class="card border-0 shadow-sm h-100">
     <div class="card-header bg-transparent fw-semibold">Financial Overview</div>
     <div class="card-body">
-      <div class="d-flex justify-content-between mb-3"><span class="text-secondary">Payments</span><strong class="text-success">₹{{ stats.payments_total|floatformat:2 }}</strong></div>
-      <div class="d-flex justify-content-between"><span class="text-secondary">Expenditures</span><strong class="text-danger">₹{{ stats.expenditures_total|floatformat:2 }}</strong></div>
+      <div class="d-flex justify-content-between mb-3"><span class="text-secondary">Payments</span><strong class="text-success">₹{{ stats.payments_total|indian_currency }}</strong></div>
+      <div class="d-flex justify-content-between"><span class="text-secondary">Expenditures</span><strong class="text-danger">₹{{ stats.expenditures_total|indian_currency }}</strong></div>
     </div>
   </div></div>
 </div>
