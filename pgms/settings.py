@@ -194,14 +194,15 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
-STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STORAGES = {
     'default': {
         'BACKEND': 'django.core.files.storage.FileSystemStorage',
     },
     'staticfiles': {
-        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+        # staticfiles is the deployed asset directory. Do not require a
+        # collectstatic manifest for files placed there directly.
+        'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'
     }
 }
 
