@@ -1,10 +1,9 @@
 // PG-MS Service Worker
-const CACHE_VERSION = 'pgms-v1.0.0';
+const CACHE_VERSION = 'pgms-v1.0.1';
 const CACHE_NAME = `pgms-cache-${CACHE_VERSION}`;
 
 // Assets to cache on install
 const STATIC_ASSETS = [
-  '/',
   '/static/css/app.css',
   '/static/img/favicon.png',
   '/static/img/icon-192x192.png',
@@ -76,26 +75,13 @@ self.addEventListener('fetch', (event) => {
   ) {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          // Clone the response before caching
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseToCache);
-          });
-          return response;
-        })
         .catch(() => {
-          // Fallback to cache if network fails
-          return caches.match(request).then((cached) => {
-            if (cached) {
-              return cached;
-            }
-            // Return offline page for HTML requests
-            if (request.headers.get('accept').includes('text/html')) {
-              return caches.match('/') || new Response('Offline', { status: 503 });
-            }
-            return new Response('Network error', { status: 503 });
-          });
+          // Authenticated/dynamic responses must not be cached under stale or
+          // missing URLs.
+          if ((request.headers.get('accept') || '').includes('text/html')) {
+            return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+          }
+          return new Response('Network error', { status: 503 });
         })
     );
     return;

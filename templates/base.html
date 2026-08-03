@@ -168,7 +168,7 @@
   <body>
     <nav class="navbar navbar-expand-lg sticky-top bg-body-tertiary border-bottom">
       <div class="container">
-        <a class="navbar-brand fw-semibold" href="/">PG-MS</a>
+        <a class="navbar-brand fw-semibold" href="{% if user.is_authenticated %}{% url 'dashboard' %}{% else %}/{% endif %}">PG-MS <i class="bi bi-house-door-fill" aria-hidden="true"></i></a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
           <span class="navbar-toggler-icon"></span>
         </button>

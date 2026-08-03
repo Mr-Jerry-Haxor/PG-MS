@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 
 from pgadmin.models import PG
-from .models import Fees, Payment, Expenditure, ExpenditureCategory, MonthlyAdjustment
+from .models import Fees, Payment, PaymentChangeLog, Expenditure, ExpenditureCategory, MonthlyAdjustment
 from core.audit import log
 from core.push_notifications import send_push_to_user
 from .forms import FeesForm, PaymentForm, ExpenditureForm
@@ -191,7 +191,7 @@ def payments_list(request):
     date_from = parse_date((request.GET.get('date_from') or '').strip())
     date_to = parse_date((request.GET.get('date_to') or '').strip())
     if pg:
-        items = Payment.objects.filter(pg=pg).select_related('user')
+        items = Payment.objects.filter(pg=pg).select_related('user', 'created_by').prefetch_related('change_logs__updated_by')
         # Date filters: explicit date range wins; else month (ym/year+month)
         if date_from or date_to:
             if date_from:
@@ -228,8 +228,9 @@ def payments_list(request):
             except Exception:
                 amt = None
             name_q = Q(user__first_name__icontains=q) | Q(user__last_name__icontains=q) | Q(user__email__icontains=q)
+            creator_q = Q(created_by__first_name__icontains=q) | Q(created_by__last_name__icontains=q) | Q(created_by__email__icontains=q)
             meta_q = Q(mode__icontains=q) | Q(type__icontains=q) | Q(notes__icontains=q)
-            items = items.filter(name_q | meta_q | (Q(amount=amt) if amt is not None else Q()))
+            items = items.filter(name_q | creator_q | meta_q | (Q(amount=amt) if amt is not None else Q()))
         # Default ordering: latest first
         items = items.order_by('-date', '-id')
 
@@ -362,13 +363,32 @@ def payments_edit(request, pk=None):
             user_qs = User.objects.none()
 
     if request.method == 'POST':
+        original = Payment.objects.get(pk=instance.pk) if instance else None
         form = PaymentForm(request.POST, instance=instance, user_queryset=user_qs, room_map=room_map)
         if form.is_valid():
             prev_status = instance.status if instance else None
             is_new_payment = instance is None
             obj = form.save(commit=False)
             obj.pg = pg
+            if is_new_payment:
+                obj.created_by = request.user
             obj.save()
+
+            if original and form.changed_data:
+                changes = {}
+                for field_name in form.changed_data:
+                    field = form.fields.get(field_name)
+                    before = getattr(original, field_name, None)
+                    after = getattr(obj, field_name, None)
+                    changes[field.label if field else field_name] = {
+                        'before': str(before) if before not in (None, '') else '—',
+                        'after': str(after) if after not in (None, '') else '—',
+                    }
+                PaymentChangeLog.objects.create(
+                    payment=obj,
+                    updated_by=request.user,
+                    changes=changes,
+                )
 
             if is_new_payment:
                 try:
@@ -542,9 +562,12 @@ def expenditure_list(request):
             items = items.filter(
                 Q(notes__icontains=q) | 
                 Q(category__icontains=q) |
-                Q(category_custom__name__icontains=q)
+                Q(category_custom__name__icontains=q) |
+                Q(created_by__first_name__icontains=q) |
+                Q(created_by__last_name__icontains=q) |
+                Q(created_by__email__icontains=q)
             )
-        items = items.select_related('category_custom').order_by('-date', '-id')
+        items = items.select_related('category_custom', 'created_by').order_by('-date', '-id')
         total = items.aggregate(total=Sum('amount')).get('total') or 0
         # Pagination
         from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
@@ -604,7 +627,7 @@ def expenditure_list_json(request):
     if not pg:
         return JsonResponse({'items': [], 'total': 0})
 
-    qs = Expenditure.objects.filter(pg=pg).select_related('category_custom').order_by('-date', '-id')
+    qs = Expenditure.objects.filter(pg=pg).select_related('category_custom', 'created_by').order_by('-date', '-id')
     # Limit to a reasonable count to avoid huge payloads; increase if needed.
     MAX_ITEMS = 5000
     qs = qs[:MAX_ITEMS]
@@ -618,6 +641,8 @@ def expenditure_list_json(request):
             'category_id': e.category_custom_id,
             'amount': float(e.amount),
             'notes': e.notes or '',
+            'created_by_name': (e.created_by.get_full_name() or e.created_by.username) if e.created_by else '',
+            'created_by_email': e.created_by.email if e.created_by else '',
         })
 
     total = qs.aggregate(total=Sum('amount')).get('total') or 0
@@ -640,6 +665,8 @@ def expenditure_edit(request, pk=None):
         if form.is_valid():
             obj = form.save(commit=False)
             obj.pg = pg
+            if instance is None:
+                obj.created_by = request.user
             obj.save()
             log(request.user, 'expenditure_saved', 'Expenditure', obj.id)
             messages.success(request, "Expenditure saved.")
@@ -4000,6 +4027,7 @@ def monthly_quick_payment(request):
             from_date=from_date_val, to_date=to_date_val,
             upi_amount=upi_amount_val, cash_amount=cash_amount_val,
             booking=linked_booking,
+            created_by=request.user,
         )
 
         try:

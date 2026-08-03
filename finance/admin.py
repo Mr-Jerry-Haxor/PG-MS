@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Fees, Payment, Expenditure, MonthlyAdjustment
+from .models import Fees, Payment, PaymentChangeLog, Expenditure, MonthlyAdjustment
 
 
 @admin.register(Fees)
@@ -13,6 +13,14 @@ class PaymentAdmin(admin.ModelAdmin):
 	list_display = ("user", "pg", "amount", "date", "status", "mode", "type")
 	list_filter = ("pg", "status", "mode", "type")
 	search_fields = ("user__email",)
+
+
+@admin.register(PaymentChangeLog)
+class PaymentChangeLogAdmin(admin.ModelAdmin):
+	list_display = ("payment", "updated_by", "changed_at")
+	list_filter = ("changed_at",)
+	search_fields = ("payment__user__email", "updated_by__email")
+	readonly_fields = ("payment", "updated_by", "changed_at", "changes")
 
 
 @admin.register(Expenditure)

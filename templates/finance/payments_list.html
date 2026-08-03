@@ -248,6 +248,7 @@
           <th class="sortable" data-sort="mode">Mode</th>
           <th class="sortable" data-sort="type">Type</th>
           <th>Notes</th>
+          <th>Added By</th>
           <th></th>
         </tr>
       </thead>
@@ -296,6 +297,19 @@
             {% endif %}
           </td>
           <td class="text-truncate" style="max-width:200px">{{ i.notes|default:'—' }}</td>
+          <td>
+            {% if i.created_by %}
+              <div class="fw-semibold">{{ i.created_by.get_full_name|default:i.created_by.username }}</div>
+              <div class="small text-muted">{{ i.created_by.email }}</div>
+            {% else %}
+              <span class="text-muted">Unknown</span>
+            {% endif %}
+            {% if i.change_logs.all %}
+              <div class="mt-1">
+                <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" aria-label="View payment update history" title="{% for change in i.change_logs.all %}Updated by {{ change.updated_by.get_full_name|default:change.updated_by.email|default:'Unknown' }} ({{ change.updated_by.email|default:'no email' }}) at {% timezone 'Asia/Kolkata' %}{{ change.changed_at|date:'d M Y, h:i A' }} IST{% endtimezone %}{% for field, values in change.changes.items %}&#10;{{ field }}: {{ values.before }} → {{ values.after }}{% endfor %}{% if not forloop.last %}&#10;----------------{% endif %}{% endfor %}"><i class="bi bi-clock-history" aria-hidden="true"></i> {{ i.change_logs.all|length }} update{{ i.change_logs.all|length|pluralize }}</button>
+              </div>
+            {% endif %}
+          </td>
           <td class="text-end">
             {% if can_edit_payments or can_delete_payments %}
             <div class="d-flex gap-1 justify-content-end">
@@ -327,7 +341,7 @@
           </td>
         </tr>
       {% empty %}
-        <tr><td colspan="10" class="text-secondary text-center">No payments.</td></tr>
+        <tr><td colspan="11" class="text-secondary text-center">No payments.</td></tr>
       {% endfor %}
       </tbody>
     </table>

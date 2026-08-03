@@ -64,9 +64,23 @@ class Payment(TimeStampedModel):
 	upi_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='UPI component when mode is UPI+CASH')
 	cash_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Cash component when mode is UPI+CASH')
 	booking = models.ForeignKey('bookings.Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', help_text='Linked booking for this payment')
+	created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_payments')
 
 	def __str__(self):
 		return f"{self.user} - {self.pg} - {self.amount}"
+
+
+class PaymentChangeLog(models.Model):
+	payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name='change_logs')
+	updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='payment_change_logs')
+	changed_at = models.DateTimeField(auto_now_add=True)
+	changes = models.JSONField(default=dict)
+
+	class Meta:
+		ordering = ('-changed_at', '-id')
+
+	def __str__(self):
+		return f"Payment {self.payment_id} updated at {self.changed_at}"
 
 
 class Expenditure(TimeStampedModel):
@@ -95,6 +109,7 @@ class Expenditure(TimeStampedModel):
 	notes = models.TextField(blank=True)
 	# Optional reference to booking for advance returns (nullable to keep expenditure even if booking deleted)
 	booking = models.ForeignKey('bookings.Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='expenditures')
+	created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_expenditures')
 
 	def get_category_display(self):
 		"""Return the display name for the category (custom or legacy)."""

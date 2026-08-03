@@ -170,6 +170,7 @@
           <th>Category</th>
           <th class="sortable text-end" data-key="amount" style="cursor:pointer">Amount <i class="bi bi-arrow-down-up small"></i></th>
           <th>Notes</th>
+          <th>Added By</th>
           <th></th>
         </tr>
       </thead>
@@ -180,17 +181,18 @@
           <td>{{ i.get_category_display|default:i.category }}</td>
           <td class="nowrap">₹ {{ i.amount|indian_currency }}</td>
           <td class="text-truncate" style="max-width: 300px;">{{ i.notes }}</td>
+          <td>{% if i.created_by %}<div class="fw-semibold">{{ i.created_by.get_full_name|default:i.created_by.username }}</div><div class="small text-muted">{{ i.created_by.email }}</div>{% else %}<span class="text-muted">Unknown</span>{% endif %}</td>
           <td class="text-end"><a href="{% url 'expenditure_edit' i.id %}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
         </tr>
       {% empty %}
-        <tr><td colspan="5" class="text-secondary">No expenditure entries.</td></tr>
+        <tr><td colspan="6" class="text-secondary">No expenditure entries.</td></tr>
       {% endfor %}
       </tbody>
       <tfoot>
         <tr class="fw-semibold">
           <td colspan="2" class="text-end">Total</td>
           <td class="nowrap">₹ {{ total|default:'0.00'|indian_currency }}</td>
-          <td colspan="2"></td>
+          <td colspan="3"></td>
         </tr>
       </tfoot>
     </table>
@@ -953,7 +955,7 @@
       const pageItems = filteredItems.slice(start, start + pageSize);
       if (pageItems.length === 0){
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td colspan="5" class="text-secondary">No expenditure entries.</td>';
+        tr.innerHTML = '<td colspan="6" class="text-secondary">No expenditure entries.</td>';
         tbody.appendChild(tr);
         document.getElementById('showingCount').textContent = '0 items.';
         return;
@@ -964,10 +966,16 @@
         const catTd = document.createElement('td'); catTd.textContent = i.category || '';
         const amtTd = document.createElement('td'); amtTd.className = 'nowrap text-end'; amtTd.textContent = '₹ ' + formatAmount(i.amount);
         const notesTd = document.createElement('td'); notesTd.className = 'text-truncate'; notesTd.style.maxWidth = '300px'; notesTd.textContent = i.notes || '';
+        const creatorTd = document.createElement('td');
+        if (i.created_by_name || i.created_by_email) {
+          const nameDiv = document.createElement('div'); nameDiv.className = 'fw-semibold'; nameDiv.textContent = i.created_by_name || i.created_by_email;
+          const emailDiv = document.createElement('div'); emailDiv.className = 'small text-muted'; emailDiv.textContent = i.created_by_email || '';
+          creatorTd.appendChild(nameDiv); creatorTd.appendChild(emailDiv);
+        } else { creatorTd.className = 'text-muted'; creatorTd.textContent = 'Unknown'; }
         const actionsTd = document.createElement('td'); actionsTd.className = 'text-end';
         const a = document.createElement('a'); a.className = 'btn btn-sm btn-outline-secondary'; a.href = '{% url "expenditure_edit" 0 %}'.replace('/0/', '/' + i.id + '/'); a.textContent = 'Edit';
         actionsTd.appendChild(a);
-        tr.appendChild(dateTd); tr.appendChild(catTd); tr.appendChild(amtTd); tr.appendChild(notesTd); tr.appendChild(actionsTd);
+        tr.appendChild(dateTd); tr.appendChild(catTd); tr.appendChild(amtTd); tr.appendChild(notesTd); tr.appendChild(creatorTd); tr.appendChild(actionsTd);
         tbody.appendChild(tr);
       });
       const totalText = `${Math.min(filteredItems.length, start+1)} - ${Math.min(filteredItems.length, start+pageItems.length)} of ${filteredItems.length} item(s).`;

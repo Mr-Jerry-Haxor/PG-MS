@@ -568,7 +568,7 @@ def unregister_fcm_token(request):
 
 def service_worker(request):
 	"""Serve service worker from root scope so push works across the full site."""
-	sw_path = Path(settings.BASE_DIR) / 'static' / 'service-worker.js'
+	sw_path = Path(settings.STATIC_ROOT) / 'service-worker.js'
 	if not sw_path.exists():
 		raise Http404('service-worker.js not found')
 

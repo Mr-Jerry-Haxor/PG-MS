@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from pgadmin.models import PG, PGAdmin
+from finance.models import Payment
 
 from .models import Booking, ResidentApplication, Room, RoomShareStatus
 from .utils import sync_room_share_statuses
@@ -172,6 +173,58 @@ class DayWisePendingAssignmentTests(TestCase):
         self.assertEqual(application.room_id, room.id)
         self.assertEqual(application.status, ResidentApplication.CONFIRMED)
         self.assertEqual(share.status, RoomShareStatus.RESERVED)
+
+
+class PendingBookingAdvancePaymentTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username='advance-resident', email='resident@example.com')
+        self.admin = User.objects.create_user(username='advance-admin', email='admin@example.com')
+        self.pg = PG.objects.create(name='Advance Test PG', address='Test address')
+        PGAdmin.objects.create(user=self.admin, pg=self.pg)
+        self.room = Room.objects.create(pg=self.pg, room_no='301', total_shares=1)
+        RoomShareStatus.objects.create(room=self.room, share_no=1, status=RoomShareStatus.VACANT)
+        self.client.force_login(self.admin)
+
+    def make_booking(self):
+        return Booking.objects.create(
+            user=self.user, pg=self.pg, room=self.room, share_no=1,
+            status=Booking.PENDING, joining_date=timezone.localdate(),
+        )
+
+    def test_approval_records_upi_cash_advance_split(self):
+        booking = self.make_booking()
+
+        response = self.client.post(reverse('pg_booking_approve', args=[booking.id]), {
+            'collect_advance': 'on',
+            'advance_amount': '1500.00',
+            'advance_mode': 'upi_cash',
+            'advance_upi_amount': '1000.00',
+            'advance_cash_amount': '500.00',
+        })
+
+        self.assertRedirects(response, reverse('pg_bookings_pending'))
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.APPROVED)
+        payment = Payment.objects.get(booking=booking, type='advance')
+        self.assertEqual(payment.mode, 'upi_cash')
+        self.assertEqual(payment.amount, payment.upi_amount + payment.cash_amount)
+
+    def test_approval_rejects_upi_cash_split_that_does_not_match_total(self):
+        booking = self.make_booking()
+
+        response = self.client.post(reverse('pg_booking_approve', args=[booking.id]), {
+            'collect_advance': 'on',
+            'advance_amount': '1500.00',
+            'advance_mode': 'upi_cash',
+            'advance_upi_amount': '900.00',
+            'advance_cash_amount': '500.00',
+        })
+
+        self.assertRedirects(response, reverse('pg_bookings_pending'))
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.PENDING)
+        self.assertFalse(Payment.objects.filter(booking=booking).exists())
 
     def test_database_rejects_approved_unassigned_daywise_booking(self):
         with self.assertRaises(IntegrityError):

@@ -58,8 +58,36 @@ if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 def handler404(request, exception):  # type: ignore
+    from pathlib import PurePosixPath
+    from django.http import HttpResponseNotFound, JsonResponse
     from django.shortcuts import redirect
     from django.contrib import messages
+
+    # A global 404 handler also receives missing asset, AJAX, browser-probe,
+    # and service-worker requests. Redirecting those requests queues a Django
+    # message for each failure, so several unrelated 404s appear as duplicate
+    # toasts on the user's next page. Only redirect genuine document navigation.
+    fetch_dest = (request.headers.get('Sec-Fetch-Dest') or '').lower()
+    fetch_mode = (request.headers.get('Sec-Fetch-Mode') or '').lower()
+    accept = (request.headers.get('Accept') or '').lower()
+    suffix = PurePosixPath(request.path).suffix.lower()
+    non_document_suffixes = {
+        '.css', '.js', '.map', '.json', '.xml', '.txt', '.ico',
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg',
+        '.woff', '.woff2', '.ttf', '.eot', '.pdf',
+    }
+    is_document_navigation = (
+        fetch_dest == 'document'
+        or fetch_mode == 'navigate'
+        or (not fetch_dest and 'text/html' in accept)
+        or (not fetch_dest and not fetch_mode and not accept and suffix not in non_document_suffixes)
+    )
+
+    if not is_document_navigation:
+        if 'application/json' in accept:
+            return JsonResponse({'error': 'Not found.'}, status=404)
+        return HttpResponseNotFound('Not found.')
+
     if request.user.is_authenticated:
         messages.info(request, "Page not found. Redirected to your dashboard.")
         return redirect('dashboard')

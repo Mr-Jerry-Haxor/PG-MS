@@ -3588,7 +3588,8 @@ def booking_approve(request, booking_id):
                             notes=f"Day-wise booking payment for Room {room.room_no} Bed {share_no}",
                             from_date=booking.joining_date,
                             to_date=booking.leaving_date,
-                            booking=booking
+                            booking=booking,
+                            created_by=request.user,
                         )
                     except Exception as e:
                         # Log but don't fail the approval
@@ -3754,6 +3755,8 @@ def booking_approve(request, booking_id):
     collect_advance = False
     advance_amount_value = Decimal('0')
     advance_mode = 'upi'
+    advance_upi_amount = None
+    advance_cash_amount = None
     advance_notes = ''
 
     if request.method == 'POST':
@@ -3761,7 +3764,7 @@ def booking_approve(request, booking_id):
         collect_advance = request.POST.get('collect_advance') == 'on'
         advance_mode = (request.POST.get('advance_mode') or 'upi').lower()
         advance_notes = (request.POST.get('advance_notes') or '').strip()
-        if advance_mode not in ('upi', 'cash', 'bank'):
+        if advance_mode not in ('upi', 'cash', 'upi_cash'):
             advance_mode = 'upi'
         if collect_advance:
             raw_amount = (request.POST.get('advance_amount') or '').strip()
@@ -3773,6 +3776,19 @@ def booking_approve(request, booking_id):
             if advance_amount_value <= 0:
                 messages.error(request, "Advance amount must be greater than zero.")
                 return redirect('pg_bookings_pending')
+            if advance_mode == 'upi_cash':
+                try:
+                    advance_upi_amount = Decimal((request.POST.get('advance_upi_amount') or '').strip())
+                    advance_cash_amount = Decimal((request.POST.get('advance_cash_amount') or '').strip())
+                except (InvalidOperation, ValueError):
+                    messages.error(request, "Enter valid UPI and Cash amounts for UPI + CASH mode.")
+                    return redirect('pg_bookings_pending')
+                if advance_upi_amount <= 0 or advance_cash_amount <= 0:
+                    messages.error(request, "UPI and Cash amounts must both be greater than zero.")
+                    return redirect('pg_bookings_pending')
+                if advance_upi_amount + advance_cash_amount != advance_amount_value:
+                    messages.error(request, "UPI and Cash amounts must add up to the total advance amount.")
+                    return redirect('pg_bookings_pending')
 
     booking.status = Booking.APPROVED
     booking.start_date = timezone.now().date()
@@ -3970,6 +3986,9 @@ def booking_approve(request, booking_id):
                 date=timezone.now().date(),
                 status='success',
                 mode=advance_mode,
+                upi_amount=advance_upi_amount,
+                cash_amount=advance_cash_amount,
+                created_by=request.user,
                 type='advance',
                 notes=payment_notes,
                 from_date=booking.joining_date or booking.start_date,
@@ -6351,7 +6370,8 @@ def mark_advance_returned(request, booking_id):
         amount=amount,
         date=date.today(),
         notes=f"Advance returned to {booking.user.get_full_name()} (Room {booking.room.room_no}, Bed {booking.share_no}). Leaving date: {booking.leaving_date}",
-        booking=booking
+        booking=booking,
+        created_by=request.user,
     )
     
     # Mark advance as returned

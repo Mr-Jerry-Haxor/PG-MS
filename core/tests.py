@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase
+from django.contrib.messages import get_messages
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from .drive import applicant_drive_filename
@@ -51,6 +52,13 @@ class IndianCurrencyFormattingTests(SimpleTestCase):
 
 
 class PublicLandingPageTests(TestCase):
+    def test_root_service_worker_is_served_from_current_staticfiles_directory(self):
+        response = self.client.get(reverse('service_worker'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/javascript; charset=utf-8')
+        self.assertContains(response, "const CACHE_VERSION = 'pgms-v1.0.1'")
+
     def test_anonymous_home_renders_marketing_landing_page(self):
         response = self.client.get(reverse('home'))
 
@@ -75,3 +83,39 @@ class PublicLandingPageTests(TestCase):
         response = self.client.get(reverse('home'))
 
         self.assertRedirects(response, reverse('dashboard'), fetch_redirect_response=False)
+
+
+@override_settings(DEBUG=False)
+class NotFoundHandlingTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username='not-found-user', email='not-found@example.com'
+        )
+        self.client.force_login(self.user)
+
+    def test_missing_non_document_requests_do_not_redirect_or_queue_messages(self):
+        for path, destination, accept in (
+            ('/missing-icon.ico', 'image', 'image/avif,image/webp,*/*'),
+            ('/missing-script.js', 'script', '*/*'),
+            ('/missing-api', 'empty', 'application/json'),
+        ):
+            response = self.client.get(
+                path,
+                HTTP_SEC_FETCH_DEST=destination,
+                HTTP_SEC_FETCH_MODE='cors',
+                HTTP_ACCEPT=accept,
+            )
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(list(get_messages(response.wsgi_request)), [])
+
+    def test_missing_document_redirects_once_with_one_message(self):
+        response = self.client.get(
+            '/missing-page/',
+            HTTP_SEC_FETCH_DEST='document',
+            HTTP_SEC_FETCH_MODE='navigate',
+            HTTP_ACCEPT='text/html',
+        )
+
+        self.assertRedirects(response, reverse('dashboard'), fetch_redirect_response=False)
+        queued = [str(message) for message in get_messages(response.wsgi_request)]
+        self.assertEqual(queued, ['Page not found. Redirected to your dashboard.'])

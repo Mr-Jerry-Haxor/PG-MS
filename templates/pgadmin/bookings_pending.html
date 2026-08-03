@@ -175,8 +175,23 @@
                       <select class="form-select form-select-sm" id="advanceMode{{ b.id }}" name="advance_mode">
                         <option value="upi" selected>UPI</option>
                         <option value="cash">Cash</option>
-                        <option value="bank">Bank Transfer</option>
+                        <option value="upi_cash">UPI + CASH</option>
                       </select>
+                    </div>
+                    <div class="col-12 d-none" data-advance-split>
+                      <div class="row g-2">
+                        <div class="col-12 col-md-6">
+                          <label class="form-label" for="advanceUpiAmount{{ b.id }}">UPI Amount (₹)</label>
+                          <input type="number" class="form-control form-control-sm" id="advanceUpiAmount{{ b.id }}" name="advance_upi_amount" step="0.01" min="0.01">
+                        </div>
+                        <div class="col-12 col-md-6">
+                          <label class="form-label" for="advanceCashAmount{{ b.id }}">Cash Amount (₹)</label>
+                          <input type="number" class="form-control form-control-sm" id="advanceCashAmount{{ b.id }}" name="advance_cash_amount" step="0.01" min="0.01">
+                        </div>
+                        <div class="col-12">
+                          <div class="form-text">UPI and Cash amounts must add up to the total advance amount.</div>
+                        </div>
+                      </div>
                     </div>
                     <div class="col-12">
                       <label class="form-label" for="advanceNotes{{ b.id }}">Notes (Optional)</label>
@@ -338,19 +353,29 @@ document.addEventListener('DOMContentLoaded', function () {
     const container = document.querySelector(targetSelector);
     if (!container) return;
     const amountInput = container.querySelector('input[name="advance_amount"]');
+    const modeSelect = container.querySelector('select[name="advance_mode"]');
+    const splitFields = container.querySelector('[data-advance-split]');
+    const splitInputs = container.querySelectorAll('input[name="advance_upi_amount"], input[name="advance_cash_amount"]');
 
     const sync = function () {
       const isChecked = checkbox.checked;
+      const isMixed = isChecked && modeSelect && modeSelect.value === 'upi_cash';
       container.classList.toggle('d-none', !isChecked);
+      if (splitFields) splitFields.classList.toggle('d-none', !isMixed);
       if (amountInput) {
         amountInput.toggleAttribute('required', isChecked);
         if (!isChecked) {
           amountInput.value = '';
         }
       }
+      splitInputs.forEach(function (input) {
+        input.toggleAttribute('required', isMixed);
+        if (!isMixed) input.value = '';
+      });
     };
 
     checkbox.addEventListener('change', sync);
+    if (modeSelect) modeSelect.addEventListener('change', sync);
     sync();
     syncMap.set(checkbox, { container, amountInput, sync });
   });
