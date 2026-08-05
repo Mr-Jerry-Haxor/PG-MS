@@ -187,7 +187,18 @@ def dashboard(request):
 			user=request.user, is_read=False
 		).order_by('-created_at')[:10]
 		notes = list(notes_qs)
-	ctx = {"notifications": notes}
+	profile = getattr(request.user, 'profile', None)
+	is_pg_user_dashboard = bool(
+		getattr(profile, 'is_pg_user', False)
+		and not is_pg_admin_dashboard
+		and not getattr(profile, 'is_website_admin', False)
+		and not getattr(request.user, 'is_superuser', False)
+	)
+	ctx = {
+		"notifications": notes,
+		"is_pg_admin_dashboard": is_pg_admin_dashboard,
+		"is_pg_user_dashboard": is_pg_user_dashboard,
+	}
 	
 	try:
 		if getattr(request.user, 'profile', None) and not request.user.profile.is_pg_user:
@@ -352,7 +363,7 @@ def dashboard(request):
 		
 		ctx["user_complaints"] = complaints_list
 	
-	if hasattr(request.user, 'profile') and request.user.profile.is_pg_admin:
+	if is_pg_admin_dashboard:
 		# Determine PGs this admin can manage and active selection
 		pgs_qs = PG.objects.filter(admins__user=request.user).order_by('name')
 		pg = None

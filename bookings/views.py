@@ -1778,11 +1778,16 @@ def application_fill(request, booking_id):
     booking = get_object_or_404(Booking, pk=booking_id, user=request.user)
     from .models import ResidentApplication
     app = getattr(booking, 'application', None)
+    refill_requested = bool(
+        app and getattr(app, 'status', None) == ResidentApplication.REFILL_REQUESTED
+    )
     # User editing is allowed only while the booking itself is pending. The
     # application status is also checked defensively in case it was confirmed
-    # independently of the booking.
-    if booking.status != Booking.PENDING or (
-        app and getattr(app, 'status', None) == ResidentApplication.CONFIRMED
+    # independently of the booking. A PG Admin refill request is an explicit,
+    # temporary exception that also applies to already-approved bookings.
+    if not refill_requested and (
+        booking.status != Booking.PENDING
+        or (app and getattr(app, 'status', None) == ResidentApplication.CONFIRMED)
     ):
         messages.info(request, "Your booking has been confirmed and the application can no longer be modified. Contact PG Admin if you need changes.")
         return redirect('dashboard')
@@ -1961,7 +1966,7 @@ def application_fill(request, booking_id):
             inst.save(update_fields=['status'])
             ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Submitted by user')
         else:
-            if app.status == ResidentApplication.REFILL_REQUESTED:
+            if refill_requested:
                 inst.status = ResidentApplication.RESUBMITTED
                 inst.save(update_fields=['status'])
                 ApplicationStatusHistory.objects.create(application=inst, status=inst.status, comment='Re-submitted by user')

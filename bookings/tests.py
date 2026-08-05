@@ -9,8 +9,9 @@ from unittest.mock import patch
 
 from pgadmin.models import PG, PGAdmin
 from finance.models import Payment
+from core.models import Notification
 
-from .models import Booking, ResidentApplication, Room, RoomShareStatus
+from .models import ApplicationStatusHistory, Booking, ResidentApplication, Room, RoomShareStatus
 from .utils import sync_room_share_statuses
 
 
@@ -84,7 +85,7 @@ class PendingApplicationEditingTests(TestCase):
         self.assertNotContains(response, 'placeholder="applicant@example.com"')
 
 
-class DayWisePendingAssignmentTests(TestCase):
+class BookingApplicationWorkflowTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -127,6 +128,112 @@ class DayWisePendingAssignmentTests(TestCase):
         self.assertIsNone(booking.share_no)
         self.assertEqual(booking.pg, self.pg)
         self.assertIsNone(booking.application.room_id)
+
+    def _approved_refill_application(self):
+        room = Room.objects.create(pg=self.pg, room_no='refill-room', total_shares=1)
+        RoomShareStatus.objects.create(room=room, share_no=1)
+        self.client.force_login(self.user)
+        booking = Booking.objects.create(
+            user=self.user,
+            pg=self.pg,
+            room=room,
+            share_no=1,
+            status=Booking.APPROVED,
+            joining_date=timezone.localdate(),
+        )
+        application = ResidentApplication.objects.create(
+            user=self.user,
+            booking=booking,
+            pg=self.pg,
+            room=room,
+            status=ResidentApplication.REFILL_REQUESTED,
+            name='Applicant User',
+            dob=datetime(1990, 1, 1).date(),
+            age=30,
+            phone='9876543210',
+            whatsapp_number='9876543210',
+            email=self.user.email,
+            father_name='Applicant Father',
+            father_phone='9876543211',
+            mother_name='Applicant Mother',
+            mother_phone='9876543212',
+            address='Test address',
+            date_of_admission=timezone.localdate(),
+            food_pref='veg',
+            marital_status='single',
+            education='Graduate',
+            occupation='employee',
+            org_name='Test Organisation',
+            org_address='Organisation address',
+            aadhaar_number='123456789012',
+            selfie_url='https://example.com/selfie.jpg',
+            aadhaar_file_url='https://example.com/aadhaar.pdf',
+        )
+        return self.admin, booking, application
+
+    def test_refill_request_allows_approved_booking_application_form(self):
+        _admin, booking, _application = self._approved_refill_application()
+
+        response = self.client.get(reverse('application_fill', args=[booking.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'PG Admin has requested you to refill/update your application')
+
+    def test_dashboard_replaces_view_with_modify_during_refill(self):
+        _admin, booking, _application = self._approved_refill_application()
+
+        response = self.client.get(reverse('dashboard'))
+
+        self.assertContains(response, reverse('application_fill', args=[booking.id]))
+        self.assertContains(response, 'Modify Application')
+        self.assertNotContains(response, f'data-bs-target="#myAppModal{booking.id}"')
+
+    @patch('bookings.views.send_push_to_users')
+    @patch('bookings.views.send_mail')
+    def test_refill_resubmission_notifies_and_emails_pg_admin(self, send_mail, send_push):
+        admin, booking, application = self._approved_refill_application()
+        payload = {
+            'name': 'Applicant User Updated',
+            'dob': '1990-01-01',
+            'age': '36',
+            'phone': '9876543210',
+            'whatsapp_number': '9876543210',
+            'email': self.user.email,
+            'father_name': 'Applicant Father',
+            'father_phone': '9876543211',
+            'mother_name': 'Applicant Mother',
+            'mother_phone': '9876543212',
+            'address': 'Updated test address',
+            'date_of_admission': timezone.localdate().isoformat(),
+            'food_pref': 'veg',
+            'marital_status': 'single',
+            'education': 'Graduate',
+            'occupation': 'employee',
+            'org_name': 'Test Organisation',
+            'org_address': 'Organisation address',
+            'aadhaar_number': '123456789012',
+            'payment_day': timezone.localdate().isoformat(),
+            'decl_agreed': 'on',
+        }
+
+        response = self.client.post(reverse('application_fill', args=[booking.id]), payload)
+
+        self.assertRedirects(
+            response, reverse('dashboard'), fetch_redirect_response=False
+        )
+        application.refresh_from_db()
+        self.assertEqual(application.status, ResidentApplication.RESUBMITTED)
+        self.assertTrue(ApplicationStatusHistory.objects.filter(
+            application=application,
+            status=ResidentApplication.RESUBMITTED,
+        ).exists())
+        self.assertTrue(Notification.objects.filter(
+            user=admin,
+            title='Resident Application Re-submitted',
+        ).exists())
+        send_mail.assert_called_once()
+        self.assertEqual(send_mail.call_args.kwargs['recipient_list'], [admin.email])
+        send_push.assert_called_once()
 
     def test_pending_page_includes_unassigned_daywise_booking(self):
         booking = Booking.objects.create(

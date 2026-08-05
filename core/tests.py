@@ -3,6 +3,9 @@ from django.contrib.messages import get_messages
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
+from bookings.models import Booking, Room, RoomShareStatus
+from pgadmin.models import Complaint, PG, PGAdmin
+
 from .drive import applicant_drive_filename
 from .templatetags.currency import format_indian_number
 
@@ -83,6 +86,70 @@ class PublicLandingPageTests(TestCase):
         response = self.client.get(reverse('home'))
 
         self.assertRedirects(response, reverse('dashboard'), fetch_redirect_response=False)
+
+
+class DashboardRoleSegregationTests(TestCase):
+    def setUp(self):
+        self.pg = PG.objects.create(name='Dashboard Role PG', address='Test address')
+        self.room = Room.objects.create(pg=self.pg, room_no='101', total_shares=2)
+        RoomShareStatus.objects.create(room=self.room, share_no=1)
+        RoomShareStatus.objects.create(room=self.room, share_no=2)
+
+    def _active_booking_with_complaint(self, user, share_no):
+        booking = Booking.objects.create(
+            user=user,
+            pg=self.pg,
+            room=self.room,
+            share_no=share_no,
+            status=Booking.APPROVED,
+        )
+        Complaint.objects.create(
+            user=user,
+            pg=self.pg,
+            booking=booking,
+            title='Dashboard visibility complaint',
+            description='Used to verify role-specific dashboard rendering.',
+        )
+        return booking
+
+    def test_pg_user_sees_resident_actions_without_admin_summary_cards(self):
+        user = get_user_model().objects.create_user(
+            username='dashboard-resident', email='resident@example.com', password='x'
+        )
+        self._active_booking_with_complaint(user, 1)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse('dashboard'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'My Payments')
+        self.assertContains(response, 'Raise Complaint')
+        self.assertContains(response, 'My Bookings')
+        self.assertContains(response, 'My Complaints')
+        self.assertContains(response, 'View All Complaints')
+        self.assertNotContains(response, '<span>Complaints</span>', html=True)
+        self.assertNotContains(response, 'Beds Overview')
+        self.assertNotContains(response, 'Pending Bookings')
+        self.assertNotContains(response, '<div class="month-title">This Month</div>', html=True)
+
+    def test_pg_admin_membership_hides_resident_payment_and_complaint_ui(self):
+        admin = get_user_model().objects.create_user(
+            username='dashboard-admin', email='admin@example.com', password='x'
+        )
+        PGAdmin.objects.create(user=admin, pg=self.pg)
+        # Deliberately leave profile.is_pg_admin false: explicit PGAdmin
+        # membership is the authoritative backend assignment.
+        self._active_booking_with_complaint(admin, 2)
+        self.client.force_login(admin)
+
+        response = self.client.get(reverse('dashboard'), {'pg': self.pg.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['is_pg_admin_dashboard'])
+        self.assertNotContains(response, 'My Payments')
+        self.assertNotContains(response, 'data-bs-target="#raiseComplaintModal"')
+        self.assertNotContains(response, 'My Complaints')
+        self.assertNotContains(response, 'View All Complaints')
 
 
 @override_settings(DEBUG=False)

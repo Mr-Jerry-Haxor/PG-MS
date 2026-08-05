@@ -5,7 +5,7 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
   <div class="d-flex align-items-center gap-2">
     <h1 class="h3 mb-0">Dashboard</h1>
-    {% if user.is_authenticated and user.profile.is_pg_admin and pgs and pgs|length > 1 %}
+    {% if is_pg_admin_dashboard and pgs and pgs|length > 1 %}
     <form method="get">
       <select name="pg" class="form-select form-select-sm" onchange="this.form.submit()">
         {% for p in pgs %}
@@ -16,15 +16,15 @@
     {% endif %}
   </div>
   <div class="d-flex align-items-center gap-2">
-    {% if user.is_authenticated and user.profile.is_pg_admin and pg %}
+    {% if is_pg_admin_dashboard and pg %}
       <span class="badge bg-light text-dark">{{ pg.name }}</span>
     {% endif %}
-    {% if user.is_authenticated and not user.profile.is_pg_admin %}
+    {% if user.is_authenticated and not is_pg_admin_dashboard %}
       <a href="{% url 'my_payments' %}" class="btn btn-outline-primary btn-sm" style="font-size: 0.85rem;">
         <i class="bi bi-receipt"></i> My Payments
       </a>
     {% endif %}
-    {% if user.is_authenticated and has_active_booking and not user.profile.is_pg_admin %}
+    {% if user.is_authenticated and has_active_booking and not is_pg_admin_dashboard %}
       <button type="button" class="btn btn-warning btn-sm text-dark" data-bs-toggle="modal" data-bs-target="#raiseComplaintModal" style="font-size: 0.85rem;">
         <i class="bi bi-exclamation-circle"></i> Raise Complaint
       </button>
@@ -187,7 +187,7 @@
 </style>
 <div class="row g-3 dashboard-cards">
   
-  {% if user.is_authenticated and user.profile.is_pg_admin %}
+  {% if is_pg_admin_dashboard %}
   <div class="col-6 col-md-4 col-lg-2">
     {% if whatsapp_cloud_messages_enabled %}
     <a class="card shadow-sm border-0 h-100 text-decoration-none" style="background:var(--accent)" href="{% url 'pg_whatsapp_conversations' %}?pg={{ pg.id }}">
@@ -216,6 +216,7 @@
     {% endif %}
   </div>
   {% endif %}
+  {% if not is_pg_user_dashboard %}
   <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0">
       <div class="card-body">
@@ -251,7 +252,7 @@
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <div class="text-secondary small fw-semibold">Beds Overview</div>
-          {% if user.is_authenticated and user.profile.is_pg_admin %}
+          {% if is_pg_admin_dashboard %}
           <form method="post" action="{% url 'pg_sync_bed_statuses' %}" class="d-inline" onsubmit="return confirm('Sync bed statuses based on current bookings?');">
             {% csrf_token %}
             <button type="submit" class="btn btn-sm btn-outline-primary" style="font-size:0.7rem;padding:0.25rem 0.5rem;" title="Refresh bed statuses based on bookings">
@@ -328,7 +329,7 @@
       <div class="card-body">
         <div class="text-secondary small d-flex justify-content-between align-items-center">
           <span>Pending Bookings</span>
-          {% if user.is_authenticated and user.profile.is_pg_admin %}
+          {% if is_pg_admin_dashboard %}
             <a href="{% url 'pg_bookings_pending' %}" class="small text-decoration-none">View</a>
           {% endif %}
         </div>
@@ -336,7 +337,7 @@
       </div>
     </div>
   </div>
-  {% if user.is_authenticated and user.profile.is_pg_admin %}
+  {% if is_pg_admin_dashboard %}
   <div class="col-6 col-md-4 col-lg-2">
     <div class="card shadow-sm border-0">
       <div class="card-body">
@@ -401,8 +402,9 @@
       </div>
     </div>
   </div>
+  {% endif %}
   
-  {% if user.is_authenticated and user.profile.is_pg_admin %}
+  {% if is_pg_admin_dashboard %}
   <!-- PG Admin quick links -->
   <div class="col-12 mt-2">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -1344,7 +1346,9 @@
           </div>
           <div class="d-flex flex-wrap gap-2">
             <a href="{% url 'booking_detail' b.id %}" class="btn btn-outline-secondary btn-sm">Details</a>
-            {% if b.application and b.application.status == 'confirmed' %}
+            {% if b.application and b.application.status == 'refill_requested' %}
+              <a href="{% url 'application_fill' b.id %}" class="btn btn-primary btn-sm">Modify Application</a>
+            {% elif b.application and b.application.status == 'confirmed' %}
               <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#myAppModal{{ b.id }}">View Application</button>
             {% endif %}
             {% if not b.leaving_date %}
@@ -1620,9 +1624,10 @@ document.addEventListener('DOMContentLoaded', function() {
  </div>
 {% endif %}
 
-{% if user.is_authenticated and user_complaints %}
+{% if is_pg_user_dashboard or user.is_authenticated and not is_pg_admin_dashboard and user_complaints %}
 <div class="mt-4">
   <h2 class="h6 text-secondary mb-2">My Complaints</h2>
+  {% if user_complaints %}
   <div class="accordion" id="complaintsAccordion">
     {% for complaint in user_complaints %}
     <div class="accordion-item">
@@ -1687,6 +1692,9 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
     {% endfor %}
   </div>
+  {% else %}
+  <div class="text-secondary small">You have not raised any complaints.</div>
+  {% endif %}
   <div class="mt-2">
     <a href="{% url 'my_complaints' %}" class="btn btn-sm btn-outline-secondary">
       View All Complaints
@@ -1746,6 +1754,7 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endif %}
 
 <!-- Raise Complaint Modal -->
+{% if not is_pg_admin_dashboard %}
 <div class="modal fade" id="raiseComplaintModal" tabindex="-1" aria-labelledby="raiseComplaintModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
@@ -2279,5 +2288,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+{% endif %}
 
 {% endblock %}
