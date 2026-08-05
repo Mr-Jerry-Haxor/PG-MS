@@ -179,14 +179,16 @@ class BookingApplicationWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'PG Admin has requested you to refill/update your application')
 
-    def test_dashboard_replaces_view_with_modify_during_refill(self):
+    def test_dashboard_shows_view_and_modify_during_refill(self):
         _admin, booking, _application = self._approved_refill_application()
 
         response = self.client.get(reverse('dashboard'))
 
         self.assertContains(response, reverse('application_fill', args=[booking.id]))
         self.assertContains(response, 'Modify Application')
-        self.assertNotContains(response, f'data-bs-target="#myAppModal{booking.id}"')
+        self.assertContains(response, 'View Application')
+        self.assertContains(response, f'data-bs-target="#myAppModal{booking.id}"')
+        self.assertContains(response, f'id="myAppModal{booking.id}"')
 
     @patch('bookings.views.send_push_to_users')
     @patch('bookings.views.send_mail')

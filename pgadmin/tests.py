@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from bookings.models import Booking, ResidentApplication, Room, RoomShareStatus
 from core.models import Notification
@@ -293,3 +294,47 @@ class PGAdminRoomDeletionTests(TestCase):
         self.assertNotContains(response, 'Hidden dashboard notification')
         notice.refresh_from_db()
         self.assertFalse(notice.is_read)
+
+
+class PGAdminTenantDisplayNameTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            username='tenant-page-admin', email='tenant-admin@example.com', password='x'
+        )
+        self.resident = User.objects.create_user(
+            username='tenant-page-resident',
+            email='resident@example.com',
+            first_name='AccountFirst',
+            last_name='AccountLast',
+        )
+        self.pg = PG.objects.create(name='Tenant Name PG', address='Test address')
+        PGAdmin.objects.create(user=self.admin, pg=self.pg)
+        self.room = Room.objects.create(pg=self.pg, room_no='101', total_shares=1)
+        RoomShareStatus.objects.create(
+            room=self.room, share_no=1, status=RoomShareStatus.OCCUPIED
+        )
+        self.booking = Booking.objects.create(
+            user=self.resident,
+            pg=self.pg,
+            room=self.room,
+            share_no=1,
+            status=Booking.APPROVED,
+            joining_date=timezone.localdate(),
+        )
+        ResidentApplication.objects.create(
+            user=self.resident,
+            booking=self.booking,
+            pg=self.pg,
+            room=self.room,
+            name='Resident Application Name',
+            email=self.resident.email,
+        )
+        self.client.force_login(self.admin)
+
+    def test_tenants_page_prefers_resident_application_name(self):
+        response = self.client.get(reverse('pg_tenants'), {'pg': self.pg.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Resident Application Name')
+        self.assertNotContains(response, 'AccountFirst AccountLast')

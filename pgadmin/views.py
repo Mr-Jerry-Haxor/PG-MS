@@ -1520,6 +1520,19 @@ def _build_share_detail(room: Room, share: RoomShareStatus) -> dict:
             application = booking.application
         except Exception:
             application = None
+
+    def _application_name_or_user(application_obj, user_obj):
+        application_name = (getattr(application_obj, 'name', '') or '').strip()
+        if application_name:
+            return application_name
+        if user_obj:
+            return (user_obj.get_full_name() or '').strip() or user_obj.email
+        return ''
+
+    occupant_name = _application_name_or_user(application, occupant)
+    future_occupant_name = _application_name_or_user(
+        future_application, future_occupant
+    )
     
     # Check for pending future swap for this booking
     pending_swap = None
@@ -1538,10 +1551,12 @@ def _build_share_detail(room: Room, share: RoomShareStatus) -> dict:
         'share': share,
         'booking': booking,
         'occupant': occupant,
+        'occupant_name': occupant_name,
         'application': application,
         'is_pending': bool(booking and booking.status == Booking.PENDING),
         'future_booking': future_booking,
         'future_occupant': future_occupant,
+        'future_occupant_name': future_occupant_name,
         'future_application': future_application,
         'pending_swap': pending_swap,  # Added for showing "Cancel Future Swap" button
     }

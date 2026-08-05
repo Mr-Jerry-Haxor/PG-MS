@@ -24,7 +24,7 @@ Expects context variables:
       {% if sd.booking and sd.occupant %}
         <div class="mb-2">
           <div class="fw-semibold">
-            {{ sd.occupant.get_full_name|default:sd.occupant.email }}
+            {{ sd.occupant_name }}
             {% if sd.booking.booking_type == 'daywise' %}
               <span class="badge bg-info-subtle text-dark border ms-1" style="font-size:0.65rem;">Day-wise</span>
             {% endif %}
@@ -102,7 +102,7 @@ Expects context variables:
           <div class="mb-2 border-top pt-2">
             <div class="fw-semibold">
               <span class="badge bg-primary-subtle text-dark border me-1" style="font-size:0.65rem;">Next Tenant</span>
-              {{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}
+              {{ sd.future_occupant_name }}
             </div>
             <div class="text-secondary small">{{ sd.future_occupant.email }}</div>
             <div class="text-secondary small">Phone: {{ sd.future_occupant.profile.phone|default:'—' }}</div>
@@ -152,7 +152,7 @@ Expects context variables:
                 <form method="post" action="{% url 'pg_booking_leave_direct' sd.future_booking.id %}">
                   {% csrf_token %}
                   <div class="modal-header">
-                    <h5 class="modal-title" id="leaveModalLabel{{ sd.future_booking.id }}">Confirm Leave — {{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}</h5>
+                    <h5 class="modal-title" id="leaveModalLabel{{ sd.future_booking.id }}">Confirm Leave — {{ sd.future_occupant_name }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
@@ -191,7 +191,7 @@ Expects context variables:
                 <form method="post" action="{% url 'pg_booking_swap_room' sd.future_booking.id %}">
                   {% csrf_token %}
                   <div class="modal-header">
-                    <h5 class="modal-title" id="swapModalLabel{{ sd.future_booking.id }}">Swap Room — {{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}</h5>
+                    <h5 class="modal-title" id="swapModalLabel{{ sd.future_booking.id }}">Swap Room — {{ sd.future_occupant_name }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
@@ -201,7 +201,7 @@ Expects context variables:
                       <div class="row g-2 small">
                         <div class="col-6 col-md-6"><strong>Room:</strong> {{ sd.future_booking.room.room_no }}</div>
                         <div class="col-6 col-md-6"><strong>Bed:</strong> {{ sd.future_booking.share_no }}</div>
-                        <div class="col-12 col-md-6"><strong>Tenant:</strong> <span class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}</span></div>
+                        <div class="col-12 col-md-6"><strong>Tenant:</strong> <span class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.future_occupant_name }}</span></div>
                         <div class="col-12 col-md-6"><strong>Phone:</strong> {{ sd.future_occupant.profile.phone|default:"—" }}</div>
                       </div>
                     </div>
@@ -247,7 +247,7 @@ Expects context variables:
                       <h6 class="mb-2 small"><i class="bi bi-arrow-left-right me-2"></i>Exchange Swap</h6>
                       <p class="small mb-2">This bed is currently occupied by a leaving tenant. Selecting this option will:</p>
                       <ul class="small mb-2">
-                        <li><strong class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.future_occupant.get_full_name|default:sd.future_occupant.email }}</strong> will move to the selected bed</li>
+                        <li><strong class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.future_occupant_name }}</strong> will move to the selected bed</li>
                         <li>The leaving tenant will move to <strong>Room {{ sd.future_booking.room.room_no }}, Bed {{ sd.future_booking.share_no }}</strong></li>
                       </ul>
                       <div class="form-check">
@@ -326,7 +326,7 @@ Expects context variables:
             <div class="modal-dialog modal-lg modal-dialog-scrollable">
               <div class="modal-content">
                 <div class="modal-header">
-                  <h5 class="modal-title" id="appModalLabel{{ sd.booking.id }}">Application — {{ sd.occupant.first_name }} {{ sd.occupant.last_name }}</h5>
+                  <h5 class="modal-title" id="appModalLabel{{ sd.booking.id }}">Application — {{ sd.occupant_name }}</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -346,7 +346,7 @@ Expects context variables:
             <div class="modal-dialog modal-lg modal-dialog-scrollable">
               <div class="modal-content">
                 <div class="modal-header">
-                  <h5 class="modal-title" id="appModalLabel{{ sd.future_booking.id }}">Application — {{ sd.future_occupant.first_name }} {{ sd.future_occupant.last_name }} (Next Tenant)</h5>
+                  <h5 class="modal-title" id="appModalLabel{{ sd.future_booking.id }}">Application — {{ sd.future_occupant_name }} (Next Tenant)</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -504,7 +504,7 @@ Expects context variables:
                 <form method="post" action="{% url 'pg_booking_leave_direct' sd.booking.id %}">
                   {% csrf_token %}
                   <div class="modal-header">
-                    <h5 class="modal-title" id="leaveModalLabel{{ sd.booking.id }}">Confirm Leave — {{ sd.occupant.get_full_name|default:sd.occupant.email }}</h5>
+                    <h5 class="modal-title" id="leaveModalLabel{{ sd.booking.id }}">Confirm Leave — {{ sd.occupant_name }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
@@ -550,7 +550,7 @@ Expects context variables:
                 <form method="post" action="{% url 'pg_booking_swap_room' sd.booking.id %}">
                   {% csrf_token %}
                   <div class="modal-header">
-                    <h5 class="modal-title" id="swapModalLabel{{ sd.booking.id }}">Swap Room — {{ sd.occupant.get_full_name|default:sd.occupant.email }}</h5>
+                    <h5 class="modal-title" id="swapModalLabel{{ sd.booking.id }}">Swap Room — {{ sd.occupant_name }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
@@ -560,7 +560,7 @@ Expects context variables:
                       <div class="row g-2 small">
                         <div class="col-6 col-md-6"><strong>Room:</strong> {{ sd.booking.room.room_no }}</div>
                         <div class="col-6 col-md-6"><strong>Bed:</strong> {{ sd.booking.share_no }}</div>
-                        <div class="col-12 col-md-6"><strong>Tenant:</strong> <span class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.occupant.get_full_name|default:sd.occupant.email }}</span></div>
+                        <div class="col-12 col-md-6"><strong>Tenant:</strong> <span class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.occupant_name }}</span></div>
                         <div class="col-12 col-md-6"><strong>Phone:</strong> {{ sd.occupant.profile.phone|default:"—" }}</div>
                       </div>
                     </div>
@@ -606,7 +606,7 @@ Expects context variables:
                       <h6 class="mb-2 small"><i class="bi bi-arrow-left-right me-2"></i>Exchange Swap</h6>
                       <p class="small mb-2">This bed is currently occupied by a leaving tenant. Selecting this option will:</p>
                       <ul class="small mb-2">
-                        <li><strong class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.occupant.get_full_name|default:sd.occupant.email }}</strong> will move to the selected bed</li>
+                        <li><strong class="d-inline-block text-truncate" style="max-width: 200px;">{{ sd.occupant_name }}</strong> will move to the selected bed</li>
                         <li>The leaving tenant will move to <strong>Room {{ sd.booking.room.room_no }}, Bed {{ sd.booking.share_no }}</strong></li>
                       </ul>
                       <div class="form-check">

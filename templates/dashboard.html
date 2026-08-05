@@ -1346,10 +1346,11 @@
           </div>
           <div class="d-flex flex-wrap gap-2">
             <a href="{% url 'booking_detail' b.id %}" class="btn btn-outline-secondary btn-sm">Details</a>
+            {% if b.application %}
+              <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#myAppModal{{ b.id }}">View Application</button>
+            {% endif %}
             {% if b.application and b.application.status == 'refill_requested' %}
               <a href="{% url 'application_fill' b.id %}" class="btn btn-primary btn-sm">Modify Application</a>
-            {% elif b.application and b.application.status == 'confirmed' %}
-              <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#myAppModal{{ b.id }}">View Application</button>
             {% endif %}
             {% if not b.leaving_date %}
               <a href="{% url 'initiate_leave_request' b.id %}" class="btn btn-outline-danger btn-sm">
@@ -1435,10 +1436,10 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endfor %}
 {% endif %}
 
-{# Per-booking Application View Modals (for confirmed applications) #}
+{# Per-booking read-only application modals #}
 {% if user.is_authenticated and my_approved_bookings %}
   {% for b in my_approved_bookings %}
-    {% if b.application and b.application.status == 'confirmed' %}
+    {% if b.application %}
     <div class="modal fade" id="myAppModal{{ b.id }}" tabindex="-1" aria-labelledby="myAppModalLabel{{ b.id }}" aria-hidden="true">
       <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
